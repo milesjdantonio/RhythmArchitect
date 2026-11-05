@@ -1,7 +1,7 @@
 # Backend API contract
 
-What the frontend expects from the backend. The types are in [src/api/types.ts](../src/api/types.ts);
-[mock-server/api.ts](../mock-server/api.ts) implements all of it for local development.
+What the frontend expects from the backend. The types are in [frontend/src/api/types.ts](../frontend/src/api/types.ts);
+[frontend/mock-server/api.ts](../frontend/mock-server/api.ts) implements all of it for local development.
 
 Base URL: `VITE_API_BASE_URL` (empty means same origin). All bodies are JSON. Errors are
 `{ "error": "message for the player" }` with a 4xx/5xx status; the UI shows the message as written.
@@ -40,24 +40,24 @@ Base URL: `VITE_API_BASE_URL` (empty means same origin). All bodies are JSON. Er
 Nothing is ever composed or invented. The browser does the listening, because only it can hear
 the embedded player: it shares its own tab's sound (`getDisplayMedia`), plays the video once,
 files every captured sample under the video position it was heard at, and measures it with the
-onset mapper (`src/music/automap.ts`): the beat grid and every sound, exact to a few ms. The audio
+onset mapper (`frontend/src/mapping/automap.ts`): the beat grid and every sound, exact to a few ms. The audio
 never leaves the page.
 
 Then the AI charts it: the browser sends the measurements to `POST /api/chart` and the backend
 (Claude) answers with a `ChartPlan`, choosing which of those sounds each difficulty plays, in
 which lane, which are held. A plan can only name sounds by id, so every tile stays on a real sound
-at its measured time; the browser checks the plan (`chartsFromPlan` in `src/music/charter.ts`:
+at its measured time; the browser checks the plan (`chartsFromPlan` in `frontend/src/mapping/charter.ts`:
 unknown sounds and bad lanes dropped, holds kept to how long the sound rings, at most two tiles per
 sound) and builds the charts. If the charter isn't there, fails, takes over 3 minutes, or leaves a
-difficulty nearly empty, the on-device charts (`src/music/charts.ts`) are used instead and
+difficulty nearly empty, the on-device charts (`frontend/src/mapping/charts.ts`) are used instead and
 `report.mapper` says so. Then the song is saved with `POST /api/songs`: the charts, the report and
 `levels` (a loudness curve, three bands × 30 per second, one byte each).
 When it can't listen (no tab audio, sharing declined, a phone), it asks for a fan chart instead.
 
 ### The AI charter: `POST /api/chart`
 
-`ChartRequest` (types in `src/api/types.ts`; real examples in [samples/](samples/), written by
-`node tools/map-audio.mjs --request`):
+`ChartRequest` (types in `frontend/src/api/types.ts`; real examples in [samples/](samples/), written by
+`node frontend/tools/map-audio.mjs --request`):
 
 - `song`: `{ title, artist, videoId?, seconds }`
 - `timing`: `{ bpm, offset (seconds into the video of beat 0), meter, lengthBeats, confidence }`
@@ -103,7 +103,7 @@ list of `{ id, lane (0-3), hold?, len? }`. Two notes with the same id are a chor
   none, the app derives them from the section labels (a drop at each Chorus/Drop, a build 4 beats
   before it, a break at each Break/Bridge/Outro).
 - `patch` and `backing`: the synth and the backing groove for synth songs, which play every note
-  of all three charts themselves (`songMelody` in src/audio/engine.ts).
+  of all three charts themselves (`songMelody` in frontend/src/audio/playback.ts).
 
 The app also analyses the playing audio live (bass, mids, highs), so every song moves the
 backdrop and the stage even with no sections or cues at all.

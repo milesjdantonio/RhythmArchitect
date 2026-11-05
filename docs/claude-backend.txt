@@ -28,15 +28,15 @@ One endpoint:
 - Base URL: the same server as the rest of the API (VITE_API_BASE_URL on the frontend).
 - Errors: any non-2xx is fine: { "error": "message" }. The frontend then uses its own charts, so
   an error never stops a song being made. Answer 501 if charting is turned off.
-- Time limit: the frontend waits up to 180 s (CHART_TIMEOUT_MS in src/lib/generate.ts), then uses
+- Time limit: the frontend waits up to 180 s (CHART_TIMEOUT_MS in frontend/src/mapping/generate.ts), then uses
   its own charts. Aim for under 90 s.
 - Size: a request is about 100-400 KB (5-10 sounds per second of music). Accept up to 4 MB.
 - The Anthropic API key lives only on the server (env ANTHROPIC_API_KEY). Never send it to the
   browser.
 
-Types: src/api/types.ts (ChartRequest, SoundEvent, ChartPlan, PlanNote). Contract summary:
+Types: frontend/src/api/types.ts (ChartRequest, SoundEvent, ChartPlan, PlanNote). Contract summary:
 docs/api.md, "The AI charter". Real requests to build and test against: docs/samples/*.json
-(regenerate with: node tools/map-audio.mjs --request).
+(regenerate with: node frontend/tools/map-audio.mjs --request).
 
 
 2. The request (ChartRequest)
@@ -85,7 +85,7 @@ cues are a loudness guess; Claude should relabel them.
 PlanNote: { id, lane 0-3 (keys D F J K, left to right), hold?, len? (hold length in beats,
 defaults to how long the sound rings) }.
 
-What the browser enforces on every plan (src/music/charter.ts, chartsFromPlan). Worth checking
+What the browser enforces on every plan (frontend/src/mapping/charter.ts, chartsFromPlan). Worth checking
 the same on the server and retrying or repairing before answering:
 - a note with an unknown id or a lane outside 0-3 is dropped;
 - at most 2 notes per sound (a two-lane chord);
@@ -205,7 +205,7 @@ Tune this against the samples. Keep it stable byte-for-byte between calls so it 
   show the "Mapper" line (says "on-device" if the backend's plan wasn't used, and why) and the
   "Charter" summary.
 - Unit-test the backend on docs/samples/*.json; the referee for a valid plan is chartsFromPlan in
-  src/music/charter.ts (tests/unit/charter.test.ts shows what it fixes and what it rejects).
+  frontend/src/mapping/charter.ts (frontend/tests/unit/charter.test.ts shows what it fixes and what it rejects).
 - Play the result: the charts should feel like the song. Check that easy is calm, that holds sit
   on sustained notes, and that repeated choruses chart the same.
 
