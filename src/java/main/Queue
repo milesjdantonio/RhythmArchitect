@@ -1,0 +1,57 @@
+public class Queue<T>
+{
+    Node<T> firstNode;
+    Node<T> lastNode;
+    int size;
+
+    public void Queue<T>()
+    {
+        firstNode = null;
+        lastNode = null;
+    }
+
+    public void enqueue(Node<T> item)
+    {
+        if(isEmpty())
+        {
+            firstNode = item;
+            lastNode = item;
+        }
+        else
+        {
+            lastNode.setNext(item);
+        }
+        size++;
+    }
+
+    public T dequeue()
+    {
+        if(isEmpty())
+        {
+            throw new EmptyQueueException();
+        }
+        T data = firstNode.getData();
+        firstNode = firstNode.getNext();
+        size--;
+        return data;
+    }
+
+    public void clear()
+    {
+        size = 0;
+        frontNode = null;
+        lastNode = null;
+    }
+
+    public void isEmpty()
+    {
+        return size == 0;
+    }
+
+    public T peek()
+    {
+        return firstNode.getData();
+    }
+
+
+}
