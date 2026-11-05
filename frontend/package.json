@@ -1,0 +1,44 @@
+{
+  "name": "rythm-architect",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Rythm Architect: prompt an AI, get a synth song, play it as falling tiles.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --configLoader runner",
+    "build": "tsc -b && vite build --configLoader runner",
+    "preview": "vite preview --configLoader runner",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "rive": "node tools/rive/build.mjs",
+    "rive:check": "node tools/rive/check.mjs",
+    "rive:bake": "node tools/rive/bake.mjs",
+    "map": "node tools/map-audio.mjs",
+    "video": "node tools/video/record-video.mjs",
+    "video:listen": "node tools/video/record-listening.mjs"
+  },
+  "dependencies": {
+    "@rive-app/canvas": "^2.49.0",
+    "motion": "^14.9.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "three": "^0.187.0",
+    "tone": "^15.1.22"
+  },
+  "devDependencies": {
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/space-grotesk": "^5.3.0",
+    "@fontsource/unbounded": "^5.3.0",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.187.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "opentype.js": "^2.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

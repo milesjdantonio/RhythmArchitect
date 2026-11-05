@@ -23,7 +23,7 @@ hand-mapped test song played badly enough to show misses and the results.
 ## What's in the frontend
 
 - **The intro.** A three-second opening every time the game loads, filling the screen
-  (`src/intro/WorldIntro.ts`, three.js): the camera flies in from deep space while a swarm of light
+  (`frontend/src/intro/WorldIntro.ts`, three.js): the camera flies in from deep space while a swarm of light
   gathers into a planet with glowing continents, ribbons of light sweep round it, a spiral disk of
   stars turns, rings and arcs of light fly between the continents, and the title gathers beneath.
   D F J K send a ripple of their colour across the world and fire arcs (the world never follows the mouse). Then
@@ -43,10 +43,12 @@ hand-mapped test song played badly enough to show misses and the results.
   Before a song is picked, a waiting screen (a Rive loop of orbits over four lanes that answers your
   typing); once one is, the 3D stage where a ghost plays it, and at the very bottom the song's
   name, a favourite star, Preview, Play and the difficulty.
-- **The music bank.** Its own screen (`#/bank`), opened by the **Bank** button under the settings
+- **The music bank.** Its own screen (`#/bank`), opened by the **♫ Bank** button under the settings
   gear: every mapped song A to Z in letter groups, a search at the top (title or artist; typing
-  anywhere goes there) and a rail to jump between letters. A pick puts the song on stage in the
-  menu; Esc clears the search, then goes back to the menu as it was.
+  anywhere goes there) and a rail to jump between letters. The song on stage keeps playing there,
+  and picking a song plays it right away without leaving the bank (a "Now playing" card shows it,
+  with a YouTube song's video). Esc clears the search, then goes back to the menu with the song
+  that was playing on stage, its preview carrying on from where it was.
 - **The game.** Four lanes on D F J K (or arrows / 1–4 / touch). Perfect/great/good windows, holds,
   combo multiplier up to ×4 with **fever**, health and no-fail, pause, early/late feedback (under
   the hit line, never over the tiles). One **run panel** down the left holds the score, accuracy,
@@ -60,7 +62,7 @@ hand-mapped test song played badly enough to show misses and the results.
   again* (R) or *Return to main menu* (Esc). The song plays again quietly behind it, and back on
   the menu it plays on from where it was as the song's preview.
 - **Menu music.** While no song preview is playing, the menu plays *Drift*, a calm piece composed
-  for the game in code (`src/audio/ambient.ts`): soft pad chords, a warm sub, glassy bells and a
+  for the game in code (`frontend/src/audio/ambient.ts`): soft pad chords, a warm sub, glassy bells and a
   slow sung line, about a minute long and a little different each time round. It goes quiet for a
   song's preview and the Generate dialog (the listening pass hears the whole tab). Settings → Menu
   music turns it off.
@@ -101,7 +103,10 @@ hand-mapped test song played badly enough to show misses and the results.
 
 ## Run it
 
+Everything for the game lives in `frontend/`; run every command from there.
+
 ```bash
+cd frontend
 npm install
 npm run dev          # http://localhost:5173, with the mock backend at /api
 ```
@@ -109,42 +114,47 @@ npm run dev          # http://localhost:5173, with the mock backend at /api
 | Script | What it does |
 |---|---|
 | `npm run dev` / `build` / `preview` | Vite dev server, production build, preview the build |
-| `npm test` | Unit tests (Vitest): mock mapper, chart writer, onset mapper (with a band benchmark), game rules |
+| `npm test` | Unit tests (Vitest): chart writer, onset mapper (with a band benchmark), game rules |
 | `npm run test:e2e` | Browser tests (Playwright): intro, search, the music bank, generating (listening pass and fan-chart fallback, with a fake YouTube player), favourites, playing, dev tools, pausing, failing, phone |
-| `npm run rive` / `rive:check` | Rebuild the `.riv` files from `tools/rive/art/`, and check them in the real runtime |
-| `npm run rive:bake` | Bake the hit and hold bursts to the sprite sheets the game's stage draws (`public/rive/baked/`) |
+| `npm run rive` / `rive:check` | Rebuild the `.riv` files from `frontend/tools/rive/art/`, and check them in the real runtime |
+| `npm run rive:bake` | Bake the hit and hold bursts to the sprite sheets the game's stage draws (`frontend/public/rive/baked/`) |
 | `npm run video:listen` | Record the listening and loading process (Generate → listen → map → chart → load → play) to `docs/media/listening.webm`; self-contained (own server, stand-in YouTube player) |
-| `npm run map` | Re-map the bundled test tracks with the onset mapper (`src/music/automap.ts`); add `-- --request` to also write sample AI-charter requests to `docs/samples/` |
-| `npm run video` | Re-record `docs/media/gameplay.webm` (needs `npm run dev`). **Do this after any gameplay change.** |
+| `npm run map` | Re-map the bundled test tracks with the onset mapper (`frontend/src/mapping/automap.ts`); add `-- --request` to also write sample AI-charter requests to `docs/samples/` |
+| `npm run video` | Record `docs/media/gameplay.webm` (needs `npm run dev`) |
 
-**Performance lab: `localhost:5173/demo`** (or `localhost:4173/demo` after `build` + `preview`, for release-like numbers). It plays One Dance (or `/demo?song=<id>`) with the autoplay bot in the game's two versions of the game screen and the previous build for reference, with a meter (the stage's own frame times, hitches, freezes, clock jumps, the renderer in use, the stage's CPU and GPU time per frame, where long frames went). Both run at the screen's full rate (no cap) ; a table compares the runs. `?set=key:value,…` changes single settings on top of a version (experiments). The versions are profiles in `src/lib/perf.ts`. **The game uses B where the browser has WebGPU and A where it doesn't** (`gameProfile()`, set in `src/main.tsx`); `classic`, the game before the rework, is only the lab's reference. The menus use the same system: the backdrop is the stage's sky on the graphics chip in its own worker (`background/sky.worker.ts`), the preview stage runs in a worker, and both (with Rive) draw at most 60 frames a second there (`MENU_FPS`); gameplay and the intro draw at the screen's rate.
-- **A · One stage** (WebGL): the backdrop drawn inside the 3D stage (`stage/sky.ts`, from the page backdrop's own simulation, `SynthScene.shapes()`), soft effects at half resolution (`stage/halfFx.ts`), the Rive hit and hold bursts baked to sprite sheets the stage draws (`npm run rive:bake` → `public/rive/baked/`, `stage/bursts.ts`), the whole stage in a worker (`stage/proxy.ts` on the page, `stage/stage.worker.ts`), and every main-thread animation on one shared loop (`lib/ticker.ts`, which falls back to a timer if the browser holds animation frames back).
-- **B · One stage, WebGPU**: A drawn with WebGPU. Every stage shader is written again in TSL (`stage/gpu.ts`, loaded only by B's worker), tone-mapped per material so light adds up as in WebGL; points become instanced sprites. Falls back to WebGL 2 where the browser has no WebGPU (the meter says which). B also builds and draws every pipeline once while loading (no first-use hitches), merges the sky's passes, and plays the page's big moments (combo callout, section banner, countdown) with only transform and opacity moving: the callout is built once and kept, glows are gradients, not blurs.
-Both keep the first-round fixes (pooled judgements, throttled HUD, eased video clock and smooth start). `node tools/demo-check.mjs [seconds] [outDir] [versions]` runs them headlessly in Chromium on this machine's GPU (`DEMO_QUERY=set=…` for experiments, `DEMO_ARGS=--disable-features=WebGPU` for the fallback); `node tools/start-probe.mjs <version> [songId] [videoLagMs]` records every frame of a run's start to find freezes and clock jumps; `node tools/hit-closeup.mjs [outDir] [versions] [frames]` takes close-ups of the pads while tiles are hit. `node tools/flow.mjs [outDir] [width] [height]` screenshots the app's main views.
+**Performance.** The game screen draws as "one stage". How it draws is a profile in
+`frontend/src/lib/perf.ts`: **B where the browser has WebGPU, A where it doesn't** (`gameProfile()`,
+set in `frontend/src/main.tsx`). The menus use the same system: the backdrop is the stage's sky on the graphics chip in its own worker (`background/sky.worker.ts`), the preview stage runs in a worker, and both (with Rive) draw at most 60 frames a second there (`MENU_FPS`); gameplay and the intro draw at the screen's rate.
+- **A · One stage** (WebGL): the backdrop drawn inside the 3D stage (`stage/sky.ts`, from the page backdrop's own simulation, `SynthScene.shapes()`), soft effects at half resolution (`stage/halfFx.ts`), the Rive hit and hold bursts baked to sprite sheets the stage draws (`npm run rive:bake` → `frontend/public/rive/baked/`, `stage/bursts.ts`), the whole stage in a worker (`stage/proxy.ts` on the page, `stage/stage.worker.ts`), and every main-thread animation on one shared loop (`lib/ticker.ts`, which falls back to a timer if the browser holds animation frames back).
+- **B · One stage, WebGPU**: A drawn with WebGPU. Every GLSL shader (`stage/shaders.ts`) is written again in TSL (`stage/gpu.ts`, loaded only by B's worker), tone-mapped per material so light adds up as in WebGL; points become instanced sprites. Falls back to WebGL 2 where the browser has no WebGPU. B also builds and draws every pipeline once while loading (no first-use hitches), merges the sky's passes, and plays the page's big moments (combo callout, section banner, countdown) with only transform and opacity moving: the callout is built once and kept, glows are gradients, not blurs.
+
+Both keep pooled judgements, a throttled HUD, and an eased video clock with a smooth start.
+`node tools/check/flow.mjs [outDir] [width] [height]` (from `frontend/`) screenshots the app's main
+views; `node tools/check/autoplay.mjs <songId> <difficulty>` has a bot play a song and screenshots it.
 
 ## The backend (mocked for now)
 
-The frontend talks to `/api` (or `VITE_API_BASE_URL`). `mock-server/` implements the whole
-contract inside the Vite server and keeps its songs in `.data/songs.json`. The contract is in
-[docs/api.md](docs/api.md) and the types in [src/api/types.ts](src/api/types.ts).
+The frontend talks to `/api` (or `VITE_API_BASE_URL`). `frontend/mock-server/` implements the whole
+contract inside the Vite server and keeps its songs in `frontend/.data/songs.json`. The contract is in
+[docs/api.md](docs/api.md) and the types in [frontend/src/api/types.ts](frontend/src/api/types.ts).
 
 The mock never makes up a song. Search pulls up songs that are already mapped. **Generate
 beatmap** maps a new one, and it plays from YouTube:
 
 1. **Find the video.** Paste the song's YouTube link into Title, or type title and artist (searching
-   YouTube by name needs a free YouTube Data API key: `YOUTUBE_API_KEY` in `.env.local`, see
-   `.env.example`). The video shows in YouTube's own embedded player. Its audio is never downloaded.
+   YouTube by name needs a free YouTube Data API key: `YOUTUBE_API_KEY` in `frontend/.env.local`, see
+   `frontend/.env.example`). The video shows in YouTube's own embedded player. Its audio is never downloaded.
 2. **Listen once.** Press *Listen and map* and share this tab with its audio. The song plays once
    while the browser records what it hears (filed by the video's position; a short tick first
    measures the capture delay), then the onset mapper (`automap.ts`, in a worker) measures the beat
    and every sound, and the recording is dropped. The measurements (no audio) go to the backend's
    **AI charter** (`POST /api/chart`, Claude: [docs/claude-backend.txt](docs/claude-backend.txt)),
    which picks which sounds each difficulty plays and where; the browser checks its plan and builds
-   the charts (`src/music/charter.ts`), or uses the on-device charts if the charter can't answer.
+   the charts (`frontend/src/mapping/charter.ts`), or uses the on-device charts if the charter can't answer.
    The mock answers with the on-device rules (`MOCK_CHARTER=off` makes it act like a backend
    without one). Only the tiles and a loudness curve for the visuals are kept. The
    mapper finds notes with SuperFlux over a 24-bands-per-octave spectrogram, so a melody that only
-   changes pitch still gets its notes (on the benchmark in `tests/unit/automap-band.test.ts` it finds
+   changes pitch still gets its notes (on the benchmark in `frontend/tests/unit/automap-band.test.ts` it finds
    every note, against 62-85% before); lanes follow pitch, or brightness for drums, ranked within
    two bars. While it listens, the song fills in under the video as three rivers of light (lows,
    mids, highs) and every note heard pops up as a star, building a constellation of the song, with
@@ -181,35 +191,48 @@ The two real tracks were composed by Claude for SchmollCrossword (MIT); see [NOT
 
 ## How a map stays true to the song
 
-`src/music/automap.ts` finds every onset in the audio and times each one to its attack within a
+`frontend/src/mapping/automap.ts` finds every onset in the audio and times each one to its attack within a
 few milliseconds (attacks within 20 ms of a 16th are placed on it; the rest keep their exact time).
 How long each sound rings decides holds; its pitch decides the lane; the biggest downbeats become
 chords on Hard. For songs mapped by listening, the AI charter on the backend then picks which of
 those sounds each difficulty plays (it can only name measured sounds, so it can't add or move one);
-without it, `src/music/charts.ts` picks them by how much they stand out, never at random and never
+without it, `frontend/src/mapping/charts.ts` picks them by how much they stand out, never at random and never
 adding a note that isn't there.
 
 ## Layout
 
 ```
-src/
-  api/          types (the backend contract) and the client
-  audio/        Tone.js engine: real tracks, synth songs, previews
-  background/   the reactive backdrop
-  stage/        the three.js stage (showcase + play) and its React wrapper
-  game/         rules (engine.ts), 2D fallback renderer
-  music/        mock mapper, chart writer, onset auto-mapper, built-in songs
-  components/   intro, Name a Song, favourites, covers, waiting screen, now playing, dev tools, results,
-                settings, the game's HUD and start/pause cards, the loader, the listening scope, video slots
-  screens/      Workspace, Play and the music bank
-  lib/          routes, settings, songs, perf profiles and the shared frame loop
-  lab/          the Rive lab and burst baker pages (rive-lab.html, rive-bake.html)
-  demo/         the performance lab (/demo)
-  styles/       tokens, global, then one sheet per area: workspace, intro, dialogs, video, game,
-                feedback (loading, listening, failing), bank, and demo
-  rive/         the Rive React wrapper
-mock-server/    the mock backend
-tools/          Rive generator, track mapper, video recorder, screenshots, safe browser
-tests/          unit/ and e2e/
-docs/           resources, api, media
+frontend/               the game: everything below runs from here (npm scripts, Vite, tests)
+  index.html            the app's page
+  lab/                  dev-only pages: the Rive lab and the burst baker (rive-lab.html, rive-bake.html)
+  public/               audio of the bundled tracks, the .riv files and their baked sprite sheets
+  src/
+    main.tsx, App.tsx   start-up and the routes
+    api/                types (the backend contract) and the client
+    audio/              playback (Tone.js: real tracks, synth songs, previews), YouTube, the menu's music
+    mapping/            the Generate pipeline: listening, the onset mapper, charts, the AI charter's
+                        rules, osu! fan charts, loudness and visual cues
+    library/            the songs cache, search and the music bank's letter groups
+    game/               rules (engine.ts), autoplay, the 2D fallback renderer
+    stage/              the three.js stage (Stage3D.ts, with its shaders, textures and particle forms),
+                        its worker, the WebGPU twins (gpu.ts) and the baked bursts
+    background/         the reactive backdrop and its workers
+    intro/              the opening (WorldIntro.ts) and its React wrapper
+    screens/            Workspace, Play and the music bank
+    components/         shared pieces (icons, loader, covers, song rows, video slots, settings)
+      menu/             Name a Song, favourites, now playing, difficulty, the waiting screen
+      play/             the HUD, callouts, judgements, hit bursts, start/pause cards, results, dev tools
+      generate/         the Generate dialog, the listening scope and aura
+    lib/                routes, settings, perf profiles, the shared frame loop, small helpers
+    rive/               the Rive React wrapper
+    lab/                scripts for the dev-only pages
+    styles/             tokens, global, then one sheet per area: workspace, intro, dialogs, video,
+                        game, feedback (loading, listening, failing), bank, background
+  mock-server/          the mock backend the dev server runs at /api
+    songs/              the songs it starts with (and their mapped charts in tracks/)
+  tools/                Rive generator (rive/), track mapper, safe browser
+    video/              the gameplay and listening recordings
+    check/              screenshots and the autoplay bot
+  tests/                unit/ and e2e/
+docs/                   the backend contract (api.md, claude-backend.txt), resources, media
 ```
