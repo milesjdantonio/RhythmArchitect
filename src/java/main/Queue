@@ -1,8 +1,9 @@
+import java.util.EmptyQueueException;
 public class Queue<T>
 {
-    Node<T> firstNode;
-    Node<T> lastNode;
-    int size;
+    private Node<T> firstNode;
+    private Node<T> lastNode;
+    private int size;
 
     public void Queue<T>()
     {
