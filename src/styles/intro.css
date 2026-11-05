@@ -1,0 +1,69 @@
+/* ---------- Intro: the title screen when the game starts ---------- */
+.intro {
+  position: fixed; inset: 0; z-index: 60; display: grid; grid-template-rows: minmax(0, 1fr) auto; place-items: center; cursor: pointer; overflow: hidden;
+}
+/* The world (WorldIntro.ts): full screen, under the title. */
+.intro-world { position: absolute; inset: 0; pointer-events: none; }
+.intro-world-canvas { display: block; }
+.intro.is-leaving .intro-world { opacity: 0; transition: opacity 800ms cubic-bezier(0.45, 0, 0.7, 0.6) 1100ms; }
+/* The dark veil over the menu (mounted, hidden, behind); it lifts on the way in. */
+.intro-veil {
+  position: absolute; inset: 0; pointer-events: none;
+  background: radial-gradient(circle farthest-corner at 50% 42%, rgb(2 3 10 / 0.6), rgb(2 3 10 / 0.9));
+  transition: opacity 800ms var(--ease-out);
+}
+.intro-light {
+  position: absolute; left: 0; top: 0; width: 520px; height: 520px; margin: -260px 0 0 -260px; pointer-events: none; will-change: transform;
+  background: radial-gradient(circle, hsl(var(--hA) 100% 70% / 0.16), hsl(var(--hB) 100% 66% / 0.06) 40%, transparent 70%);
+  mix-blend-mode: screen; transition: opacity 400ms var(--ease-out);
+}
+/* The stage has the artboard's shape (800 × 640), so the title can sit where it is drawn. */
+.intro-stage { position: relative; width: min(92vw, 1000px, calc(74vh * 1.25)); aspect-ratio: 800 / 640; }
+.intro-push { position: absolute; inset: 0; perspective: 900px; will-change: transform, opacity; }
+.intro-art { width: 100%; height: 100%; will-change: transform; }
+.intro-anim { width: 100%; height: 100%; }
+/* The title: wordmark.riv (720 × 210) laid over the space below the orbit, RYTHM at 70 px of 800. */
+.intro-title { position: absolute; left: 15.75%; top: 64.8%; width: 68.5%; aspect-ratio: 720 / 210; container-type: inline-size; pointer-events: none; will-change: transform; }
+.intro-title-fly { width: 100%; height: 100%; transform-origin: 0 0; will-change: transform; }
+.intro-word { width: 100%; height: 100%; }
+.intro-title .wordmark-fallback { font-size: 12.5cqw; }
+.intro-prompt { position: relative; display: grid; justify-items: center; gap: var(--space-3); padding-bottom: 7vh; opacity: 0; transform: translateY(10px); transition: opacity 900ms var(--ease-out), transform 900ms var(--ease-out); }
+.intro-prompt.is-ready { opacity: 1; transform: none; }
+/* The way in, beat one (the charge, just clicked): the prompt drops away, a ring of light opens
+   where the click landed. */
+.intro.is-charging { pointer-events: none; cursor: default; }
+.intro.is-charging .intro-prompt { opacity: 0; transform: translateY(16px) scale(0.96); transition: opacity 220ms ease-out, transform 380ms var(--ease-out); }
+.intro-spark { position: absolute; width: 0; height: 0; pointer-events: none; }
+.intro-spark span { position: absolute; left: 0; top: 0; border-radius: 50%; will-change: transform, opacity; }
+.intro-spark .is-a, .intro-spark .is-b { width: 220px; height: 220px; margin: -110px; border: 1.5px solid hsl(var(--hA) 100% 80% / 0.9); box-shadow: 0 0 26px hsl(var(--hA) 100% 66% / 0.7), inset 0 0 18px hsl(var(--hA) 100% 66% / 0.5); animation: spark-ring 560ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.intro-spark .is-b { border-color: hsl(var(--hB) 100% 82% / 0.8); box-shadow: 0 0 22px hsl(var(--hB) 100% 66% / 0.6); animation-delay: 70ms; animation-duration: 640ms; }
+.intro-spark .is-core { width: 90px; height: 90px; margin: -45px; background: radial-gradient(circle, #fff, hsl(var(--hA) 100% 76% / 0.6) 35%, transparent 70%); animation: spark-core 420ms ease-out both; }
+@keyframes spark-ring { from { transform: scale(0.08); opacity: 1; } 70% { opacity: 0.7; } to { transform: scale(1.6); opacity: 0; } }
+@keyframes spark-core { from { transform: scale(0.3); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
+/* The burst's flash, when the world flies apart. */
+.intro-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; will-change: opacity; background: radial-gradient(ellipse 60% 55% at 50% 38%, rgb(255 255 255 / 0.85), hsl(var(--hA) 100% 72% / 0.35) 45%, transparent 75%); }
+.intro.is-leaving .intro-flash { animation: intro-flash 640ms cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+@keyframes intro-flash { from { opacity: 0; } 14% { opacity: 0.75; } to { opacity: 0; } }
+/* Beat two (the launch): the world bursts and the camera dives through it, the veil lifts; the
+   title flies to the menu (Intro.tsx), and clicks already reach the menu. */
+.intro.is-leaving { pointer-events: none; cursor: default; }
+.intro.is-leaving .intro-veil { opacity: 0; }
+.intro.is-leaving .intro-light { opacity: 0; }
+.intro.is-leaving .intro-push { transform: scale(1.3); opacity: 0; transition: transform 1000ms cubic-bezier(0.5, 0, 0.75, 0.4), opacity 620ms cubic-bezier(0.45, 0, 0.7, 0.6); }
+.intro.is-leaving .intro-prompt { opacity: 0; transform: translateY(16px); transition: opacity 260ms ease-out, transform 400ms var(--ease-out); }
+.intro-press {
+  font-family: var(--font-display); font-weight: 300; font-size: clamp(16px, 1.8vw, 22px); letter-spacing: 0.5em; text-transform: uppercase;
+  text-shadow: 0 0 24px var(--glowA), 0 2px 10px rgb(0 0 0 / 0.9); animation: breathe 2.4s ease-in-out infinite;
+}
+.intro-keys { display: flex; align-items: center; gap: 8px; }
+.intro-keys kbd { width: 34px; height: 34px; display: grid; place-items: center; font-size: 13px; border-color: hsl(calc(var(--hA) + var(--i) * 26) 100% 76% / 0.55); color: hsl(calc(var(--hA) + var(--i) * 26) 100% 88%); }
+.intro-keys kbd.is-lit { animation: key-lit 520ms var(--ease-out); }
+@media (prefers-reduced-motion: reduce) { .intro-spark, .intro-flash { display: none; } }
+@keyframes key-lit {
+  0% { transform: translateY(2px) scale(0.9); background: hsl(calc(var(--hA) + var(--i) * 26) 100% 78%); color: #050816; box-shadow: 0 0 30px hsl(calc(var(--hA) + var(--i) * 26) 100% 64%); }
+  100% { transform: none; }
+}
+.intro-fallback { position: relative; width: 100%; height: 100%; display: grid; place-items: center; }
+.intro-fallback .if-ring { position: absolute; top: 37%; left: 50%; width: 300px; height: 300px; margin: -150px; border-radius: 50%; border: 1px solid var(--lightA); box-shadow: 0 0 30px var(--glowA); animation: spin 14s linear infinite; border-top-color: transparent; }
+.intro-fallback .if-ring.r2 { width: 200px; height: 200px; margin: -100px; border-color: var(--lightB); border-bottom-color: transparent; animation-direction: reverse; }
+.intro-fallback .if-core { position: absolute; top: 37%; left: 50%; width: 70px; height: 70px; margin: -35px; border-radius: 50%; background: radial-gradient(circle, #fff, var(--lightA) 40%, transparent 70%); }

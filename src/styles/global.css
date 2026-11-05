@@ -1,0 +1,126 @@
+@import '@fontsource/unbounded/200.css';
+@import '@fontsource/unbounded/300.css';
+@import '@fontsource/unbounded/500.css';
+@import '@fontsource/space-grotesk/300.css';
+@import '@fontsource/space-grotesk/400.css';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/700.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/700.css';
+@import './tokens.css';
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+h1, h2, h3 { font-family: var(--font-display); font-weight: 300; line-height: 1.1; margin: 0; letter-spacing: 0.02em; }
+p { margin: 0; }
+button, input, textarea, select { font: inherit; color: inherit; }
+a { color: var(--lightA); }
+
+:focus-visible { outline: 1px solid var(--lightA); outline-offset: 3px; border-radius: 6px; box-shadow: 0 0 0 4px hsl(var(--hA) 100% 60% / 0.18); }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------- Labels: small caps, wide tracking ---------- */
+.label {
+  font-family: var(--font-body); font-weight: 500; font-size: 11px; line-height: 1.2;
+  letter-spacing: var(--track-wide); text-transform: uppercase; color: var(--ink-mute);
+}
+.eyebrow { font-family: var(--font-body); font-weight: 500; font-size: 11px; letter-spacing: var(--track-wide); text-transform: uppercase; color: var(--lightA); }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-mute); }
+.small { font-size: 13px; }
+
+/* ---------- Buttons: hairline pills that fill with light ---------- */
+.btn {
+  position: relative; isolation: isolate; overflow: hidden;
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  min-height: 44px; padding: 0 var(--space-5);
+  border-radius: 999px; border: 1px solid var(--hair-strong); background: rgb(8 11 26 / 0.55);
+  font-family: var(--font-body); font-weight: 500; font-size: 13px; letter-spacing: var(--track); text-transform: uppercase;
+  cursor: pointer; text-decoration: none; color: var(--ink);
+  transition: border-color 260ms var(--ease-soft), box-shadow 260ms var(--ease-soft), color 200ms, transform 200ms var(--ease-out);
+  user-select: none;
+}
+/* A soft band of light sweeps across on hover. */
+.btn::before {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(100deg, transparent 20%, hsl(var(--hA) 100% 75% / 0.22) 50%, transparent 80%);
+  transform: translateX(-110%); transition: transform 520ms var(--ease-out);
+}
+.btn:hover::before { transform: translateX(110%); }
+.btn:hover { border-color: var(--lightA); box-shadow: 0 0 22px -6px var(--glowA), inset 0 0 14px -6px var(--glowA); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+.btn:disabled::before { display: none; }
+.btn-primary {
+  border-color: transparent;
+  background: linear-gradient(100deg, hsl(var(--hA) 100% 80%), hsl(var(--hB) 100% 82%));
+  color: #050816; font-weight: 700;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.35) inset, 0 0 32px -6px var(--glowA), 0 0 60px -20px var(--glowB);
+}
+.btn-primary::before { background: linear-gradient(100deg, transparent 25%, rgb(255 255 255 / 0.55) 50%, transparent 75%); }
+.btn-primary:hover { border-color: transparent; box-shadow: 0 0 0 1px rgb(255 255 255 / 0.6) inset, 0 0 44px -4px var(--glowA), 0 0 80px -16px var(--glowB); }
+.btn-ghost { background: transparent; border-color: transparent; }
+.btn-ghost:hover { border-color: var(--hair-strong); }
+.btn-sm { min-height: 36px; padding: 0 var(--space-4); font-size: 12px; }
+.btn-icon { width: 44px; padding: 0; }
+.btn-icon.btn-sm { width: 36px; }
+.btn-danger:hover { border-color: var(--miss); color: #ffd6de; box-shadow: 0 0 22px -8px var(--miss); }
+
+/* ---------- Glass panels and fields ---------- */
+.panel {
+  background: var(--glass);
+  border: 1px solid var(--hair);
+  border-radius: var(--r-lg);
+  backdrop-filter: blur(18px) saturate(1.3);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 10px; border-radius: 999px;
+  font-size: 11px; font-weight: 500; letter-spacing: var(--track); text-transform: uppercase;
+  border: 1px solid var(--hair-strong); color: var(--ink-soft); white-space: nowrap;
+}
+
+.field {
+  width: 100%; border-radius: var(--r-md); border: 1px solid var(--hair-strong);
+  background: rgb(4 6 16 / 0.6); padding: var(--space-3) var(--space-4);
+  transition: border-color 200ms, box-shadow 200ms;
+}
+.field:focus { outline: none; border-color: var(--lightA); box-shadow: 0 0 0 3px hsl(var(--hA) 100% 60% / 0.2); }
+
+kbd {
+  font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+  padding: 2px 7px; border-radius: 5px; border: 1px solid var(--hair-strong);
+  background: rgb(4 6 16 / 0.6); color: var(--ink);
+}
+
+/* Rive slot: a canvas over its fallback. When the canvas loads the fallback hides. */
+.rive-slot { position: relative; display: block; }
+.rive-slot > canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.rive-slot.has-rive > .rive-fallback { visibility: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+/* Shared motion: used across screens. */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes breathe { 50% { opacity: 0.72; } }

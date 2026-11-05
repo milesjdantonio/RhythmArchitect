@@ -1,0 +1,23 @@
+# Dependencies and generated output
+node_modules/
+dist/
+test-results/
+playwright-report/
+*.tsbuildinfo
+
+# The mock backend's song store (local data)
+.data/
+
+# Recordings (npm run video, npm run video:listen): made locally, not kept in the repo
+docs/media/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Claude tooling installed on this machine (CLAUDE.md is kept)
+.claude/
+skills-lock.json
+.impeccable/
+.taste-skill/

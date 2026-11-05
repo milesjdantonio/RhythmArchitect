@@ -1,0 +1,127 @@
+{
+ "hit": {
+  "rows": 8,
+  "clips": {
+   "perfect-0": {
+    "start": 0,
+    "count": 17,
+    "loop": false
+   },
+   "perfect-1": {
+    "start": 17,
+    "count": 17,
+    "loop": false
+   },
+   "perfect-2": {
+    "start": 34,
+    "count": 17,
+    "loop": false
+   },
+   "perfect-3": {
+    "start": 51,
+    "count": 17,
+    "loop": false
+   },
+   "perfect-4": {
+    "start": 68,
+    "count": 17,
+    "loop": false
+   },
+   "great-0": {
+    "start": 85,
+    "count": 15,
+    "loop": false
+   },
+   "great-1": {
+    "start": 100,
+    "count": 15,
+    "loop": false
+   },
+   "great-2": {
+    "start": 115,
+    "count": 15,
+    "loop": false
+   },
+   "great-3": {
+    "start": 130,
+    "count": 15,
+    "loop": false
+   },
+   "great-4": {
+    "start": 145,
+    "count": 15,
+    "loop": false
+   },
+   "good-0": {
+    "start": 160,
+    "count": 13,
+    "loop": false
+   },
+   "good-1": {
+    "start": 173,
+    "count": 13,
+    "loop": false
+   },
+   "good-2": {
+    "start": 186,
+    "count": 13,
+    "loop": false
+   },
+   "good-3": {
+    "start": 199,
+    "count": 13,
+    "loop": false
+   },
+   "good-4": {
+    "start": 212,
+    "count": 13,
+    "loop": false
+   },
+   "miss": {
+    "start": 225,
+    "count": 18,
+    "loop": false
+   }
+  }
+ },
+ "hold": {
+  "rows": 6,
+  "clips": {
+   "charge": {
+    "start": 0,
+    "count": 30,
+    "loop": true
+   },
+   "arcs": {
+    "start": 30,
+    "count": 45,
+    "loop": true
+   },
+   "chevrons": {
+    "start": 75,
+    "count": 18,
+    "loop": true
+   },
+   "orbit": {
+    "start": 93,
+    "count": 36,
+    "loop": true
+   },
+   "beam": {
+    "start": 129,
+    "count": 15,
+    "loop": true
+   },
+   "done": {
+    "start": 144,
+    "count": 16,
+    "loop": false
+   },
+   "broken": {
+    "start": 160,
+    "count": 14,
+    "loop": false
+   }
+  }
+ }
+}

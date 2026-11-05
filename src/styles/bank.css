@@ -1,0 +1,87 @@
+/* The music bank (#/bank): every song A to Z on its own screen. */
+
+.bank {
+  position: relative; height: 100dvh; max-width: 1480px; margin: 0 auto;
+  display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--space-5);
+  padding: clamp(18px, 3vh, 36px) clamp(18px, 3.5vw, 52px);
+}
+/* A dark scrim behind the header keeps the title clear of the moving backdrop. */
+.bank::before {
+  content: ''; position: fixed; inset: 0 0 auto 0; height: 180px; z-index: 0; pointer-events: none;
+  background: linear-gradient(180deg, rgb(2 3 10 / 0.6), transparent);
+}
+.bank > * { position: relative; z-index: 1; }
+
+.bank-head { display: flex; align-items: center; gap: var(--space-5); }
+.bank-back { flex: none; background: rgb(4 6 16 / 0.86); }
+.bank-title { display: grid; gap: 6px; }
+.bank-title h1 {
+  margin: 0; font-family: var(--font-display); font-weight: 200; line-height: 1;
+  font-size: clamp(28px, 3vw, 44px); letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink);
+  text-shadow: 0 0 28px var(--glowA);
+}
+
+/* The search, at the top right (typing anywhere on the screen lands here). */
+.bank-search {
+  margin-left: auto; flex: 0 1 420px; min-width: 220px;
+  display: flex; align-items: center; gap: var(--space-2); padding: 0 6px 0 var(--space-4);
+  border-radius: 999px; border: 1px solid var(--hair-strong); background: rgb(4 6 16 / 0.88); color: var(--ink-soft);
+  transition: border-color 200ms, box-shadow 200ms;
+}
+.bank-search:focus-within { border-color: var(--lightA); box-shadow: 0 0 0 3px hsl(var(--hA) 100% 60% / 0.18); }
+.bank-search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; padding: 12px 0; font-size: 15px; color: var(--ink); }
+.bank-search input::-webkit-search-cancel-button { display: none; }
+/* The pill shows the focus (focus-within); no second ring inside it. */
+.bank-search input:focus-visible { outline: none; box-shadow: none; }
+.bank-search-clear {
+  flex: none; width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  background: rgb(255 255 255 / 0.06); color: var(--ink-soft); cursor: pointer;
+}
+.bank-search-clear:hover { background: rgb(255 255 255 / 0.12); color: var(--ink); }
+
+.bank-body { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); }
+
+.bank-panel {
+  position: relative; min-height: 0; display: flex;
+  border: 1px solid var(--hair-strong); border-radius: var(--r-lg); background: rgb(4 6 16 / 0.88);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.4), 0 20px 60px -30px rgb(0 0 0 / 0.9), inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+.bank-scroll {
+  flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-5) var(--space-5) var(--space-6);
+  scrollbar-width: thin; scrollbar-color: var(--hair-strong) transparent; outline: none;
+}
+
+.bank-group { scroll-margin-top: var(--space-4); }
+.bank-group + .bank-group { margin-top: var(--space-6); }
+.bank-letter {
+  display: flex; align-items: baseline; gap: var(--space-3); margin: 0 0 var(--space-3);
+  font-family: var(--font-display); font-weight: 200; font-size: 30px; line-height: 1; letter-spacing: 0.08em; color: var(--ink);
+}
+.bank-letter .mono { font-size: 11px; letter-spacing: 0.08em; color: var(--ink-mute); }
+/* A hairline runs from the letter across the panel. */
+.bank-letter::after { content: ''; flex: 1; align-self: center; height: 1px; background: linear-gradient(90deg, var(--hair-strong), transparent); }
+
+.bank-rows { grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 6px 14px; }
+
+/* The A to Z rail. */
+.bank-rail {
+  align-self: start; max-height: 100%; overflow-y: auto; scrollbar-width: none;
+  display: flex; flex-direction: column; gap: 2px; padding: 8px 5px;
+  border: 1px solid var(--hair); border-radius: 999px; background: rgb(4 6 16 / 0.86);
+}
+.bank-rail button {
+  width: 30px; height: 24px; flex: none; border: 0; border-radius: 8px; background: none; cursor: pointer;
+  font-family: var(--font-body); font-weight: 600; font-size: 11px; letter-spacing: 0.04em; color: var(--ink-soft);
+  transition: background 180ms, color 180ms, box-shadow 180ms;
+}
+.bank-rail button:hover:not(:disabled) { color: var(--ink); background: rgb(255 255 255 / 0.07); }
+.bank-rail button.is-on { color: #050816; background: linear-gradient(100deg, hsl(var(--hA) 100% 80%), hsl(var(--hB) 100% 82%)); box-shadow: 0 0 16px -4px var(--glowA); }
+.bank-rail button:disabled { color: rgb(255 255 255 / 0.18); cursor: default; }
+.bank-rail button:focus-visible { outline: 2px solid var(--lightA); outline-offset: 1px; }
+
+@media (max-width: 720px) {
+  .bank-head { flex-wrap: wrap; gap: var(--space-3); }
+  .bank-search { flex-basis: 100%; margin-left: 0; }
+  .bank-rail { display: none; }
+  .bank-body { grid-template-columns: minmax(0, 1fr); }
+}

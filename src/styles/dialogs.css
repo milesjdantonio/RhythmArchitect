@@ -1,0 +1,129 @@
+/* The mapping overlay (Generate beatmap) and dialogs (Settings). */
+
+/* ---------- Mapping overlay ---------- */
+.composing { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; background: radial-gradient(ellipse at 50% 45%, rgb(6 9 24 / 0.8), rgb(2 3 10 / 0.94)); padding: var(--space-4); overflow: hidden; }
+/* While it listens and maps, the screen goes dark for the aura (no backdrop blur: it would re-blur every frame). */
+.composing.is-listening { background: radial-gradient(ellipse at 50% 45%, rgb(5 7 20 / 0.94), rgb(1 2 8 / 0.98)); }
+.composing-card { position: relative; z-index: 1; width: min(440px, 100%); display: grid; justify-items: center; gap: var(--space-3); text-align: center; }
+/* The text sits on its own dark panel; the aura plays around it, never under the words. */
+.composing.is-listening .composing-card { gap: 10px; padding: 18px 22px 14px; border: 1px solid var(--hair-strong); border-radius: var(--r-lg); background: rgb(5 7 18 / 0.9); box-shadow: 0 30px 90px rgb(0 0 0 / 0.65), 0 0 60px hsl(var(--hA) 100% 60% / 0.12); }
+/* Listening and mapping fit any screen: the video, the song field and the type scale with the
+   viewport (YouTube's player never under 200 × 200); short, wide screens put the video beside the
+   rest; the card scrolls only as a last resort. */
+.composing.is-listening { padding: clamp(8px, 2vh, 24px); }
+.composing.is-listening .composing-card { container-type: inline-size; width: min(100%, clamp(560px, 46vw, 780px)); max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
+  grid-template-columns: minmax(0, 1fr); gap: clamp(4px, 1.1vh, 12px); padding: clamp(10px, 2vh, 22px) clamp(12px, 2vw, 26px) clamp(8px, 1.5vh, 16px); }
+.composing.is-listening .composing-card h2 { font-size: clamp(18px, 3.6vh, 30px); letter-spacing: 0.24em; }
+.composing.is-listening .composing-prompt { font-size: clamp(12px, 1.8vh, 15px); }
+.composing.is-listening .composing-video { width: auto; max-width: 100%; }
+.composing.is-listening .composing-video .video-slot-box { height: clamp(200px, 28vh, 320px); width: min(100cqw, calc(clamp(200px, 28vh, 320px) * 16 / 9)); min-width: 200px; }
+.composing.is-listening .scope-canvas { height: clamp(72px, 19vh, 230px); }
+@media (max-height: 620px) and (min-width: 700px) {
+  .composing.is-listening .composing-card { width: min(100%, 1000px); grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(14px, 2.4vw, 28px); align-items: center; }
+  .composing.is-listening .listen-media { display: contents; }
+  .composing.is-listening .composing-video { grid-column: 1; grid-row: 1 / span 7; align-self: center; }
+  .composing.is-listening .composing-card > :not(.listen-media), .composing.is-listening .scope { grid-column: 2; }
+  .composing.is-listening .composing-video .video-slot-box { height: 200px; width: min(42vw, 356px); }
+  .composing.is-listening .scope-canvas { height: clamp(64px, 20vh, 150px); }
+}
+@media (max-width: 480px) {
+  .composing.is-listening .composing-card { border-radius: var(--r-md); }
+  .composing.is-listening .composing-video, .composing.is-listening .composing-video .video-slot-box { width: 100cqw; }
+  .composing.is-listening .composing-video .video-slot-box { height: 200px; }
+  .composing.is-listening .scope-foot { font-size: 10px; }
+  .composing.is-listening .scope-counts { gap: 8px; }
+}
+.composing-anim { width: 240px; height: 240px; }
+.composing-card h2 { font-weight: 200; font-size: 34px; letter-spacing: 0.3em; text-transform: uppercase; text-shadow: 0 0 30px var(--glowA); }
+.composing-prompt { color: var(--ink-soft); font-weight: 300; letter-spacing: 0.04em; max-width: 34ch; }
+.composing-prompt span { color: var(--ink-mute); }
+.stages { list-style: none; padding: 0; margin: var(--space-3) 0 0; display: grid; gap: 8px; text-align: left; width: min(320px, 100%); }
+.stages li { display: flex; align-items: center; gap: 12px; color: var(--ink-mute); font-size: 13px; letter-spacing: 0.04em; transition: color 400ms; }
+.stages li.is-now { color: var(--ink); }
+.stages li.is-done { color: var(--ink-soft); }
+/* While the field shows: one row of dots, only the current step named. */
+.stages.is-compact { display: flex; justify-content: center; align-items: center; gap: 10px; width: auto; margin-top: 2px; }
+.stages.is-compact li:not(.is-now) .stage-label { display: none; }
+.stages.is-compact li.is-now { padding: 0 6px; white-space: nowrap; }
+@media (max-width: 480px) { .stages.is-compact { gap: 6px; } .stages.is-compact li.is-now { font-size: 12px; gap: 8px; padding: 0 2px; } }
+@media (max-width: 360px) { .stages.is-compact li.is-now .stage-label { display: none; } }
+.stage-dot { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--hair-strong); display: grid; place-items: center; flex: none; }
+.is-now .stage-dot { border-color: var(--lightA); box-shadow: 0 0 0 4px hsl(var(--hA) 100% 70% / 0.15), 0 0 12px var(--glowA); animation: dot 1s ease-in-out infinite alternate; }
+.is-done .stage-dot { background: var(--lightA); border-color: var(--lightA); color: #050816; }
+@keyframes dot { to { box-shadow: 0 0 0 8px hsl(var(--hA) 100% 70% / 0.04), 0 0 18px var(--glowA); } }
+.progress { width: min(320px, 100%); height: 1px; background: var(--hair); overflow: visible; }
+.progress span { display: block; height: 100%; background: linear-gradient(90deg, var(--lightA), var(--lightB)); box-shadow: 0 0 10px var(--glowA); transform-origin: left; transition: transform 300ms var(--ease-out); }
+.composing-fallback { width: 100%; height: 100%; display: grid; place-items: center; position: relative; }
+.composing-fallback span { position: absolute; border-radius: 50%; border: 1px solid var(--lightA); animation: spin 2s linear infinite; }
+.composing-fallback span:nth-child(1) { width: 60%; height: 60%; border-color: var(--lightA) transparent; }
+.composing-fallback span:nth-child(2) { width: 80%; height: 80%; border-color: var(--lightB) transparent; animation-direction: reverse; }
+.composing-fallback span:nth-child(3) { width: 26%; height: 26%; background: radial-gradient(#fff, var(--lightA) 40%, transparent 70%); border: 0; }
+
+/* ---------- Dialog ---------- */
+.dialog { border: 1px solid var(--hair-strong); border-radius: var(--r-lg); background: rgb(6 9 22 / 0.92); backdrop-filter: blur(20px); color: var(--ink); padding: var(--space-5) var(--space-6); width: min(520px, calc(100vw - 32px)); }
+.dialog::backdrop { background: rgb(2 3 10 / 0.7); backdrop-filter: blur(6px); }
+.dialog-head, .dialog-foot { display: flex; justify-content: space-between; align-items: center; }
+.dialog-head h2 { font-size: 22px; font-weight: 200; letter-spacing: 0.2em; text-transform: uppercase; }
+.dialog-foot { margin-top: var(--space-5); }
+/* ---------- Settings: framed groups, sliders that fill with light, switches ---------- */
+.dialog.settings { width: min(600px, calc(100vw - 32px)); max-height: min(860px, calc(100vh - 32px)); padding: 0; display: none; }
+.dialog.settings[open] { display: flex; flex-direction: column; }
+.settings .dialog-head { padding: var(--space-5) var(--space-6) var(--space-3); align-items: flex-start; }
+.settings-sub { margin: 6px 0 0; font-size: 13px; }
+.settings-body { overflow-y: auto; padding: 0 var(--space-6); display: grid; gap: var(--space-4); }
+.settings .dialog-foot { margin: 0; padding: var(--space-4) var(--space-6) var(--space-5); border-top: 1px solid var(--hair); }
+
+.set-group { display: grid; padding: var(--space-3) var(--space-4) var(--space-2); border: 1px solid var(--hair); border-radius: var(--r-md); background: rgb(255 255 255 / 0.015); }
+.set-group > .eyebrow { margin: 0 0 var(--space-2); }
+.set-row { display: grid; gap: 6px; padding: var(--space-3) 0; border-top: 1px solid var(--hair); }
+.set-group > .eyebrow + .set-row { border-top: 0; padding-top: var(--space-1); }
+.set-label { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+.set-label label, .set-text > span:first-child { font-size: 15px; font-weight: 400; color: var(--ink); }
+.set-value { color: var(--lightA); font-size: 13px; }
+.set-hint { margin: 0; color: var(--ink-mute); font-size: 12.5px; line-height: 1.45; }
+.set-hint b { color: var(--ink); font-weight: 500; }
+.set-text { display: grid; gap: 3px; }
+
+/* Sliders: a hairline track lit up to the value. */
+.set-track { display: flex; align-items: center; gap: 8px; }
+.set-track input[type='range'] { order: 1; flex: 1; appearance: none; -webkit-appearance: none; height: 22px; background: transparent; cursor: pointer; margin: 0; }
+.set-track input[type='range']::-webkit-slider-runnable-track {
+  height: 3px; border-radius: 3px;
+  background: linear-gradient(90deg, hsl(var(--hA) 100% 70%), hsl(var(--hB) 100% 72%)) 0 0 / var(--p) 100% no-repeat, rgb(255 255 255 / 0.12);
+}
+.set-track input[type='range']::-moz-range-track { height: 3px; border-radius: 3px; background: rgb(255 255 255 / 0.12); }
+.set-track input[type='range']::-moz-range-progress { height: 3px; border-radius: 3px; background: linear-gradient(90deg, hsl(var(--hA) 100% 70%), hsl(var(--hB) 100% 72%)); }
+.set-track input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6.5px; border-radius: 50%; background: #fff; border: 0;
+  box-shadow: 0 0 0 3px rgb(6 9 22), 0 0 14px hsl(var(--hA) 100% 70% / 0.8); transition: transform 120ms var(--ease-out);
+}
+.set-track input[type='range']::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #fff; border: 0; box-shadow: 0 0 0 3px rgb(6 9 22), 0 0 14px hsl(var(--hA) 100% 70% / 0.8); }
+.set-track input[type='range']:hover::-webkit-slider-thumb { transform: scale(1.12); }
+.set-track input[type='range']:focus-visible { outline: none; }
+.set-track input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgb(6 9 22), 0 0 0 5px var(--lightA); }
+/* The offset's nudges sit either side of its track, and 0 after. */
+.set-nudge, .set-zero {
+  min-width: 30px; height: 30px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--hair-strong); background: rgb(4 6 16);
+  color: var(--ink); font: inherit; font-size: 15px; line-height: 1; cursor: pointer;
+}
+.set-nudge-plus { order: 2; }
+.set-zero { order: 3; font-family: var(--font-mono); font-size: 12px; }
+.set-nudge:hover, .set-zero:hover:not(:disabled) { border-color: var(--lightA); }
+.set-zero:disabled { opacity: 0.35; cursor: default; }
+
+/* Switches: the checkbox stays for keyboards and screen readers, the track is drawn beside it. */
+.set-switch { grid-template-columns: 1fr auto; align-items: center; column-gap: var(--space-4); cursor: pointer; position: relative; }
+.set-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch { position: relative; width: 40px; height: 22px; border-radius: 22px; border: 1px solid var(--hair-strong); background: rgb(4 6 16); transition: background 180ms, border-color 180ms; }
+.switch::after { content: ''; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: rgb(255 255 255 / 0.55); transition: transform 200ms var(--ease-out), background 180ms; }
+.set-switch input:checked + .switch { background: linear-gradient(90deg, hsl(var(--hA) 90% 45% / 0.55), hsl(var(--hB) 90% 50% / 0.55)); border-color: hsl(var(--hA) 100% 70% / 0.7); }
+.set-switch input:checked + .switch::after { transform: translateX(18px); background: #fff; box-shadow: 0 0 10px hsl(var(--hA) 100% 75% / 0.9); }
+.set-switch input:focus-visible + .switch { outline: 2px solid var(--lightA); outline-offset: 2px; }
+
+.set-fixed { grid-template-columns: 1fr auto; align-items: center; column-gap: var(--space-4); }
+.set-keys { display: grid; gap: 8px; padding: var(--space-1) 0 var(--space-3); font-size: 14px; }
+.set-keys p { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.set-caps { display: inline-flex; gap: 6px; }
+@media (max-width: 520px) {
+  .settings .dialog-head, .settings-body, .settings .dialog-foot { padding-left: var(--space-4); padding-right: var(--space-4); }
+}

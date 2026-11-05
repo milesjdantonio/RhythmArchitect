@@ -1,0 +1,62 @@
+/* Design tokens. Deep space, light from the music: chrome is hairlines and glass; colour comes
+   from the song on stage (--hA, --hB, set from its hues and eased between songs).
+   tools/rive/helpers.mjs COLORS mirrors the light values. */
+
+@property --hA { syntax: '<number>'; inherits: true; initial-value: 196; }
+@property --hB { syntax: '<number>'; inherits: true; initial-value: 272; }
+
+:root {
+  --hA: 196;
+  --hB: 272;
+  transition: --hA 1.4s ease, --hB 1.4s ease;
+
+  --void: #02030a;
+  --abyss: #060916;
+  --glass: rgb(10 14 32 / 0.5);
+  --glass-strong: rgb(8 11 26 / 0.82);
+  --hair: rgb(196 214 255 / 0.13);
+  --hair-strong: rgb(206 222 255 / 0.3);
+
+  --ink: #f3f6ff;
+  --ink-soft: #c2cbe3;
+  --ink-mute: #8a95b4; /* 6.6:1 on --void */
+
+  --ice: #8fe3ff;
+  --lavender: #b9a4ff;
+  --rose: #ff9ccf;
+  --gold: #ffdc9a;
+  --miss: #ff6f85;
+
+  --lightA: hsl(var(--hA) 100% 74%);
+  --lightB: hsl(var(--hB) 100% 76%);
+  --glowA: hsl(var(--hA) 100% 62% / 0.55);
+  --glowB: hsl(var(--hB) 100% 64% / 0.5);
+
+  --easy: var(--ice);
+  --medium: var(--gold);
+  --hard: var(--rose);
+
+  --font-display: 'Unbounded', system-ui, sans-serif;
+  --font-body: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  /* Small caps labels: the wide, quiet lettering of the HUD and menus. */
+  --track-wide: 0.32em;
+  --track: 0.16em;
+
+  --r-sm: 6px;
+  --r-md: 12px;
+  --r-lg: 18px;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-soft: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --ease-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 72px;
+}

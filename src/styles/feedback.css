@@ -1,0 +1,111 @@
+/* Loading, listening and failing: the moments between the moments.
+   Motion here is transforms and opacity only, and it all stops under reduced motion. */
+
+/* ---------- Loader: tiles running down four lanes onto the hit line ---------- */
+.loader {
+  position: absolute; inset: 0; z-index: 11; display: grid; place-content: center; justify-items: center; gap: var(--space-4);
+  text-align: center; pointer-events: none;
+  background: radial-gradient(ellipse 60% 55% at 50% 48%, rgb(4 6 16 / 0.55), rgb(2 3 10 / 0.86));
+  animation: loader-in 0.3s var(--ease-out) both;
+}
+@keyframes loader-in { from { opacity: 0; } }
+/* The lanes and words come in a beat after the dark, so a quick load never flashes them. */
+.loader > * { animation: loader-in 0.45s var(--ease-out) 0.15s both; }
+.loader-lanes {
+  --run: 1.6s; scale: 1.25; margin-bottom: 18px;
+  position: relative; display: flex; gap: 10px; height: 132px; padding: 0 6px;
+  transform: perspective(380px) rotateX(34deg); transform-origin: 50% 100%;
+}
+.loader-lane {
+  --h: calc(var(--hA) + var(--i) * 26);
+  position: relative; width: 34px; height: 100%; overflow: hidden;
+  border-left: 1px solid hsl(var(--h) 100% 76% / 0.16); border-right: 1px solid hsl(var(--h) 100% 76% / 0.16);
+  background: linear-gradient(0deg, hsl(var(--h) 100% 66% / 0.12), transparent 70%);
+}
+/* A tile: falls (speeding up, like the real ones) and vanishes into the hit line. */
+.loader-lane i {
+  position: absolute; left: 3px; right: 3px; top: 0; height: 9px; border-radius: 3px;
+  background: hsl(var(--h) 100% 88%); box-shadow: 0 0 12px hsl(var(--h) 100% 64%);
+  animation: loader-fall var(--run) cubic-bezier(0.5, 0, 0.9, 0.6) calc(var(--i) * var(--run) / 4) infinite both;
+}
+/* The pad under each lane flashes as its tile lands. */
+.loader-lane::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 22px;
+  background: linear-gradient(0deg, hsl(var(--h) 100% 72% / 0.75), transparent);
+  opacity: 0; animation: loader-pad var(--run) linear calc(var(--i) * var(--run) / 4) infinite both;
+}
+.loader-hit {
+  position: absolute; left: -10px; right: -10px; bottom: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--lightA), var(--lightB), transparent); box-shadow: 0 0 14px var(--glowA);
+}
+@keyframes loader-fall {
+  0% { transform: translateY(-14px); opacity: 0; }
+  12% { opacity: 1; }
+  62% { transform: translateY(124px); opacity: 1; }
+  64%, 100% { transform: translateY(124px); opacity: 0; }
+}
+@keyframes loader-pad { 0%, 61% { opacity: 0; } 63% { opacity: 1; } 90%, 100% { opacity: 0; } }
+.loader-title {
+  display: grid; gap: 6px; margin-top: var(--space-2); max-width: min(70vw, 640px);
+  font-family: var(--font-display); font-weight: 200; font-size: clamp(22px, 2.6vw, 34px); letter-spacing: 0.06em; line-height: 1.15;
+  text-shadow: 0 0 30px var(--glowA);
+}
+.loader-title span { font-family: var(--font-body); font-weight: 400; font-size: 13px; letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink-soft); text-shadow: none; }
+.loader-status { color: var(--ink-soft); }
+.loader-bar { position: relative; width: 160px; height: 1px; overflow: hidden; background: var(--hair); }
+.loader-bar::before { content: ''; position: absolute; inset: 0; width: 40%; background: linear-gradient(90deg, transparent, var(--lightA), transparent); animation: loader-sweep 1.4s var(--ease-soft) infinite; }
+@keyframes loader-sweep { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+/* In a panel (the workspace's stage side) rather than over the whole screen. */
+.loader.is-inline { position: relative; inset: auto; height: 100%; background: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-lane i { animation: none; opacity: 1; transform: translateY(60px); }
+  .loader-lane::after, .loader-bar::before { animation: none; }
+}
+
+/* ---------- Failing: the signal drops ----------
+   Over the stage's own fail (Stage3D.fail): the HUD dims, the colour drains out of the stage,
+   and a flatline draws across the screen with the words, before the results come in. */
+.play .play-stage, .play .hud-panel, .play .hud-top { transition: filter 1.6s var(--ease-soft), opacity 1.2s var(--ease-soft); }
+.play.is-failing .play-stage { filter: saturate(0.25) brightness(0.8); }
+.play.is-failing .hud-panel, .play.is-failing .hud-top { opacity: 0.35; filter: saturate(0); }
+.play.is-failing .hud-panel:has(.hud-video[data-live='true']) { opacity: 1; filter: none; } /* the video stays as it is: nothing may dim it */
+
+.signal-lost { position: absolute; left: 0; right: 0; z-index: 6; display: grid; justify-items: center; gap: 18px; pointer-events: none; translate: 0 -50%; }
+.signal-line {
+  width: min(78vw, 980px); height: 2px; border-radius: 2px; transform-origin: 50% 50%;
+  background: linear-gradient(90deg, transparent, var(--miss) 18%, #ffd6de 50%, var(--miss) 82%, transparent);
+  box-shadow: 0 0 18px var(--miss), 0 0 44px rgb(255 111 133 / 0.5);
+  animation: signal-draw calc(var(--fail-s) * 0.55) cubic-bezier(0.7, 0, 0.2, 1) both, signal-flicker calc(var(--fail-s) * 0.45) steps(6, end) calc(var(--fail-s) * 0.55) both;
+}
+.signal-word {
+  font-family: var(--font-display); font-weight: 200; font-size: clamp(18px, 2vw, 26px); text-transform: uppercase; color: #ffd6de;
+  text-shadow: 0 0 20px var(--miss), 0 2px 10px rgb(0 0 0 / 0.9);
+  animation: signal-word calc(var(--fail-s) * 0.8) var(--ease-out) calc(var(--fail-s) * 0.18) both;
+}
+@keyframes signal-draw { from { transform: scaleX(0); opacity: 1; } to { transform: scaleX(1); opacity: 1; } }
+@keyframes signal-flicker { 0% { opacity: 1; } 30% { opacity: 0.35; } 45% { opacity: 0.9; } 70% { opacity: 0.2; } 100% { opacity: 0.55; } }
+@keyframes signal-word { from { opacity: 0; letter-spacing: 1.1em; filter: blur(6px); } to { opacity: 1; letter-spacing: 0.5em; filter: blur(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-line, .signal-word { animation: none; }
+}
+
+/* ---------- Listening and mapping: the song as a field of light (ListenScope) ---------- */
+.listen-media { display: grid; justify-items: center; gap: 10px; width: 100%; }
+.scope { position: relative; width: 100%; display: grid; gap: 6px; }
+.scope-canvas { display: block; width: 100%; height: 190px; }
+.scope-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 4px var(--space-3); min-height: 18px; font-size: 11px; letter-spacing: 0.08em; color: var(--ink-soft); }
+.scope-status { text-transform: uppercase; white-space: nowrap; }
+.scope-counts { display: flex; gap: 14px; opacity: 0; transform: translateY(4px); transition: opacity 400ms var(--ease-out), transform 400ms var(--ease-out); text-transform: uppercase; }
+.scope-counts[data-on='true'] { opacity: 1; transform: none; }
+.scope-counts b { font-family: var(--font-display); font-weight: 400; font-size: 15px; letter-spacing: 0.02em; color: var(--ink); margin-left: 4px; text-shadow: 0 0 12px var(--glowA); font-variant-numeric: tabular-nums; }
+/* The aura behind the dialog (ListenAura): full screen, half resolution, under the card. */
+.listen-aura { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+/* "Live": a pulse on live state only (the listening pass is happening now). */
+.live-dot {
+  display: inline-block; width: 9px; height: 9px; margin: 0 14px 0 -23px; vertical-align: 0.32em; border-radius: 50%;
+  background: var(--miss); box-shadow: 0 0 10px var(--miss); animation: live-dot 1.6s var(--ease-soft) infinite;
+}
+@keyframes live-dot { 50% { opacity: 0.35; transform: scale(0.8); } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } .scope-counts { transition: none; } }

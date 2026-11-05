@@ -1,0 +1,46 @@
+[
+  {
+    "id": 900001,
+    "title": "Fixture Song",
+    "artist": "Test Artist",
+    "creator": "fixturemapper",
+    "status": "ranked",
+    "play_count": 1000,
+    "beatmaps": [
+      {
+        "id": 9000011,
+        "mode_int": 3,
+        "cs": 4,
+        "version": "Easy",
+        "difficulty_rating": 1.5,
+        "total_length": 37
+      },
+      {
+        "id": 9000012,
+        "mode_int": 3,
+        "cs": 4,
+        "version": "Hard",
+        "difficulty_rating": 3.2,
+        "total_length": 37
+      }
+    ]
+  },
+  {
+    "id": 900002,
+    "title": "Fixture Song (TV Size)",
+    "artist": "Test Artist",
+    "creator": "someoneelse",
+    "status": "graveyard",
+    "play_count": 5,
+    "beatmaps": [
+      {
+        "id": 9000021,
+        "mode_int": 3,
+        "cs": 4,
+        "version": "Normal",
+        "difficulty_rating": 1.2,
+        "total_length": 20
+      }
+    ]
+  }
+]
