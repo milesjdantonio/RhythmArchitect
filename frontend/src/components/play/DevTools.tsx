@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Difficulty, Song } from '../../api/types';
-import { audioLevels, setFollowOffset } from '../../audio/playback';
-import { updateSong } from '../../library/songs';
+import { audioLevels, resyncPlaying } from '../../audio/playback';
+import { syncStatus, syncedOffset } from '../../audio/syncer';
 import { KEYS, fallTime, type Game } from '../../game/engine';
 import { laneHue } from '../../game/render';
 import { cuesFor } from '../../mapping/cues';
@@ -54,14 +54,10 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
   const [, setTick] = useState(0);
   const [confirm, setConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-  // Song sync: applies at once (the playing song shifts) and is saved with the song.
-  const [sync, setSync] = useState(song.source.offset);
-  const nudge = (ms: number) => {
-    const next = Math.round(((sync ?? 0) + ms / 1000) * 1000) / 1000;
-    setSync(next);
-    setFollowOffset(next);
-    updateSong(song.id, { offset: next }).catch(() => {});
-  };
+  // Resync: the Map Syncer checks this song again and lines up the music playing now.
+  const [resynced, setResynced] = useState(false);
+  const resync = () => { resyncPlaying(); setResynced(true); setTimeout(() => setResynced(false), 1500); };
+  const sync = song.source.kind === 'synth' ? undefined : syncedOffset(song);
 
   // Canvases redraw every frame; the text refreshes ten times a second.
   useEffect(() => {
@@ -162,26 +158,18 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
           <div><dt>Audio</dt><dd>{song.source.kind === 'stream' ? 'track' : song.source.kind === 'youtube' ? `YouTube · ${song.source.chart === 'fan' ? 'fan chart' : 'listened'}` : song.source.standIn ? 'stand-in synth' : 'synth'}</dd></div>
           <div><dt>Offset</dt><dd>{sync !== undefined ? `${sync.toFixed(3)}s` : '–'}</dd></div>
         </dl>
-        {song.source.kind === 'youtube' && (
-          <div className="dev-sync">
-            <span className="label">Song sync</span>
-            <div className="dev-fx">
-              {[-50, -10, 10, 50].map((ms) => (
-                <button key={ms} type="button" className="btn btn-sm" onClick={() => nudge(ms)} title={ms < 0 ? 'Tiles earlier' : 'Tiles later'}>{ms > 0 ? '+' : ''}{ms} ms</button>
-              ))}
-            </div>
-            <p className="small muted">Moves this song's tiles against its video (saved with the song). Fan charts may need it: their audio isn't YouTube's.</p>
-            {song.source.credit && <p className="small muted dev-credit">{song.source.credit}</p>}
+        <div className="dev-sync">
+          <span className="label">Map Syncer</span>
+          <p className="small muted">{syncStatus(song)}</p>
+          <div className="dev-fx">
+            <button type="button" className="btn btn-sm" onClick={resync} title="Check this song again and line up the music playing now">{resynced ? 'Resynced' : 'Resync'}</button>
           </div>
-        )}
+          {song.source.kind === 'youtube' && song.source.credit && <p className="small muted dev-credit">{song.source.credit}</p>}
+        </div>
       </section>
 
       <section className="dev-sec">
         <h3 className="dev-title">Tuning</h3>
-        <label className="dev-range">
-          <span>Audio offset <output className="mono">{settings.offsetMs > 0 ? '+' : ''}{settings.offsetMs} ms</output></span>
-          <input type="range" min={-150} max={150} step={5} value={settings.offsetMs} onChange={(e) => setSettings({ offsetMs: Number(e.target.value) })} />
-        </label>
         <label className="dev-check">
           <input type="checkbox" checked={settings.noFail} onChange={(e) => { setSettings({ noFail: e.target.checked }); if (g) g.opts.noFail = e.target.checked; }} />
           <span>No fail</span>

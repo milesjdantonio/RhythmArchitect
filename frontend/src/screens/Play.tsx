@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { api } from '../api/client';
 import type { Difficulty, Song } from '../api/types';
+import { learnFromRun } from '../audio/syncer';
 import { audioLevels, handOverPreview, pauseAudio, prepareSong, previewSong, resumeAudio, setDuck, songMelody, songTime, startSong, stopSong, unlockAudio, windDown, type PreviewHandle } from '../audio/playback';
 import { VideoError, YT_STATE, ytIntent, ytOnState, ytStarted } from '../audio/youtube';
 import { ComboCallout, type Callout } from '../components/play/ComboCallout';
@@ -280,6 +281,10 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     bus.emit('intensity', g.failed ? 0.05 : 0.5);
     if (assisted.current) { setSaving('skipped'); return; }
     setSaving('saving');
+    // The Map Syncer: hits that were steadily early or late move a YouTube song's map for next time
+    // (saved before the score, so the two saves can't undo each other).
+    const offset = await learnFromRun(song, offsets.current).catch(() => null);
+    if (offset !== null) setSong((s) => (s && s.id === song.id ? { ...s, source: { ...s.source, offset } } : s));
     try {
       const updated = await api.submitScore(song.id, { difficulty, score: r.score, accuracy, maxCombo: r.maxCombo, grade });
       upsert(updated);

@@ -1,5 +1,5 @@
-import { useEffect, useRef, type ReactNode } from 'react';
-import { applyVolumes } from '../audio/playback';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { applyVolumes, resyncPlaying } from '../audio/playback';
 import { DEFAULTS, setSettings, useSettings, type Settings } from '../lib/settings';
 import { KEYS, NOTE_SPEED } from '../game/engine';
 import { Icon } from './Icon';
@@ -63,7 +63,10 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
   }, [open]);
 
   const change = (patch: Partial<Settings>) => { setSettings(patch); applyVolumes(); };
-  const offset = (v: number) => change({ offsetMs: Math.max(-150, Math.min(150, v)) });
+  // Resync: the Map Syncer measures every song again and lines up whatever is playing.
+  const [resynced, setResynced] = useState(false);
+  useEffect(() => { if (!resynced) return; const t = setTimeout(() => setResynced(false), 2000); return () => clearTimeout(t); }, [resynced]);
+  const resync = () => { resyncPlaying(); setResynced(true); };
   const pct = (v: number) => `${Math.round(v * 100)}%`;
 
   return (
@@ -86,13 +89,10 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
         </Group>
 
         <Group title="Timing">
-          <Slider id="set-offset" label="Audio offset" value={s.offsetMs} min={-150} max={150} step={5}
-            show={`${s.offsetMs > 0 ? '+' : ''}${s.offsetMs} ms`} onChange={offset}
-            hint={<>Hitting on the beat but told <b>Late</b>? Move it right. Told <b>Early</b>? Move it left.</>}>
-            <button type="button" className="set-nudge" onClick={() => offset(s.offsetMs - 5)} aria-label="5 ms earlier">−</button>
-            <button type="button" className="set-nudge set-nudge-plus" onClick={() => offset(s.offsetMs + 5)} aria-label="5 ms later">+</button>
-            <button type="button" className="set-zero" onClick={() => offset(0)} disabled={s.offsetMs === 0}>0</button>
-          </Slider>
+          <div className="set-row set-fixed">
+            <span className="set-text"><span>Sync</span><small className="set-hint">Tiles stay on the music by themselves. If a song still feels out of step, resync to check it again.</small></span>
+            <button type="button" className="btn btn-sm set-resync" onClick={resync} aria-live="polite">{resynced ? 'Resynced' : 'Resync'}</button>
+          </div>
           <div className="set-row set-fixed">
             <span className="set-text"><span>Note speed</span><small className="set-hint">The same on every song, so reading never changes. Tempo shows in how close the tiles are.</small></span>
             <span className="set-value mono">{NOTE_SPEED.toFixed(2)}×</span>

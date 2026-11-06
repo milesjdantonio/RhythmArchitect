@@ -395,6 +395,25 @@ test.describe('Rythm Architect', () => {
     expect(await ytState()).toBe(1);
   });
 
+  test('a YouTube song keeps playing when the music bank opens for the first time', async ({ page, request }) => {
+    await skipIntro(page);
+    await fakeYouTube(page);
+    const match = await (await request.get('/api/youtube?title=Fixture%20Song&artist=Test%20Artist')).json() as { videoId: string };
+    const yt = await (await request.post('/api/fan-chart', { data: { title: 'Fixture Song', artist: 'Test Artist', videoId: match.videoId, seconds: 40 } })).json() as Song;
+    await page.goto(`/#/song/${encodeURIComponent(yt.id)}`);
+    await page.mouse.click(700, 300); // the first click allows sound; the preview starts
+    const ytState = () => page.evaluate(() => (window as unknown as { __yt: { state: () => number } }).__yt.state());
+    await expect.poll(ytState, { timeout: 15_000 }).toBe(1); // playing
+    const time = () => page.evaluate(() => (window as unknown as { __preview: { time: () => number } }).__preview.time());
+    // The bank hasn't been opened yet this page load: the video goes straight to its spot there.
+    await page.getByRole('button', { name: 'Music bank' }).click();
+    for (let i = 0; i < 12; i++) { expect(await ytState()).toBe(1); await page.waitForTimeout(100); }
+    await expect(page.locator('.bank-now-title')).toHaveText('Fixture Song');
+    const t1 = await time();
+    await page.waitForTimeout(1000);
+    expect(await time()).toBeGreaterThan(t1 + 0.7);
+  });
+
   test('favourites a song and finds it in the favourites drop-down', async ({ page }) => {
     await skipIntro(page);
     await page.goto('/#/song/builtin-the-restless-stacks');
@@ -483,6 +502,44 @@ test.describe('Rythm Architect', () => {
     expect(Math.abs((await time()) - t1)).toBeLessThan(0.05); // the clock stops while paused
     await page.keyboard.press('Escape');
     await expect(paused).toBeHidden();
+  });
+
+  test('the Map Syncer checks a track against its map, puts a wrong offset right, and resyncs', async ({ page }) => {
+    await skipIntro(page);
+    const dev = page.getByRole('complementary', { name: 'Dev tools' });
+    const status = dev.locator('.dev-sync p').first();
+    // The built-in tracks are mapped on their sound: nothing to move.
+    for (const id of ['builtin-ink-and-fury', 'builtin-the-restless-stacks']) {
+      await page.goto(`/#/play/${id}/medium`);
+      await expect(startButton(page)).toBeEnabled({ timeout: 20_000 });
+      if (id === 'builtin-ink-and-fury') await page.keyboard.press('Backquote'); // stays open after
+      await expect(status).toHaveText('Checked against the track: in sync.');
+    }
+    // The same song with beat 0 saved 60 ms late: the syncer moves the tiles back onto the sound.
+    await page.route('**/api/songs/builtin-ink-and-fury', async (r) => {
+      const res = await r.fetch();
+      const song = (await res.json()) as Song;
+      song.source.offset = (song.source.offset ?? 0) + 0.06;
+      await r.fulfill({ response: res, json: song });
+    });
+    await page.goto('/#/play/builtin-ink-and-fury/medium');
+    await page.reload();
+    await expect(startButton(page)).toBeEnabled({ timeout: 20_000 });
+    await expect(status).toHaveText(/tiles moved −?-?(5[5-9]|6[0-5]) ms/);
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => (window as unknown as { __rythm?: unknown }).__rythm);
+    await page.waitForTimeout(800);
+    await dev.getByRole('button', { name: 'Resync' }).click();
+    await expect(dev.getByRole('button', { name: 'Resynced' })).toBeVisible();
+    await expect(status).toHaveText(/tiles moved/);
+    // No hand-set offset anywhere any more: the settings have Resync in its place.
+    await page.keyboard.press('Escape');
+    await page.goto('/#/');
+    await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    const settings = page.getByRole('dialog', { name: 'Settings' });
+    await expect(settings.getByLabel('Audio offset')).toHaveCount(0);
+    await settings.getByRole('button', { name: 'Resync' }).click();
+    await expect(settings.getByRole('button', { name: 'Resynced' })).toBeVisible();
   });
 
   test('fails Hard when nothing is played', async ({ page }) => {

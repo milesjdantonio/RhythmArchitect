@@ -4,7 +4,8 @@
 // converted (circles become taps, sliders and spinners holds), the way osu! itself does.
 //
 // The chart's times are milliseconds into the fan's copy of the audio. The song plays from
-// YouTube instead, so `source.offset` lines the two up (assumed equal; the dev tools nudge it).
+// YouTube instead, so `source.offset` lines the two up (assumed equal; the Map Syncer,
+// src/audio/syncer.ts, moves it when the player's hits say it's off).
 //
 // Pure functions over the .osu text: they run in the mock server, the real backend or a test.
 

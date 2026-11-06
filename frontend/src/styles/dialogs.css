@@ -101,15 +101,8 @@
 .set-track input[type='range']:hover::-webkit-slider-thumb { transform: scale(1.12); }
 .set-track input[type='range']:focus-visible { outline: none; }
 .set-track input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px rgb(6 9 22), 0 0 0 5px var(--lightA); }
-/* The offset's nudges sit either side of its track, and 0 after. */
-.set-nudge, .set-zero {
-  min-width: 30px; height: 30px; padding: 0 8px; border-radius: 8px; border: 1px solid var(--hair-strong); background: rgb(4 6 16);
-  color: var(--ink); font: inherit; font-size: 15px; line-height: 1; cursor: pointer;
-}
-.set-nudge-plus { order: 2; }
-.set-zero { order: 3; font-family: var(--font-mono); font-size: 12px; }
-.set-nudge:hover, .set-zero:hover:not(:disabled) { border-color: var(--lightA); }
-.set-zero:disabled { opacity: 0.35; cursor: default; }
+/* Resync: one button at the end of its row. */
+.set-resync { min-width: 92px; justify-self: end; }
 
 /* Switches: the checkbox stays for keyboards and screen readers, the track is drawn beside it. */
 .set-switch { grid-template-columns: 1fr auto; align-items: center; column-gap: var(--space-4); cursor: pointer; position: relative; }

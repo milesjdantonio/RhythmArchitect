@@ -5,6 +5,10 @@ import { Intro, shouldShowIntro } from './intro/Intro';
 import { Loader } from './components/Loader';
 import { SettingsDialog } from './components/SettingsDialog';
 import { Workspace } from './screens/Workspace';
+// The music bank loads with the menu, not on demand: the menu's song plays on into it, and a
+// YouTube song's video needs its spot there the moment the menu's goes (a screen still loading
+// would leave the player nowhere to show, and a hidden player pauses).
+import { MusicBank } from './screens/MusicBank';
 import { bus } from './lib/bus';
 import { EntranceContext, type EntranceStage } from './lib/entrance';
 import { useRoute } from './lib/router';
@@ -12,8 +16,6 @@ import { EASE_OUT } from './lib/motion';
 
 // The game screen (and three.js with it) loads on demand.
 const Play = lazy(() => import('./screens/Play').then((m) => ({ default: m.Play })));
-// The music bank: its own screen, loaded when opened.
-const MusicBank = lazy(() => import('./screens/MusicBank').then((m) => ({ default: m.MusicBank })));
 
 const HOUSE: [number, number] = [196, 272];
 
@@ -62,9 +64,7 @@ export function App() {
                 <Play songId={route.songId} difficulty={route.difficulty} />
               </Suspense>
             ) : route.name === 'bank' ? (
-              <Suspense fallback={<Loader status="Opening the music bank" />}>
-                <MusicBank />
-              </Suspense>
+              <MusicBank />
             ) : (
               <Workspace songId={route.songId} difficulty={route.difficulty} fresh={route.fresh} onSettings={() => setSettings(true)} />
             )}

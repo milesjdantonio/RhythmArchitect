@@ -62,6 +62,10 @@ Hard); they play it. The AI does not make music. Market and word everything that
 - If it can't listen, an osu! fan chart is the fallback (`mock-server/sources.ts`,
   `src/mapping/osu.ts`). Only tiles and a loudness curve are kept. Never download commercial audio.
 - Test with `localhost`, not `127.0.0.1` (label music refuses IPs).
+- Sync is automatic, never a hand-set offset: the Map Syncer (`src/audio/syncer.ts`, math in
+  `src/mapping/sync.ts`) checks a track's tiles against its audio when it loads and, for YouTube
+  songs, moves the map after a run whose hits were steadily early or late. Settings and the dev
+  tools have one Resync button (`resyncPlaying` in `src/audio/playback.ts`).
 - YouTube songs' clock follows the player (`followTime` in `src/audio/playback.ts`); keep pause,
   restart, the dev tools and the 2D fallback working for them. e2e tests use a fake player
   (`tests/e2e/fake-youtube.js`).

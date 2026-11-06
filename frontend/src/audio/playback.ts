@@ -10,7 +10,8 @@
 //
 // Timing: the game clock is the AudioContext clock. `start()` returns the context time at which
 // beat 0 of the song lands; `songTime()` turns "now" into seconds from that point, corrected for
-// output latency and the player's offset setting.
+// output latency. Where beat 0 sits in the audio is the Map Syncer's job (syncer.ts): there is no
+// offset to set by hand.
 
 import * as Tone from 'tone';
 import type { Song, SynthPatch } from '../api/types';
@@ -20,7 +21,8 @@ import { getSettings } from '../lib/settings';
 import { ORDER, cancelFrame, nextFrame } from '../lib/ticker';
 import { decodeLevels, levelAt, levelsFromNotes, type DecodedLevels } from '../mapping/levels';
 import { setAmbientVolume } from './ambient';
-import { YT_STATE, ytCue, ytNudge, ytPause, ytPlayFrom, ytResume, ytSetVolume, ytState, ytTime, ytWarm } from './youtube';
+import { checkTrack, forgetSync, syncedOffset } from './syncer';
+import { YT_STATE, ytCue, ytNudge, ytPause, ytPlayFrom, ytResume, ytResync, ytSetVolume, ytState, ytTime, ytWarm } from './youtube';
 
 let unlocked = false;
 let melody: Tone.PolySynth | null = null;
@@ -188,7 +190,7 @@ const outputLatency = () => {
 /** Seconds since beat 0, as heard. */
 export function songTime(startAt: number) {
   if (follow && follow.beat0 === startAt) return followTime(follow);
-  return now() - startAt - outputLatency() + getSettings().offsetMs / 1000;
+  return now() - startAt - outputLatency();
 }
 
 // ---------------------------------------------------------------- YouTube songs
@@ -257,7 +259,7 @@ const HANDOFF_RATE = 0.25;
 const HANDOFF_COAST = 0.25;
 
 function followTime(f: Follow): number {
-  const adjust = -outputLatency() + getSettings().offsetMs / 1000;
+  const adjust = -outputLatency();
   if (f.coast) return f.coast.t + (now() - f.coast.at);
   if (f.started) {
     const v = ytTime() - f.offset + adjust;
@@ -300,7 +302,7 @@ function followTick(f: Follow) {
     const v = ytTime();
     if (v > f.startPos + 0.02) {
       // Smooth hand-off: remember how far the count-in clock is from the video's right now.
-      const adjust = -outputLatency() + getSettings().offsetMs / 1000;
+      const adjust = -outputLatency();
       const gap = countInTime(f, adjust) - (v - f.offset + adjust);
       // Over a second apart (an ad, a long stall): jump, as before.
       f.handoff = Math.abs(gap) > 0.005 && Math.abs(gap) < 1 ? { gap, at: c } : null;
@@ -333,14 +335,12 @@ function followTick(f: Follow) {
   }
 }
 
-/** Re-syncs the playing YouTube song: seconds into the video where beat 0 lands. */
-export function setFollowOffset(offset: number) {
-  if (follow) follow.offset = offset;
-}
-
 /** Gets a song's audio ready so Start is instant: the track decoded, or the video buffered. */
 export async function prepareSong(song: Song): Promise<void> {
-  if (song.source.kind === 'stream' && song.source.url) await loadTrack(song.source.url).catch(() => {});
+  if (song.source.kind === 'stream' && song.source.url) {
+    const buffer = await loadTrack(song.source.url).catch(() => null);
+    if (buffer) checkTrack(song, buffer);
+  }
   else if (song.source.kind === 'youtube' && song.source.videoId) await ytWarm(song.source.videoId);
 }
 
@@ -402,6 +402,9 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
   const buffer = stream ? await loadTrack(song.source.url!) : null;
   if (video) await ytCue(video);
   if (ticket !== generation) throw new DOMException('A newer song took over', 'AbortError');
+  // Where beat 0 sits in the audio, as the Map Syncer has it (a track is checked once, here or in prepareSong).
+  if (buffer) checkTrack(song, buffer);
+  const offset = syncedOffset(song);
   const transport = Tone.getTransport();
   transport.bpm.value = song.bpm;
   const spb = 60 / song.bpm;
@@ -410,7 +413,7 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
   // A track with sound before beat 0 (an intro): the count-in finishes before that sound starts,
   // so "3, 2, 1, Go" comes first and then the song. `early`: whole beats from Go to beat 0.
   const counting = opts.countIn !== false;
-  const intro = song.source.kind !== 'synth' && from === 0 ? Math.max(0, song.source.offset ?? 0) : 0;
+  const intro = song.source.kind !== 'synth' && from === 0 ? Math.max(0, offset) : 0;
   const early = counting ? Math.ceil(intro / spb - 1e-6) : 0;
   const leadIn = Math.max(opts.leadInBeats, counting ? early + 4 : 0);
   const startAt = Tone.now() + 0.15;
@@ -427,7 +430,6 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
         scheduled.push(transport.schedule((time) => click.triggerAttackRelease(n - early === 1 ? 'C6' : 'G5', 0.05, time, 0.6), (leadIn - n) * spb));
       }
     }
-    const offset = song.source.offset ?? 0;
     const audioZero = beat0 - offset;
     const startPos = Math.max(0, Tone.now() + 0.05 - audioZero);
     const marks: Follow['marks'] = [];
@@ -451,12 +453,8 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
 
   if (buffer) {
     // Audio time 0 plays when beat 0 minus the track's offset comes round.
-    const audioZero = beat0 - (song.source.offset ?? 0);
-    const at = Math.max(Tone.now() + 0.05, audioZero);
-    const player = new Tone.Player(buffer).connect(trackBus);
-    player.fadeOut = 0.4;
-    player.start(at, Math.max(0, at - audioZero));
-    players.add(player);
+    track = { song, buffer, beat0 };
+    playTrack(buffer, beat0 - offset, Tone.now() + 0.05);
   }
 
   scheduled.push(transport.scheduleRepeat((time) => {
@@ -513,6 +511,43 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
   return beat0;
 }
 
+/** The track song playing (resyncPlaying lines it up again). */
+let track: { song: Song; buffer: Tone.ToneAudioBuffer; beat0: number } | null = null;
+
+/** Plays a track so that its audio time 0 lands at context time `audioZero`, starting no sooner than `earliest`. */
+function playTrack(buffer: Tone.ToneAudioBuffer, audioZero: number, earliest: number) {
+  const at = Math.max(earliest, audioZero);
+  const player = new Tone.Player(buffer).connect(trackBus);
+  player.fadeOut = 0.4;
+  player.start(at, Math.max(0, at - audioZero));
+  players.add(player);
+  return { player, at };
+}
+
+/**
+ * Resync: the Map Syncer forgets what it measured (every song is checked again) and whatever is
+ * playing is lined up with its map now. A track is checked again and picked up at the right spot;
+ * a YouTube song's clock drops its smoothing and takes the video's position as it is.
+ */
+export function resyncPlaying() {
+  forgetSync();
+  if (follow) {
+    ytResync();
+    follow.handoff = null;
+  }
+  if (track && players.size) {
+    const { song, buffer, beat0 } = track;
+    const offset = checkTrack(song, buffer).offset;
+    const old = [...players];
+    const { at } = playTrack(buffer, beat0 - offset, Tone.now() + 0.05);
+    for (const p of old) {
+      try { p.fadeOut = 0.02; p.stop(at); } catch { /* stopped */ }
+      players.delete(p);
+      setTimeout(() => p.dispose(), 400);
+    }
+  }
+}
+
 /** Stops whatever is playing and cancels any song still loading. */
 export function stopSong() {
   generation++;
@@ -549,6 +584,7 @@ export function windDown(seconds: number) {
 }
 
 function halt() {
+  track = null;
   if (wound) { wound = false; winding++; applyVolumes(); }
   if (follow) {
     cancelFrame(follow.raf);
@@ -588,7 +624,7 @@ export async function previewSong(song: Song, onEnd: () => void): Promise<Previe
   const notes = songMelody(song);
   // Enough silent lead-in that a real track starts from its very first sample.
   const spb = 60 / song.bpm;
-  const leadInBeats = song.source.kind !== 'synth' ? Math.ceil(((song.source.offset ?? 0) + 0.05) / spb) : 0;
+  const leadInBeats = song.source.kind !== 'synth' ? Math.ceil((Math.max(0, syncedOffset(song)) + 0.05) / spb) : 0;
   let end = onEnd;
   let ended = false;
   const beat0 = await startSong(song, { leadInBeats, countIn: false, autoMelody: notes, onEnd: () => { ended = true; end(); } });

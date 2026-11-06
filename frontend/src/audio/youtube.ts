@@ -208,6 +208,8 @@ export function ytTime(): number {
   if (!player) return 0;
   return clock.read(player.getCurrentTime() || 0, state === YT_STATE.PLAYING);
 }
+/** Drops the clock's smoothing: the next read takes the video's position as it is (Resync). */
+export function ytResync() { clock.reset(); }
 export const ytState = () => state;
 export const ytDuration = () => player?.getDuration() || 0;
 export const ytIntent = () => intent;

@@ -7,8 +7,6 @@ export interface Settings {
   volume: number;
   /** 0..1, the drums and bass under the tiles. */
   backing: number;
-  /** Audio offset in ms. Positive if hits feel late (tiles arrive after the sound). */
-  offsetMs: number;
   /** Running out of health doesn't end the song. */
   noFail: boolean;
   /** The song on stage plays its preview by itself (after the first click or key press). */
@@ -22,7 +20,7 @@ export interface Settings {
 }
 
 const KEY = 'rythm-architect:settings';
-export const DEFAULTS: Settings = { volume: 0.8, backing: 0.6, offsetMs: 0, noFail: false, calm: false, autoPreview: true, menuMusic: true, devTools: false };
+export const DEFAULTS: Settings = { volume: 0.8, backing: 0.6, noFail: false, calm: false, autoPreview: true, menuMusic: true, devTools: false };
 
 const listeners = new Set<() => void>();
 let current: Settings = load();
@@ -30,7 +28,10 @@ let current: Settings = load();
 function load(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? { ...DEFAULTS, ...JSON.parse(raw) } : { ...DEFAULTS };
+    if (!raw) return { ...DEFAULTS };
+    // The old hand-set audio offset is gone (the Map Syncer keeps songs in sync): drop any saved one.
+    const { offsetMs: _old, ...saved } = JSON.parse(raw) as Settings & { offsetMs?: number };
+    return { ...DEFAULTS, ...saved };
   } catch {
     return { ...DEFAULTS };
   }
