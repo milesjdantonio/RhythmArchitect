@@ -144,16 +144,29 @@ Recommended shape (quality and speed):
 A single call that returns all three charts also works, but its answer is long (thousands of
 notes), which makes it slow; split it if it runs near the time limit.
 
-What the Spring Boot backend does (src/java/main/SongMapper.java): one call per difficulty was
-still too slow for a full song (a 3-4 minute song ran past the app's 3-minute wait), so each
-difficulty is split into stretches of the song on bar lines (about 40 s of music for Hard, 80 s
-for Easy and Medium) and every stretch is charted at once, in parallel. Each call still sees the
-whole song (the same cached prefix) and is asked only for the notes in its stretch; the server
-drops notes outside it. Notes come back as one compact line ("12:1 15:2h 15:3": id:lane, h for a
-hold) instead of JSON objects. Easy and Medium run at effort medium, Hard at high. Hard's calls
-also return the sections and cues of their stretch. The whole plan has a 165 s deadline; on
-failure every open stream is closed so nothing more is spent. With Accept: application/x-ndjson
-the answer streams progress lines as stretches finish (docs/api.md), which the app shows.
+What the Spring Boot backend does (src/java/main/SongMapper.java, "Claude charter v2"):
+  1. The song plan: one call reads all the sounds and answers the sections (label, start, which
+     earlier section each repeats, and in a few words what easy / medium / hard follow there), one
+     lane scheme for the song, a summary and the cues. It writes the prompt cache. If it fails
+     (other than a rate limit) or takes over 75 s, the charts go ahead on the measured sections.
+  2. The charts: one call per difficulty was too slow for a full song (a 3-4 minute song ran past
+     the app's 3-minute wait), so each difficulty is split into stretches cut where sections start
+     (about 40 s of music for Hard, 80 s for Easy and Medium; long sections are cut on bar lines)
+     and every stretch is charted at once. Each call reads the song from the cache, gets the plan
+     as text, and is told its stretch's sound count, strong-sound count and a tile target
+     (Easy 15-25%, Medium 35-50%, Hard 60-85% and every strong sound, capped by the spacing).
+     Notes come back as one compact line ("12:1 15:2h 15:3": id:lane, h for a hold). Easy and
+     Medium run at effort medium, Hard and the plan at the configured effort (high).
+  3. Server rules, deterministic: notes outside a call's stretch are dropped; a section the plan
+     says repeats an earlier one gets the earlier one's tiles on the matching sounds (same band,
+     same place within ~1/16 beat; skipped when under 60% of its sounds match); every difficulty
+     keeps its spacing (Easy 1 beat, 2 above 150 BPM; Medium 1/2, 1 above 150; Hard 0.24), chords
+     (none on Easy, only accents on Medium, two at most), nothing under a hold on Easy and Medium,
+     with the stronger sound winning a clash; no more than three quick taps in a row on one lane
+     (the next moves to a free neighbouring lane). Then the browser's repairs (section 3 above).
+The whole plan has a 165 s deadline; on failure every open stream is closed so nothing more is
+spent. With Accept: application/x-ndjson the answer streams progress lines (the plan, then each
+stretch as it finishes; docs/api.md), which the app shows.
 
 Output schema for a difficulty call (structured outputs), for example:
     { "type": "object", "additionalProperties": false, "required": ["notes"],

@@ -298,6 +298,10 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
         res.setHeader('Content-Type', 'application/x-ndjson');
         const line = (o: unknown) => res.write(`${JSON.stringify(o)}\n`);
         const chunks: Record<string, number> = { easy: 2, medium: 2, hard: 4 };
+        // The song plan first (the AI reads the whole song), then the chunks.
+        line({ progress: { difficulty: 'plan', done: 0, total: 1, tiles: 0 } });
+        await delay(500);
+        line({ progress: { difficulty: 'plan', done: 1, total: 1, tiles: 0 } });
         for (const d of DIFFICULTIES) line({ progress: { difficulty: d, done: 0, total: chunks[d], tiles: 0 } });
         for (const d of DIFFICULTIES) {
           for (let k = 1; k <= chunks[d]; k++) {

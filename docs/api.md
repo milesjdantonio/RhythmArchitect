@@ -74,8 +74,9 @@ list of `{ id, lane (0-3), hold?, len? }`. Two notes with the same id are a chor
 
 Progress (optional): the app sends `Accept: application/x-ndjson, application/json`. A backend may
 then answer `application/x-ndjson`, one JSON object per line, while it works:
-`{ "progress": { difficulty, done, total, tiles } }` each time it charts a chunk of a difficulty
-(`done` of `total` chunks, `tiles` picked so far), then `{ "plan": ChartPlan }`, or
+`{ "progress": { difficulty: "plan", done: 0, total: 1 } }` while it reads the whole song and
+plans it (then `done: 1`), `{ "progress": { difficulty, done, total, tiles } }` each time it charts
+a chunk of a difficulty (`done` of `total` chunks, `tiles` picked so far), then `{ "plan": ChartPlan }`, or
 `{ "error": "...", "status": 502 }` if it fails after it started. The Generate dialog shows Easy,
 Medium and Hard being built from these. A plain JSON `ChartPlan` answer still works (no progress).
 Types: `ChartProgress`, `ChartStreamLine`.

@@ -293,11 +293,12 @@ export interface ChartPlan {
 }
 
 /**
- * How far the AI charter has got (POST /api/chart with Accept: application/x-ndjson): the charter
- * splits each difficulty into chunks of the song, and says so each time one is charted.
+ * How far the AI charter has got (POST /api/chart with Accept: application/x-ndjson). First the
+ * song plan ("plan": 0 of 1 while the AI reads the whole song, then 1 of 1); then it splits each
+ * difficulty into chunks of the song, and says so each time one is charted.
  */
 export interface ChartProgress {
-  difficulty: Difficulty;
+  difficulty: Difficulty | 'plan';
   /** Chunks charted so far, out of `total`. */
   done: number;
   total: number;

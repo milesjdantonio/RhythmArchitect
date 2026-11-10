@@ -86,7 +86,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       laneFlash: new Float32Array(LANES), counts: null as Record<Difficulty, number> | null, burstDone: false,
       // the charter's progress, per difficulty: chunks done / total, tiles so far; and the reveal,
       // which goes one difficulty at a time (pNow), its fill easing to that difficulty's progress
-      pDone: new Float32Array(3), pTotal: new Float32Array(3), pTiles: new Float32Array(3), pOn: false,
+      pDone: new Float32Array(3), pTotal: new Float32Array(3), pTiles: new Float32Array(3), pOn: false, pReading: false,
       pNow: 0, pFill: 0, pShown: new Uint8Array(3), pShownAt: 0, pTileShown: new Float32Array(3),
       // sparks and rings
       px: new Float32Array(SPARKS), py: new Float32Array(SPARKS), pvx: new Float32Array(SPARKS), pvy: new Float32Array(SPARKS), pl: new Float32Array(SPARKS), pk: new Uint8Array(SPARKS), pNext: 0,
@@ -183,6 +183,10 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       },
       progress(p) {
         const st = S.current;
+        st.pOn = true;
+        // The song plan: the AI reads the whole song before any difficulty is charted.
+        if (p.difficulty === 'plan') { st.pReading = p.done < p.total; return; }
+        st.pReading = false;
         const i = DIFFS.indexOf(p.difficulty);
         if (i < 0) return;
         st.pDone[i] = p.done;
@@ -356,7 +360,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
 
           // The charter's progress, one difficulty at a time: its lanes fill with light left to
           // right as its chunks come back; finished, the lanes flash and the next one starts.
-          if (st.pOn && !done && st.pNow < 3) {
+          if (st.pOn && !st.pReading && !done && st.pNow < 3) {
             const i = st.pNow;
             const finished = st.pTotal[i] > 0 && st.pDone[i] >= st.pTotal[i];
             const target = st.pTotal[i] > 0 ? st.pDone[i] / st.pTotal[i] : 0;
@@ -527,7 +531,8 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
         if (status.current && now - lastText > 120) {
           lastText = now;
           // (The finished ones have their checks beside it; kept short so the row doesn't wrap.)
-          const building = charting && st.pOn && st.pNow < 3 ? `the AI is charting ${DIFF_NAMES[st.pNow]}` : '';
+          const building = !charting || !st.pOn ? '' : st.pReading ? 'the AI is reading the whole song'
+            : st.pNow < 3 ? `the AI is charting ${DIFF_NAMES[st.pNow]}` : '';
           const text = done ? 'Every tile on a sound' : building ? building : charting ? `${st.sn} sounds · the AI is charting` : ph === 'map' ? `${st.heard} sounds heard · finding the beat` : `${st.heard} sounds heard`;
           if (status.current.textContent !== text) status.current.textContent = text;
           // The difficulties under the field while the charter builds them.
@@ -537,7 +542,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
             for (let i = 0; i < 3; i++) {
               const item = el.children[i] as HTMLElement | undefined;
               if (!item) continue;
-              const state = st.pShown[i] ? 'done' : i === st.pNow ? 'now' : 'wait';
+              const state = st.pShown[i] ? 'done' : i === st.pNow && !st.pReading ? 'now' : 'wait';
               if (item.dataset.state !== state) item.dataset.state = state;
               const fill = st.pShown[i] ? 1 : i === st.pNow ? st.pFill : 0;
               const bar = item.querySelector<HTMLElement>('.scope-meter > i');

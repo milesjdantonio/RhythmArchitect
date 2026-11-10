@@ -61,20 +61,24 @@ Claude lives in [../src/java/main/SongMapper.java](../src/java/main/SongMapper.j
 `POST /api/chart` only adds the HTTP side (cache, rate limit, errors). It follows
 [../docs/claude-backend.txt](../docs/claude-backend.txt). The browser sends what it measured
 (the beat grid and every sound, no audio). `SongMapper.plan` asks Claude (official Java SDK,
-`com.anthropic:anthropic-java`) to chart it, with:
+`com.anthropic:anthropic-java`) to chart it, in two steps:
 
-- each difficulty split into stretches of the song (about 40 s of music for Hard, 80 s for Easy
-  and Medium, on bar lines), all charted at once, one streamed call each: a whole song in one call
-  took longer than the app waits (3 minutes);
-- model `claude-opus-5-5`, effort `high` for Hard and `medium` for Easy and Medium, adaptive
-  thinking (the model's default), 64K max tokens, a 165 s deadline for the whole plan;
-- structured output, one JSON schema for every call: `notes` as one compact line
-  (`12:1 15:2h 15:3`: sound id, lane, `h` for a hold), `follows`, and for Hard the relabelled
-  `sections` and `cues` of its stretch;
-- the system prompt and the song's sound table as a cached prefix: the first call starts alone
-  and the rest start once it's under way, so they read the prefix from the cache;
-- progress: with `Accept: application/x-ndjson`, `POST /api/chart` streams a line each time a
-  stretch is charted, then the plan; the Generate dialog shows Easy, Medium and Hard being built;
+- **the song plan**: one call reads the whole song and decides its sections, which repeat which,
+  what each difficulty follows in each, one lane scheme, and the cues (it also writes the prompt
+  cache); without it (failure, or over 75 s) the charts use the measured sections;
+- **the charts**: each difficulty split into stretches cut where sections start (about 40 s of
+  music for Hard, 80 s for Easy and Medium), all charted at once, one streamed call each, every
+  call given the plan and a tile target for its stretch (a whole song in one call took longer
+  than the app waits, 3 minutes);
+- then server rules: repeated sections get the same tiles on the matching sounds; spacing,
+  chords and holds per difficulty (the stronger sound wins a clash); no long runs on one lane;
+- model `claude-opus-5-5`, effort `high` for the plan and Hard, `medium` for Easy and Medium,
+  adaptive thinking (the model's default), 64K max tokens, a 165 s deadline for the whole plan;
+- structured output: the plan as sections/lanes/summary/cues; each chart call's `notes` as one
+  compact line (`12:1 15:2h 15:3`: sound id, lane, `h` for a hold) and `follows`;
+- the system prompt and the song's sound table as a cached prefix;
+- progress: with `Accept: application/x-ndjson`, `POST /api/chart` streams the plan step and a line
+  each time a stretch is charted, then the plan; the Generate dialog shows it;
 - refusals handled: the server-side fallback (`fallbacks: "default"`, beta
   `server-side-fallback-2026-07-01`) and a check of `stop_reason` before reading the answer.
 
