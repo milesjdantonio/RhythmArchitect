@@ -1,0 +1,8 @@
+# The backend image only needs backend/ and src/java/.
+.git
+frontend
+docs
+backend/target
+backend/.data
+**/.env
+**/.env.*

@@ -295,7 +295,7 @@ public class SongMapper implements AutoCloseable
         }
         catch(AnthropicServiceException e)
         {
-            LOG.warning("Claude answered " + e.statusCode() + " for the " + difficulty + " chart: " + e.getMessage());
+            LOG.warning(() -> "Claude answered " + e.statusCode() + " for the " + difficulty + " chart: " + e.getMessage());
             throw new MapperException(502, "The AI charter failed (" + e.statusCode() + ").");
         }
         finally
@@ -605,7 +605,7 @@ public class SongMapper implements AutoCloseable
             }
             sorted.sort(java.util.Comparator.comparingDouble((JsonNode n) -> byId.get(n.path("id").asLong()).path("t").asDouble())
                 .thenComparingInt(n -> n.path("lane").asInt()));
-            Queue<Note> chart = new Queue<Note>();
+            Queue<Note> chart = new Queue<>();
             for(int i = 0; i < sorted.size(); i++)
             {
                 JsonNode n = sorted.get(i);
