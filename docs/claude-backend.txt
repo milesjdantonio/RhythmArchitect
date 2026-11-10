@@ -144,6 +144,17 @@ Recommended shape (quality and speed):
 A single call that returns all three charts also works, but its answer is long (thousands of
 notes), which makes it slow; split it if it runs near the time limit.
 
+What the Spring Boot backend does (src/java/main/SongMapper.java): one call per difficulty was
+still too slow for a full song (a 3-4 minute song ran past the app's 3-minute wait), so each
+difficulty is split into stretches of the song on bar lines (about 40 s of music for Hard, 80 s
+for Easy and Medium) and every stretch is charted at once, in parallel. Each call still sees the
+whole song (the same cached prefix) and is asked only for the notes in its stretch; the server
+drops notes outside it. Notes come back as one compact line ("12:1 15:2h 15:3": id:lane, h for a
+hold) instead of JSON objects. Easy and Medium run at effort medium, Hard at high. Hard's calls
+also return the sections and cues of their stretch. The whole plan has a 165 s deadline; on
+failure every open stream is closed so nothing more is spent. With Accept: application/x-ndjson
+the answer streams progress lines as stretches finish (docs/api.md), which the app shows.
+
 Output schema for a difficulty call (structured outputs), for example:
     { "type": "object", "additionalProperties": false, "required": ["notes"],
       "properties": { "notes": { "type": "array", "items": {

@@ -72,6 +72,14 @@ list of `{ id, lane (0-3), hold?, len? }`. Two notes with the same id are a chor
 `summary` show in the dev tools; `sections` and `cues`, when given, replace the measured ones
 (they drive the visuals).
 
+Progress (optional): the app sends `Accept: application/x-ndjson, application/json`. A backend may
+then answer `application/x-ndjson`, one JSON object per line, while it works:
+`{ "progress": { difficulty, done, total, tiles } }` each time it charts a chunk of a difficulty
+(`done` of `total` chunks, `tiles` picked so far), then `{ "plan": ChartPlan }`, or
+`{ "error": "...", "status": 502 }` if it fails after it started. The Generate dialog shows Easy,
+Medium and Hard being built from these. A plain JSON `ChartPlan` answer still works (no progress).
+Types: `ChartProgress`, `ChartStreamLine`.
+
 `VideoMatch`: `{ videoId, title, channel, songTitle, songArtist, seconds?, thumbnail? }`
 (`songTitle`/`songArtist` are what the song is filed under).
 

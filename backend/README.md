@@ -61,13 +61,20 @@ Claude lives in [../src/java/main/SongMapper.java](../src/java/main/SongMapper.j
 `POST /api/chart` only adds the HTTP side (cache, rate limit, errors). It follows
 [../docs/claude-backend.txt](../docs/claude-backend.txt). The browser sends what it measured
 (the beat grid and every sound, no audio). `SongMapper.plan` asks Claude (official Java SDK,
-`com.anthropic:anthropic-java`) for each difficulty in its own streamed call, with:
+`com.anthropic:anthropic-java`) to chart it, with:
 
-- model `claude-opus-5-5`, effort `high`, adaptive thinking (the model's default), 64K max tokens;
-- structured output: one JSON schema for all three calls (`notes` by sound id and lane, `follows`,
-  and for Hard the relabelled `sections` and `cues`);
-- the system prompt and the song's sound table as a cached prefix: the Hard call starts first and
-  the other two start once it's under way, so they read the prefix from the cache;
+- each difficulty split into stretches of the song (about 40 s of music for Hard, 80 s for Easy
+  and Medium, on bar lines), all charted at once, one streamed call each: a whole song in one call
+  took longer than the app waits (3 minutes);
+- model `claude-opus-5-5`, effort `high` for Hard and `medium` for Easy and Medium, adaptive
+  thinking (the model's default), 64K max tokens, a 165 s deadline for the whole plan;
+- structured output, one JSON schema for every call: `notes` as one compact line
+  (`12:1 15:2h 15:3`: sound id, lane, `h` for a hold), `follows`, and for Hard the relabelled
+  `sections` and `cues` of its stretch;
+- the system prompt and the song's sound table as a cached prefix: the first call starts alone
+  and the rest start once it's under way, so they read the prefix from the cache;
+- progress: with `Accept: application/x-ndjson`, `POST /api/chart` streams a line each time a
+  stretch is charted, then the plan; the Generate dialog shows Easy, Medium and Hard being built;
 - refusals handled: the server-side fallback (`fallbacks: "default"`, beta
   `server-side-fallback-2026-07-01`) and a check of `stop_reason` before reading the answer.
 

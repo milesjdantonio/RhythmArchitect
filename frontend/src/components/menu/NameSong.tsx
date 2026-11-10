@@ -156,7 +156,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       }
       // The AI charts it from what was measured (the backend; on-device charts if it can't).
       setFlow({ step: 'chart', video, progress: 0.75 });
-      const charted = await chartWithAI(mapped, video, signal);
+      const charted = await chartWithAI(mapped, video, signal, (p) => scope.current?.progress(p));
       const song = await api.createSong(songFromListening(mapped, video, heard, charted));
       // Show the map landing on the sound it came from, then open it.
       const spb = 60 / song.bpm, at = song.source.offset ?? 0;

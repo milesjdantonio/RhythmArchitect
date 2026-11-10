@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, type RefObject } from 'react';
-import type { Difficulty } from '../../api/types';
+import type { ChartProgress, Difficulty } from '../../api/types';
 import { isCalm } from '../../lib/settings';
+import { Icon } from '../Icon';
 import type { AuraHandle } from './ListenAura';
 
 export interface ScopeHandle {
@@ -10,7 +11,12 @@ export interface ScopeHandle {
   sounds: (list: { sec: number; band: number; strength: number }[], bars: number[]) => void;
   /** The finished map: every tile (song seconds, lane 0-3), flown from its sound into its lane; and how many tiles each difficulty has. */
   tiles: (tiles: { time: number; lane: number }[], counts?: Record<Difficulty, number>) => void;
+  /** How far the AI charter has got with one difficulty (each time it charts a chunk of the song). */
+  progress: (p: ChartProgress) => void;
 }
+
+const DIFFS: Difficulty[] = ['easy', 'medium', 'hard'];
+const DIFF_NAMES = ['Easy', 'Medium', 'Hard'];
 
 export type ScopePhase = 'listen' | 'map' | 'chart' | 'done';
 
@@ -39,7 +45,12 @@ const LANE_KEYS = ['D', 'F', 'J', 'K'];
  *           note; the stars flare as it passes.
  *   chart   The measured sounds settle in exactly where they are (a wave, left to right), the bar
  *           lines draw down, and four lanes open below. While the AI charter decides, threads of
- *           light reach from sounds down to lanes, flickering, and a light drifts across.
+ *           light reach from sounds down to lanes, flickering, and a light drifts across. As the
+ *           charter reports progress, Easy, Medium and Hard are built one at a time: the lanes
+ *           fill with light left to right as that difficulty's chunks come back; when it's
+ *           finished the lanes flash, it gets a check and its tile count, and the next one starts.
+ *           (The chunks are charted in parallel; the reveal goes in order, catching up quickly on
+ *           a difficulty that already finished.)
  *   done    Every tile leaps from its sound down into its lane, left to right, and lands with a
  *           flash; then the tile counts of Easy, Medium and Hard count up.
  *
@@ -73,6 +84,10 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       // tiles
       tx: new Float32Array(TILES), tl: new Uint8Array(TILES), ty: new Float32Array(TILES), tn: 0, tilesAt: 0, landed: new Uint8Array(TILES),
       laneFlash: new Float32Array(LANES), counts: null as Record<Difficulty, number> | null, burstDone: false,
+      // the charter's progress, per difficulty: chunks done / total, tiles so far; and the reveal,
+      // which goes one difficulty at a time (pNow), its fill easing to that difficulty's progress
+      pDone: new Float32Array(3), pTotal: new Float32Array(3), pTiles: new Float32Array(3), pOn: false,
+      pNow: 0, pFill: 0, pShown: new Uint8Array(3), pShownAt: 0, pTileShown: new Float32Array(3),
       // sparks and rings
       px: new Float32Array(SPARKS), py: new Float32Array(SPARKS), pvx: new Float32Array(SPARKS), pvy: new Float32Array(SPARKS), pl: new Float32Array(SPARKS), pk: new Uint8Array(SPARKS), pNext: 0,
       rx: new Float32Array(RINGS), ry: new Float32Array(RINGS), ra: new Float32Array(RINGS).fill(9), rk: new Uint8Array(RINGS), rNext: 0,
@@ -162,6 +177,18 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
         st.counts = counts ?? null;
         st.tilesAt = performance.now();
         st.burstDone = false;
+        // Whatever the reveal hadn't got to yet is done now.
+        st.pShown.fill(1);
+        st.pNow = 3;
+      },
+      progress(p) {
+        const st = S.current;
+        const i = DIFFS.indexOf(p.difficulty);
+        if (i < 0) return;
+        st.pDone[i] = p.done;
+        st.pTotal[i] = p.total;
+        st.pTiles[i] = p.tiles;
+        st.pOn = true;
       },
     }), [aura]);
 
@@ -327,6 +354,48 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
           g.fillStyle = '#fff';
           g.fillRect(0, lanesTop - 4, w * open, 0.6);
 
+          // The charter's progress, one difficulty at a time: its lanes fill with light left to
+          // right as its chunks come back; finished, the lanes flash and the next one starts.
+          if (st.pOn && !done && st.pNow < 3) {
+            const i = st.pNow;
+            const finished = st.pTotal[i] > 0 && st.pDone[i] >= st.pTotal[i];
+            const target = st.pTotal[i] > 0 ? st.pDone[i] / st.pTotal[i] : 0;
+            // Eases toward the real progress; quicker when catching up on a difficulty already done.
+            st.pFill += (target - st.pFill) * Math.min(1, dt * (finished ? 6 : 2.5));
+            if (finished && st.pFill > 0.985 && now - st.pShownAt > 450) {
+              st.pShown[i] = 1;
+              st.pShownAt = now;
+              st.pTileShown[i] = st.pTiles[i];
+              st.pNow++;
+              st.pFill = 0;
+              for (let l = 0; l < LANES; l++) {
+                st.laneFlash[l] = 1;
+                spark(w * (0.2 + Math.random() * 0.6), laneY(l, h), 4, 0.8, l % 3);
+              }
+              ring(w * 0.5, laneY(1.5, h), i);
+              aura?.current?.pulse(i, 1);
+            } else {
+              const fx = w * st.pFill;
+              for (let l = 0; l < LANES; l++) {
+                g.globalAlpha = 0.22;
+                g.fillStyle = laneFill[l];
+                g.fillRect(0, laneY(l, h) - 1.5, fx, 3);
+              }
+              if (fx > 1) {
+                const top = laneY(0, h) - 8, bot = laneY(LANES - 1, h) + 8;
+                const edge = g.createLinearGradient(fx - 40, 0, fx, 0);
+                edge.addColorStop(0, `hsl(${hues[1]} 100% 80% / 0)`);
+                edge.addColorStop(1, `hsl(${hues[1]} 100% 85% / 0.3)`);
+                g.globalAlpha = 1;
+                g.fillStyle = edge;
+                g.fillRect(fx - 40, top, 40, bot - top);
+                g.fillStyle = '#fff';
+                g.globalAlpha = 0.85;
+                g.fillRect(fx - 0.5, top, 1, bot - top);
+              }
+            }
+          }
+
           // The measured sounds.
           const spot = done ? -999 : ((((now - st.soundsAt) / 2600) % 1) * (w + 200)) - 100;
           for (let j = 0; j < st.sn; j++) {
@@ -418,9 +487,17 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
             const k = Math.max(0, Math.min(1, (el - FLY_MS - HOP_MS * 0.5) / 900));
             const e = 1 - Math.pow(1 - k, 3);
             const spans = countsEl.current.querySelectorAll<HTMLElement>('b');
-            const keys: Difficulty[] = ['easy', 'medium', 'hard'];
-            spans.forEach((b, i) => { const v = String(Math.round(st.counts![keys[i]] * e)); if (b.textContent !== v) b.textContent = v; });
+            spans.forEach((b, i) => {
+              // From where the charter's progress left it (its count before the browser's checks).
+              const from = st.pOn ? st.pTileShown[i] : 0;
+              const v = String(Math.round(from + (st.counts![DIFFS[i]] - from) * e));
+              if (b.textContent !== v) b.textContent = v;
+            });
             if (k > 0) countsEl.current.dataset.on = 'true';
+            if (countsEl.current.dataset.mode === 'chart') {
+              countsEl.current.dataset.mode = 'done';
+              for (const item of Array.from(countsEl.current.children) as HTMLElement[]) item.dataset.state = 'done';
+            }
           }
         }
 
@@ -449,8 +526,27 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
         // The line under the field: what it's doing.
         if (status.current && now - lastText > 120) {
           lastText = now;
-          const text = done ? 'Every tile on a sound' : charting ? `${st.sn} sounds · the AI is charting` : ph === 'map' ? `${st.heard} sounds heard · finding the beat` : `${st.heard} sounds heard`;
+          // (The finished ones have their checks beside it; kept short so the row doesn't wrap.)
+          const building = charting && st.pOn && st.pNow < 3 ? `the AI is charting ${DIFF_NAMES[st.pNow]}` : '';
+          const text = done ? 'Every tile on a sound' : building ? building : charting ? `${st.sn} sounds · the AI is charting` : ph === 'map' ? `${st.heard} sounds heard · finding the beat` : `${st.heard} sounds heard`;
           if (status.current.textContent !== text) status.current.textContent = text;
+          // The difficulties under the field while the charter builds them.
+          const el = countsEl.current;
+          if (el && charting && st.pOn && !done) {
+            if (el.dataset.mode !== 'chart') { el.dataset.mode = 'chart'; el.dataset.on = 'true'; }
+            for (let i = 0; i < 3; i++) {
+              const item = el.children[i] as HTMLElement | undefined;
+              if (!item) continue;
+              const state = st.pShown[i] ? 'done' : i === st.pNow ? 'now' : 'wait';
+              if (item.dataset.state !== state) item.dataset.state = state;
+              const fill = st.pShown[i] ? 1 : i === st.pNow ? st.pFill : 0;
+              const bar = item.querySelector<HTMLElement>('.scope-meter > i');
+              if (bar) bar.style.transform = `scaleX(${fill.toFixed(3)})`;
+              const b = item.querySelector('b');
+              const v = String(Math.round(st.pShown[i] ? st.pTileShown[i] : i === st.pNow ? st.pTiles[i] : 0));
+              if (b && b.textContent !== v) b.textContent = v;
+            }
+          }
         }
       };
       raf = requestAnimationFrame(draw);
@@ -463,7 +559,12 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
         <div className="scope-foot">
           <span ref={status} className="scope-status mono" />
           <div ref={countsEl} className="scope-counts">
-            <span>Easy <b>0</b></span><span>Medium <b>0</b></span><span>Hard <b>0</b></span>
+            {DIFF_NAMES.map((name) => (
+              <span key={name} data-state="wait">
+                <span className="scope-check"><Icon name="check" size={10} /></span>{name} <b>0</b>
+                <i className="scope-meter"><i /></i>
+              </span>
+            ))}
           </div>
         </div>
       </div>

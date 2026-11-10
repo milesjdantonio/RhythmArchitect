@@ -1,7 +1,7 @@
 // Turning what the listening pass heard into a song the backend can store.
 
 import { api } from '../api/client';
-import type { Chart, Cue, Difficulty, NewSong, VideoMatch } from '../api/types';
+import type { ChartProgress, Chart, Cue, Difficulty, NewSong, VideoMatch } from '../api/types';
 import type { Heard, ListenError, Mapped } from './listen';
 import { chartRequest, chartsFromPlan } from './charter';
 import { huesFor } from './osu';
@@ -26,7 +26,7 @@ export interface Charted {
  * an unusable plan), the on-device charts from the mapper are used, so a map is always made.
  * Cancelling (the player's signal) throws an AbortError as usual.
  */
-export async function chartWithAI(m: Mapped, video: VideoMatch, signal?: AbortSignal): Promise<Charted> {
+export async function chartWithAI(m: Mapped, video: VideoMatch, signal?: AbortSignal, onProgress?: (p: ChartProgress) => void): Promise<Charted> {
   const r = m.result;
   const seconds = video.seconds || r.offset + (r.lengthBeats * 60) / r.bpm;
   const req = chartRequest(r, { title: video.songTitle, artist: video.songArtist, videoId: video.videoId, seconds: Math.round(seconds * 10) / 10 });
@@ -37,7 +37,7 @@ export async function chartWithAI(m: Mapped, video: VideoMatch, signal?: AbortSi
   const onAbort = () => ctl.abort();
   signal?.addEventListener('abort', onAbort);
   try {
-    const plan = await api.chartSong(req, ctl.signal);
+    const plan = await api.chartSong(req, ctl.signal, onProgress);
     const { charts, fixes } = chartsFromPlan(req, plan);
     if (fixes && import.meta.env?.DEV) console.info(`[charter] ${fixes} notes in the plan were fixed or dropped`);
     return { charts, mapper: String(plan.mapper || 'AI charter'), sections: plan.sections, cues: plan.cues, summary: plan.summary };

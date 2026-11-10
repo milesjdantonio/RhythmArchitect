@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -139,34 +140,77 @@ class MappingTests {
         assertEquals("d", q.peek());
     }
 
-    /** Three answers as Claude would give them, merged into a plan, then turned into a Song. */
+    @Test
+    void chunksCoverEachDifficultyOnce() throws Exception {
+        JsonNode req = sample(); // 176 BPM, 105 s
+        List<SongMapper.Chunk> chunks = SongMapper.chunks(req);
+        assertEquals("hard", chunks.get(0).difficulty(), "Hard goes first: it primes the cache");
+        assertEquals(3, chunks.stream().filter(c -> c.difficulty().equals("hard")).count());
+        assertEquals(1, chunks.stream().filter(c -> c.difficulty().equals("easy")).count());
+        for (String d : SongMapper.DIFFICULTIES) {
+            for (JsonNode e : req.path("events")) {
+                double t = e.path("t").asDouble();
+                assertEquals(1, chunks.stream().filter(c -> c.difficulty().equals(d) && c.from() <= t && (c.last() || t < c.to())).count(),
+                    d + " sound at beat " + t + " is in exactly one chunk");
+            }
+        }
+        for (SongMapper.Chunk c : chunks) assertEquals(0, c.from() % 4, "chunks start on bar lines");
+    }
+
+    @Test
+    void parsesTheNoteLine() {
+        ArrayNode n = SongMapper.parseNotes("12:1 15:2h 15:3, junk 7: x");
+        assertEquals(3, n.size());
+        assertEquals(12, n.get(0).path("id").asInt());
+        assertEquals(1, n.get(0).path("lane").asInt());
+        assertTrue(n.get(1).path("hold").asBoolean());
+        assertTrue(!n.get(2).has("hold"));
+        assertEquals(0, SongMapper.parseNotes("").size());
+    }
+
+    /** Answers for every chunk as Claude would give them, merged into a plan, then turned into a Song. */
     @Test
     void planMergesAndBecomesASong() throws Exception {
         JsonNode req = sample();
-        java.util.Map<String, JsonNode> answers = new java.util.LinkedHashMap<>();
-        for (String d : SongMapper.DIFFICULTIES) {
-            ObjectNode a = JSON.createObjectNode().put("follows", "the organ line");
-            ArrayNode notes = a.putArray("notes");
-            int step = d.equals("easy") ? 8 : d.equals("medium") ? 4 : 1;
-            for (int i = 0; i < 200; i += step) notes.addObject().put("id", i).put("lane", i % 4).put("hold", false);
-            a.putArray("sections").addObject().put("label", d.equals("hard") ? "Intro" : "Nonsense").put("beat", 0);
-            a.putArray("cues").addObject().put("beat", 16).put("kind", "drop").put("strength", 3);
-            answers.put(d, a);
+        List<SongMapper.ChunkAnswer> answers = new ArrayList<>();
+        String[] labels = { "Intro", "Verse", "Verse" };
+        int hardChunk = 0;
+        for (SongMapper.Chunk c : SongMapper.chunks(req)) {
+            int step = c.difficulty().equals("easy") ? 8 : c.difficulty().equals("medium") ? 4 : 1;
+            StringBuilder line = new StringBuilder();
+            for (JsonNode e : req.path("events")) {
+                double t = e.path("t").asDouble();
+                long id = e.path("id").asLong();
+                if (id % step == 0 && t >= c.from() && (c.last() || t < c.to())) line.append(id).append(':').append(id % 4).append(' ');
+            }
+            if (c.from() > 0) line.append("0:1 "); // a sound from another chunk: dropped
+            ObjectNode a = JSON.createObjectNode().put("follows", "the organ line").put("notes", line.toString());
+            if (c.difficulty().equals("hard")) {
+                a.putArray("sections").addObject().put("label", labels[hardChunk++]).put("beat", c.from());
+                a.putArray("cues").addObject().put("beat", c.from() + 1).put("kind", "drop").put("strength", 3);
+            } else {
+                a.putArray("sections").addObject().put("label", "Chorus").put("beat", c.from()); // only Hard's count
+            }
+            answers.add(new SongMapper.ChunkAnswer(c, a));
         }
+        int events = req.path("events").size();
         try (SongMapper mapper = new SongMapper("", "claude-opus-5-5", "high", 64000, 170)) {
             assertTrue(!mapper.isEnabled());
             ObjectNode plan = mapper.merge(req, answers);
-            assertEquals(25, plan.path("charts").path("easy").size());
-            assertEquals(200, plan.path("charts").path("hard").size());
+            assertEquals((events + 7) / 8, plan.path("charts").path("easy").size());
+            assertEquals(events, plan.path("charts").path("hard").size());
+            assertEquals(2, plan.path("sections").size(), "Intro, then Verse once (a repeat isn't a new section)");
             assertEquals("Intro", plan.path("sections").get(0).path("label").asString());
+            assertEquals(3, plan.path("cues").size());
             assertEquals(1.0, plan.path("cues").get(0).path("strength").asDouble());
             assertTrue(plan.path("summary").asString().startsWith("Easy: the organ line"));
+            assertTrue(plan.path("summary").asString().contains("2 notes repaired"), plan.path("summary").asString());
 
             Song song = SongMapper.toSong(req, plan);
             assertEquals("Ink and Fury", song.getTitle());
             assertEquals(List.of(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD), song.getAvailableDifficulties());
             Queue<Note> hard = song.getChart(Difficulty.HARD);
-            assertEquals(200, hard.getSize());
+            assertEquals(events, hard.getSize());
             Note first = hard.dequeue();
             assertEquals(4.0, first.getTimeStamp());
             assertEquals(main.NoteType.C, first.getNoteType());

@@ -100,6 +100,18 @@
 .scope-counts { display: flex; gap: 14px; opacity: 0; transform: translateY(4px); transition: opacity 400ms var(--ease-out), transform 400ms var(--ease-out); text-transform: uppercase; }
 .scope-counts[data-on='true'] { opacity: 1; transform: none; }
 .scope-counts b { font-family: var(--font-display); font-weight: 400; font-size: 15px; letter-spacing: 0.02em; color: var(--ink); margin-left: 4px; text-shadow: 0 0 12px var(--glowA); font-variant-numeric: tabular-nums; }
+/* While the AI charter builds them: Easy, then Medium, then Hard, each with a meter; the one being
+   built is lit, finished ones get a check (ListenScope). */
+.scope-counts > span { position: relative; display: inline-flex; align-items: baseline; padding-bottom: 5px; transition: opacity 300ms var(--ease-out), color 300ms var(--ease-out); }
+.scope-counts[data-mode='chart'] > span[data-state='wait'] { opacity: 0.4; }
+.scope-counts[data-mode='chart'] > span[data-state='now'] { color: var(--ink); }
+.scope-check { display: inline-flex; width: 0; overflow: hidden; opacity: 0; align-self: center; transition: width 300ms var(--ease-out), opacity 300ms var(--ease-out); }
+.scope-counts > span[data-state='done'] .scope-check { width: 14px; opacity: 1; color: var(--ink); filter: drop-shadow(0 0 6px var(--glowA)); }
+.scope-meter { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgb(255 255 255 / 0.1); border-radius: 1px; overflow: hidden; opacity: 0; transition: opacity 300ms var(--ease-out); }
+.scope-counts[data-mode='chart'] .scope-meter { opacity: 1; }
+.scope-meter > i { display: block; height: 100%; transform: scaleX(0); transform-origin: left; background: var(--ink); box-shadow: 0 0 8px var(--glowA); transition: transform 160ms linear; }
+.scope-counts > span[data-state='now'] .scope-meter > i { animation: scope-now 1.4s var(--ease-soft) infinite; }
+@keyframes scope-now { 50% { opacity: 0.55; } }
 /* The aura behind the dialog (ListenAura): full screen, half resolution, under the card. */
 .listen-aura { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 /* "Live": a pulse on live state only (the listening pass is happening now). */
@@ -108,4 +120,4 @@
   background: var(--miss); box-shadow: 0 0 10px var(--miss); animation: live-dot 1.6s var(--ease-soft) infinite;
 }
 @keyframes live-dot { 50% { opacity: 0.35; transform: scale(0.8); } }
-@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } .scope-counts { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } .scope-counts, .scope-counts > span, .scope-check, .scope-meter > i { transition: none; } .scope-meter > i { animation: none !important; } }

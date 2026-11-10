@@ -292,6 +292,22 @@ export interface ChartPlan {
   summary?: string;
 }
 
+/**
+ * How far the AI charter has got (POST /api/chart with Accept: application/x-ndjson): the charter
+ * splits each difficulty into chunks of the song, and says so each time one is charted.
+ */
+export interface ChartProgress {
+  difficulty: Difficulty;
+  /** Chunks charted so far, out of `total`. */
+  done: number;
+  total: number;
+  /** Tiles picked so far (before the browser's checks). */
+  tiles: number;
+}
+
+/** One line of the streamed chart answer: progress while it works, then the plan or an error. */
+export type ChartStreamLine = { progress: ChartProgress } | { plan: ChartPlan } | { error: string; status?: number };
+
 /** A song mapped by listening in the browser, to be saved (POST /api/songs). */
 export type NewSong = Omit<Song, 'id' | 'createdAt' | 'best' | 'plays' | 'favorite' | 'builtIn'>;
 
