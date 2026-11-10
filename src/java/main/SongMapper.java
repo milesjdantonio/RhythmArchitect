@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -19,6 +20,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -229,7 +231,7 @@ public class SongMapper implements AutoCloseable
             {
                 if(error != null)
                 {
-                    failed.completeExceptionally(error);
+                    failed.completeExceptionally(asMapperException(error));
                     return;
                 }
                 int[] c = counts.get(chunk.difficulty());
@@ -271,11 +273,7 @@ public class SongMapper implements AutoCloseable
         catch(ExecutionException e)
         {
             stop(open, calls);
-            if(e.getCause() instanceof RuntimeException r)
-            {
-                throw r;
-            }
-            throw new MapperException(502, "The AI charter failed.");
+            throw asMapperException(e);
         }
         catch(InterruptedException e)
         {
@@ -284,6 +282,26 @@ public class SongMapper implements AutoCloseable
             throw new MapperException(503, "The AI charter was stopped.");
         }
         return merge(request, calls.stream().map(CompletableFuture::join).toList());
+    }
+
+    /**
+     * The MapperException under a failure: the parallel calls wrap what they throw (in
+     * CompletionException or ExecutionException), so it's unwrapped here; anything else becomes a
+     * 502 that names it, and is logged in full.
+     */
+    public static MapperException asMapperException(Throwable error)
+    {
+        Throwable e = error;
+        while((e instanceof CompletionException || e instanceof ExecutionException) && e.getCause() != null)
+        {
+            e = e.getCause();
+        }
+        if(e instanceof MapperException m)
+        {
+            return m;
+        }
+        LOG.log(Level.WARNING, "The AI charter failed", e);
+        return new MapperException(502, "The AI charter failed (" + e.getClass().getSimpleName() + ").");
     }
 
     /** Ends every call still streaming (so nothing more is spent on a plan that has failed). */
@@ -537,6 +555,7 @@ public class SongMapper implements AutoCloseable
         catch(RuntimeException e)
         {
             // A network failure, or the stream closed because the plan already failed.
+            LOG.log(Level.WARNING, "The call for " + what + " failed", e);
             throw new MapperException(502, "The AI charter failed (" + e.getClass().getSimpleName() + ").");
         }
         finally

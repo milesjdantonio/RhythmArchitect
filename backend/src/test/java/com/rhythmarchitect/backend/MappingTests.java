@@ -224,6 +224,17 @@ class MappingTests {
         }
     }
 
+    /** A failed parallel call arrives wrapped; the real reason must come through, not a generic 500. */
+    @Test
+    void failuresKeepTheirReason() {
+        SongMapper.MapperException busy = new SongMapper.MapperException(503, "The AI charter is busy. Try again in a minute.");
+        Throwable wrapped = new java.util.concurrent.ExecutionException(new java.util.concurrent.CompletionException(busy));
+        assertEquals(busy, SongMapper.asMapperException(wrapped));
+        SongMapper.MapperException other = SongMapper.asMapperException(new java.util.concurrent.CompletionException(new IllegalStateException("x")));
+        assertEquals(502, other.getStatus());
+        assertTrue(other.getMessage().contains("IllegalStateException"));
+    }
+
     @Test
     void mapperOffAnswers501() {
         try (SongMapper mapper = new SongMapper(null, "claude-opus-5-5", "high", 64000, 170)) {

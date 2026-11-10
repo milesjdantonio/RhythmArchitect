@@ -71,8 +71,10 @@ public class ChartController {
         this.perHour = perHour;
     }
 
+    // Always a StreamingResponseBody (declared exactly, so Spring streams it): the plain answer is a
+    // stream of one JSON object, written once the plan is ready.
     @PostMapping("/chart")
-    public ResponseEntity<?> chart(@RequestBody byte[] raw, HttpServletRequest http,
+    public ResponseEntity<StreamingResponseBody> chart(@RequestBody byte[] raw, HttpServletRequest http,
         @RequestHeader(value = HttpHeaders.ACCEPT, defaultValue = "") String accept) {
         if (!mapper.isEnabled()) throw new ApiException(501, "This server has no AI charter.");
         if (raw.length > MAX_BYTES) throw new ApiException(413, "That chart request is too large.");
@@ -94,8 +96,11 @@ public class ChartController {
         boolean stream = accept.contains("application/x-ndjson");
 
         if (!stream) {
+            // Charted before answering, so a failure still answers with its status and { error }.
             ObjectNode plan = cached != null ? cached.deepCopy() : charted(key, req, null);
-            return ResponseEntity.ok(plan);
+            byte[] bytes = json.writeValueAsBytes(plan);
+            StreamingResponseBody whole = out -> out.write(bytes);
+            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(whole);
         }
 
         StreamingResponseBody body = out -> {
@@ -114,6 +119,15 @@ public class ChartController {
                 write(out, line, lock);
             } catch (UncheckedIOException e) {
                 log.info("The app stopped listening for its chart: {}", e.getMessage());
+            } catch (RuntimeException e) {
+                log.error("Charting failed", e);
+                ObjectNode line = json.createObjectNode()
+                    .put("error", "The AI charter failed (" + e.getClass().getSimpleName() + ").").put("status", 500);
+                try {
+                    write(out, line, lock);
+                } catch (UncheckedIOException gone) {
+                    // the app already stopped listening
+                }
             }
         };
         return ResponseEntity.ok().contentType(NDJSON).header(HttpHeaders.CACHE_CONTROL, "no-cache").body(body);
