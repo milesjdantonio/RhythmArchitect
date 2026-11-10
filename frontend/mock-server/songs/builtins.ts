@@ -2,13 +2,16 @@
 //   Neon Blueprint       — hand-mapped synth test, built to show every effect.
 //   Ink and Fury         — real audio (an organ toccata), mapped by the onset mapper.
 //   The Restless Stacks  — real audio (a waltz in 3/4), mapped by the onset mapper.
+//   One Dance            — plays from YouTube; a fan-made osu!mania chart (Alkin098), re-timed to
+//                          104 BPM and lined up with the video (tracks/one-dance.json, credit in it).
 // The two real tracks were composed by Claude for SchmollCrossword (MIT); see NOTICE.md.
 // Their charts come from tools/map-audio.mjs; re-run it after changing the mapper.
 
-import type { Difficulty, Song } from '../../src/api/types';
+import type { Difficulty, NewSong, Song } from '../../src/api/types';
 import { demoSong } from './demo-song';
 import inkAndFury from './tracks/ink-and-fury.json';
 import restlessStacks from './tracks/the-restless-stacks.json';
+import oneDance from './tracks/one-dance.json';
 
 type MappedTrack = typeof inkAndFury;
 
@@ -39,10 +42,16 @@ function fromTrack(t: MappedTrack, createdAt: string): Song {
   };
 }
 
+/** A whole song saved as it was made (a YouTube song with its charts). */
+function fromSong(s: NewSong, id: string, createdAt: string): Song {
+  return { ...s, id, createdAt, best: {}, plays: 0, favorite: false, builtIn: true };
+}
+
 export function builtInSongs(): Song[] {
   return [
     demoSong(),
     fromTrack(inkAndFury, '2026-10-30T12:02:00.000Z'),
     fromTrack(restlessStacks as MappedTrack, '2026-10-30T12:01:00.000Z'),
+    fromSong(oneDance as unknown as NewSong, 'builtin-one-dance', '2026-11-10T12:00:00.000Z'),
   ];
 }

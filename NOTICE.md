@@ -11,6 +11,14 @@ Both were rendered with the [GeneralUser GS](https://schristiancollins.com/gener
 by S. Christian Collins, whose licence allows any use of music made with it. The files are unchanged
 copies. Their beatmaps were made by this project's onset mapper (`npm run map`).
 
+## Built-in fan chart
+
+*One Dance* (Drake feat. WizKid & Kyla) is built in as a chart only: it plays from its YouTube video
+(no audio is in this repository). Its tiles are the osu!mania 4K chart "Normal" by **Alkin098**
+([beatmap set 1547743](https://osu.ppy.sh/beatmapsets/1547743)), re-timed from its 141 BPM timing
+line to the song's 104 BPM (each tile keeps its exact time) and lined up with the video
+(`frontend/mock-server/songs/tracks/one-dance.json`). Easy and Medium are thinned from it.
+
 ## Fonts
 
 Unbounded, Space Grotesk and JetBrains Mono come from [Fontsource](https://fontsource.org/) under the

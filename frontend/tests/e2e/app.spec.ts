@@ -159,8 +159,8 @@ test.describe('Rythm Architect', () => {
     await title(page).fill('mr brightside');
     await expect(page.locator('.result', { hasText: 'Mr. Brightside' })).toBeVisible();
     await expect(page.getByRole('button', { name: /Generate/ })).toHaveCount(0);
-    await title(page).fill('One Dance');
-    await artist(page).fill('Drake');
+    await title(page).fill('Levitating');
+    await artist(page).fill('Dua Lipa');
     await expect(page.getByText('No beatmap for that yet.')).toBeVisible();
     await page.getByRole('button', { name: 'Generate beatmap' }).click();
     const dialog = page.getByRole('dialog', { name: 'Ready to listen' });
@@ -179,7 +179,7 @@ test.describe('Rythm Architect', () => {
     await expect(dialog).toBeHidden();
     await expect(page.locator('.yt-dock[data-shown="true"]')).toHaveCount(0);
     // Nothing was invented.
-    await title(page).fill('One Danc');
+    await title(page).fill('Levitatin');
     await expect(page.getByText('No beatmap for that yet.')).toBeVisible();
   });
 

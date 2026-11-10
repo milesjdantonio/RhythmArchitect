@@ -52,7 +52,7 @@ class ApiTests {
     void libraryIsAtoZ() throws Exception {
         mvc.perform(get("/api/library"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.results[*].title").value(contains("Ink and Fury", "Neon Blueprint", "The Restless Stacks")))
+            .andExpect(jsonPath("$.results[*].title").value(contains("Ink and Fury", "Neon Blueprint", "One Dance (feat. WizKid & Kyla)", "The Restless Stacks")))
             .andExpect(jsonPath("$.results[0].charts").doesNotExist())
             .andExpect(jsonPath("$.results[0].tiles.hard").isNumber());
     }
