@@ -6,6 +6,11 @@
 // song time on by itself for up to a quarter of a second, so a busy main thread (React, a long
 // script, garbage collection) no longer stops the tiles. The worker sends back the pads' screen
 // positions (for the judgement words and the touch lanes) and the sky's bursts.
+//
+// If the browser takes the graphics chip away from the stage (moving the window to a monitor on
+// another graphics adapter, a driver reset), the worker says so and the proxy starts a fresh
+// canvas and worker in its place, replaying what the stage keeps (colours, tempo, the notes, the
+// ghost chart, fever, sleeping): the game carries on. After MAX_RESTARTS in a minute it stops trying.
 
 import { perf } from '../lib/perf';
 import type { SceneEvent } from '../background/scene';
@@ -19,12 +24,15 @@ export type ToStage =
   | { type: 'notes'; time: Float32Array; end: Float32Array; lane: Uint8Array; hold: Uint8Array }
   | { type: 'batch'; calls: [string, unknown[]][]; frame?: { t: number; at: number; state: Uint8Array } }
   | { type: 'hold' }
-  | { type: 'sleep'; on: boolean };
+  | { type: 'sleep'; on: boolean }
+  /** Dev and tests only: take the GPU away (see Stage3D.loseGpu). */
+  | { type: 'loseGpu' };
 /** Worker → page. */
 export type FromStage =
   | { type: 'tick'; pads: Float32Array; particles: number; at: number; t: number }
   | { type: 'sky'; x: number; y: number; strength: number }
-  | { type: 'ghost'; lane: number; kind: HitKind };
+  | { type: 'ghost'; lane: number; kind: HitKind }
+  | { type: 'lost'; why: string };
 
 const JUDGED = { perfect: 1, great: 2, good: 3, miss: 4 } as const;
 /** Packs a note's state in a byte: judged (3 bits), holding (bit 3), hold result (bits 4-5). */
@@ -41,6 +49,11 @@ export function unpackNote(n: StageNote, b: number) {
 /** Wall-clock milliseconds both threads agree on. */
 export const wallMs = () => performance.timeOrigin + performance.now();
 
+/** The calls whose effect lasts (replayed on a fresh stage after the GPU was lost). */
+const STICKY = new Set(['setTiming', 'setHues', 'setGhostChart', 'setFever']);
+/** Fresh stages at most this many times a minute (then it stops: something is badly wrong). */
+const MAX_RESTARTS = 3;
+
 export class StageProxy {
   static supported() {
     return typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && 'transferControlToOffscreen' in HTMLCanvasElement.prototype;
@@ -50,8 +63,8 @@ export class StageProxy {
   onSky?: (x: number, y: number, strength: number) => void;
   /** Showcase: called when the ghost hits a tile. */
   onGhostHit?: (lane: number, kind: HitKind) => void;
-  private worker: Worker;
-  private canvas: HTMLCanvasElement;
+  private worker!: Worker;
+  private canvas!: HTMLCanvasElement;
   private calls: [string, unknown[]][] = [];
   private flushing = false;
   private notes: StageNote[] | null = null;
@@ -63,8 +76,24 @@ export class StageProxy {
   private fpsFrames = 0;
   private fpsSince = 0;
   private ro: ResizeObserver;
+  private sticky = new Map<string, unknown[]>();
+  private sleeping = false;
+  private restarts: number[] = [];
+  private dprQuery: MediaQueryList | null = null;
+  private onDpr = () => { this.sendSize(); this.watchDpr(); };
 
-  constructor(host: HTMLElement, opts: { mode: StageMode; hues?: [number, number] }) {
+  constructor(private host: HTMLElement, private opts: { mode: StageMode; hues?: [number, number] }) {
+    this.start();
+    this.ro = new ResizeObserver(() => this.sendSize());
+    this.ro.observe(host);
+    this.watchDpr();
+    // Dev and tests: take the GPU away, to check the stage comes back.
+    if (import.meta.env.DEV && opts.mode === 'play') (window as unknown as { __stageLoseGpu?: () => void }).__stageLoseGpu = () => this.post({ type: 'loseGpu' });
+  }
+
+  /** A canvas and a worker drawing on it. */
+  private start() {
+    const host = this.host;
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'stage-canvas';
     host.appendChild(this.canvas);
@@ -86,22 +115,49 @@ export class StageProxy {
         if (import.meta.env.DEV) (window as unknown as { __stageClock?: unknown }).__stageClock = { t: m.t, at: m.at, fps: this.fps };
       }
       else if (m.type === 'ghost') this.onGhostHit?.(m.lane, m.kind);
+      else if (m.type === 'lost') this.restart(m.why);
       else this.onSky?.(m.x, m.y, m.strength);
     };
-    this.post({ type: 'init', canvas: offscreen, width: r.width, height: r.height, dpr: devicePixelRatio || 1, mode: opts.mode, hues: opts.hues, profile: perf().id }, [offscreen]);
-    this.ro = new ResizeObserver(() => {
-      const b = host.getBoundingClientRect();
-      this.canvas.style.width = `${b.width}px`;
-      this.canvas.style.height = `${b.height}px`;
-      this.post({ type: 'size', width: b.width, height: b.height, dpr: devicePixelRatio || 1 });
-    });
-    this.ro.observe(host);
+    const hues = (this.sticky.get('setHues')?.[0] as [number, number] | undefined) ?? this.opts.hues;
+    this.post({ type: 'init', canvas: offscreen, width: r.width, height: r.height, dpr: devicePixelRatio || 1, mode: this.opts.mode, hues, profile: perf().id }, [offscreen]);
+  }
+
+  /** The GPU was taken away: a fresh canvas and worker, with what the stage keeps replayed. */
+  private restart(why: string) {
+    const now = performance.now();
+    this.restarts = this.restarts.filter((t) => now - t < 60_000);
+    console.warn(`[stage] ${why}${this.restarts.length < MAX_RESTARTS ? ': starting a fresh stage' : ': giving up after several tries'}`);
+    if (this.restarts.length >= MAX_RESTARTS) return;
+    this.restarts.push(now);
+    this.worker.terminate();
+    this.canvas.remove();
+    this.calls = [];
+    this.start();
+    for (const [name, args] of this.sticky) this.call(name, ...args);
+    // The notes go again with the next frame (the new worker has none).
+    this.notes = null;
+    if (this.sleeping) this.post({ type: 'sleep', on: true });
+  }
+
+  private sendSize() {
+    const b = this.host.getBoundingClientRect();
+    this.canvas.style.width = `${b.width}px`;
+    this.canvas.style.height = `${b.height}px`;
+    this.post({ type: 'size', width: b.width, height: b.height, dpr: devicePixelRatio || 1 });
+  }
+
+  /** The pixel ratio can change without the size changing (another monitor's scaling, zoom). */
+  private watchDpr() {
+    this.dprQuery?.removeEventListener('change', this.onDpr);
+    this.dprQuery = typeof matchMedia === 'function' ? matchMedia(`(resolution: ${devicePixelRatio || 1}dppx)`) : null;
+    this.dprQuery?.addEventListener('change', this.onDpr);
   }
 
   private post(m: ToStage, transfer: Transferable[] = []) { this.worker.postMessage(m, transfer); }
 
   /** Queues a call; it goes with the next frame, or on its own at the end of this task. */
   private call(name: string, ...args: unknown[]) {
+    if (STICKY.has(name)) this.sticky.set(name, args);
     this.calls.push([name, args]);
     if (!this.flushing) {
       this.flushing = true;
@@ -137,7 +193,7 @@ export class StageProxy {
   /** Stop carrying the time on (the game paused). */
   hold() { this.post({ type: 'hold' }); }
   /** Stop drawing altogether (out of sight, or a calm still), and start again. */
-  sleep(on: boolean) { this.post({ type: 'sleep', on }); }
+  sleep(on: boolean) { this.sleeping = on; this.post({ type: 'sleep', on }); }
 
   receptor(lane: number) { return { x: this.pads[lane * 2], y: this.pads[lane * 2 + 1] }; }
   /** The lane under a screen x: the nearest pad, within half the spacing past the outer ones. */
@@ -174,6 +230,7 @@ export class StageProxy {
 
   destroy() {
     this.ro.disconnect();
+    this.dprQuery?.removeEventListener('change', this.onDpr);
     this.worker.terminate();
     this.canvas.remove();
   }

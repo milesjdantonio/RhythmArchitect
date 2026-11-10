@@ -173,6 +173,27 @@ class MappingTests {
     }
 
     @Test
+    void missedStrongSoundsAreFilledIn() {
+        ObjectNode req = (ObjectNode) tinySong(120); // 32 sounds at strength 0.7 (strong), one weak at 20.5
+        ((ObjectNode) req.path("events").get(10)).put("accent", true);
+        var byId = SongMapper.events(req);
+        List<SongMapper.Pick> picks = new ArrayList<>();
+        for (int i = 0; i < 32; i += 2) picks.add(SongMapper.Pick.on(byId.get((long) i), 1, false)); // Claude charted every other beat in lane 1
+        java.util.Set<Long> filled = new java.util.HashSet<>();
+        List<SongMapper.Pick> hard = SongMapper.fillStrong(byId, "hard", picks, filled);
+        assertEquals(16, filled.size(), "every strong sound without a tile");
+        assertTrue(!filled.contains(99L), "the weak sound stays out");
+        assertTrue(hard.stream().filter(p -> filled.contains(p.id())).allMatch(p -> p.lane() == 1), "lanes follow the nearby tiles");
+
+        java.util.Set<Long> medium = new java.util.HashSet<>();
+        SongMapper.fillStrong(byId, "medium", picks, medium);
+        assertEquals(java.util.Set.of(), medium, "beat 10 is charted already; Medium only fills accents");
+        java.util.Set<Long> none = new java.util.HashSet<>();
+        SongMapper.fillStrong(byId, "easy", picks, none);
+        assertTrue(none.isEmpty(), "never on Easy");
+    }
+
+    @Test
     void easyIsSpacedWithoutChords() {
         JsonNode req = tinySong(120);
         var byId = SongMapper.events(req);

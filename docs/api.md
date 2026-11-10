@@ -48,7 +48,7 @@ Then the AI charts it: the browser sends the measurements to `POST /api/chart` a
 which lane, which are held. A plan can only name sounds by id, so every tile stays on a real sound
 at its measured time; the browser checks the plan (`chartsFromPlan` in `frontend/src/mapping/charter.ts`:
 unknown sounds and bad lanes dropped, holds kept to how long the sound rings, at most two tiles per
-sound) and builds the charts. If the charter isn't there, fails, takes over 3 minutes, or leaves a
+sound) and builds the charts. If the charter isn't there, fails, takes over 5 minutes, or leaves a
 difficulty nearly empty, the on-device charts (`frontend/src/mapping/charts.ts`) are used instead and
 `report.mapper` says so. Then the song is saved with `POST /api/songs`: the charts, the report and
 `levels` (a loudness curve, three bands × 30 per second, one byte each).

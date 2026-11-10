@@ -10,6 +10,7 @@ import * as THREE from 'three';
 import { frameGate, perf, setPerf, type ProfileId } from '../lib/perf';
 import { SkyGL } from '../stage/sky';
 import type { GpuKit } from '../stage/Stage3D';
+import { watchLost } from '../stage/lost';
 import type { FromSky, ToSky } from './host';
 
 const SILENT = { bass: 0, mid: 0, high: 0, level: 0 };
@@ -48,7 +49,11 @@ function resize() {
   sky.resize(renderer);
 }
 
+/** The GPU was taken away: nothing more to draw (the page replaces this worker). */
+let lost = false;
+
 function loop(now: number) {
+  if (lost) return;
   raf(loop);
   if (!renderer || !sky) return;
   const dt = last ? Math.min(0.1, Math.max(0, (now - last) / 1000)) : 0;
@@ -60,7 +65,12 @@ function loop(now: number) {
   if (!frameGate(now)) return;
   last = now;
   sky.update(dt);
-  sky.render(renderer);
+  try {
+    sky.render(renderer);
+  } catch (e) {
+    if (lost) return; // the loss handler takes it from here
+    throw e;
+  }
   calmDrawn = calm;
 }
 
@@ -77,6 +87,9 @@ async function init(m: Extract<ToSky, { type: 'init' }>) {
     ? (gpu.makeRenderer(m.canvas, { antialias: false, alpha: false }) as unknown as THREE.WebGLRenderer)
     : new THREE.WebGLRenderer({ canvas: m.canvas, antialias: false, alpha: false, powerPreference: 'high-performance' });
   if (gpu) await (renderer as unknown as { init(): Promise<unknown> }).init();
+  // The GPU taken away (another monitor's graphics adapter, a driver reset): stop and tell the
+  // page, which starts a fresh canvas and worker (host.ts attachSky).
+  watchLost(renderer, m.canvas, (why) => { lost = true; scope.postMessage({ type: 'lost', why } satisfies FromSky); });
   sky = new SkyGL({ size: () => size, levels: () => levels, playing: () => playing, half: false, dim: false, gpu });
   resize();
   // WebGPU: build every pass before the first frame (rings and crystals first appear later).

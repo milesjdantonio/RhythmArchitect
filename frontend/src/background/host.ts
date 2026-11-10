@@ -88,8 +88,8 @@ export type ToSky =
   | { type: 'size'; size: { w: number; h: number; dpr: number } }
   | { type: 'state'; playing: boolean; levels: { bass: number; mid: number; high: number; level: number } }
   | { type: 'calm'; calm: boolean };
-/** The message the sky worker sends back: its renderer. */
-export type FromSky = { type: 'info'; backend: string };
+/** What the sky worker sends back: its renderer, or that the GPU was taken away. */
+export type FromSky = { type: 'info'; backend: string } | { type: 'lost'; why: string };
 
 /**
  * The backdrop on the graphics chip in a worker: the same
@@ -97,16 +97,41 @@ export type FromSky = { type: 'info'; backend: string };
  * and vignette included. During play it pauses: the game's stage draws the sky then.
  */
 export function attachSky(canvas: HTMLCanvasElement, calm: boolean): Backdrop {
-  const worker = new Worker(new URL('./sky.worker.ts', import.meta.url), { type: 'module' });
-  const off = canvas.transferControlToOffscreen();
+  let worker!: Worker;
   const post = (m: ToSky, transfer: Transferable[] = []) => worker.postMessage(m, transfer);
-  // At most MENU_FPS: during play it doesn't draw at all (the game's stage draws the sky).
-  post({ type: 'init', canvas: off, size: size(), profile: perf().id, overrides: { fpsCap: MENU_FPS }, calm }, [off]);
-  worker.onmessage = (e: MessageEvent<FromSky>) => {
-    // Dev: the renderer, for checks.
-    if (import.meta.env.DEV) (window as unknown as { __sky?: string }).__sky = e.data.backend;
+  // What a fresh worker needs to look the same: the song's colours, and calm.
+  let hues: SceneEvent | null = null;
+  const restarts: number[] = [];
+  const start = () => {
+    worker = new Worker(new URL('./sky.worker.ts', import.meta.url), { type: 'module' });
+    const off = canvas.transferControlToOffscreen();
+    // At most MENU_FPS: during play it doesn't draw at all (the game's stage draws the sky).
+    post({ type: 'init', canvas: off, size: size(), profile: perf().id, overrides: { fpsCap: MENU_FPS }, calm }, [off]);
+    if (hues) post({ type: 'event', event: hues });
+    worker.onmessage = (e: MessageEvent<FromSky>) => {
+      const m = e.data;
+      if (m.type === 'lost') {
+        // The GPU was taken away (another monitor's graphics adapter, a driver reset): a fresh
+        // canvas in the same place and a fresh worker, at most three times a minute.
+        const now = performance.now();
+        while (restarts.length && now - restarts[0] > 60_000) restarts.shift();
+        console.warn(`[sky] ${m.why}${restarts.length < 3 ? ': starting a fresh sky' : ': giving up after several tries'}`);
+        if (restarts.length >= 3) return;
+        restarts.push(now);
+        worker.terminate();
+        const fresh = canvas.cloneNode(false) as HTMLCanvasElement;
+        canvas.replaceWith(fresh);
+        canvas = fresh;
+        start();
+        return;
+      }
+      // Dev: the renderer, for checks.
+      if (import.meta.env.DEV) (window as unknown as { __sky?: string }).__sky = m.backend;
+    };
   };
+  start();
   const unforward = forward((event) => {
+    if (event.type === 'hues') hues = event;
     if (event.type === 'resize') post({ type: 'size', size: size() });
     else post({ type: 'event', event });
   });
@@ -118,7 +143,7 @@ export function attachSky(canvas: HTMLCanvasElement, calm: boolean): Backdrop {
   };
   raf = nextFrame(tick, ORDER.scene);
   return {
-    setCalm(c) { post({ type: 'calm', calm: c }); },
+    setCalm(c) { calm = c; post({ type: 'calm', calm: c }); },
     destroy() { cancelFrame(raf); unforward(); worker.terminate(); },
   };
 }

@@ -28,7 +28,7 @@ One endpoint:
 - Base URL: the same server as the rest of the API (VITE_API_BASE_URL on the frontend).
 - Errors: any non-2xx is fine: { "error": "message" }. The frontend then uses its own charts, so
   an error never stops a song being made. Answer 501 if charting is turned off.
-- Time limit: the frontend waits up to 180 s (CHART_TIMEOUT_MS in frontend/src/mapping/generate.ts), then uses
+- Time limit: the frontend waits up to 300 s (CHART_TIMEOUT_MS in frontend/src/mapping/generate.ts), then uses
   its own charts. Aim for under 90 s.
 - Size: a request is about 100-400 KB (5-10 sounds per second of music). Accept up to 4 MB.
 - The Anthropic API key lives only on the server (env ANTHROPIC_API_KEY). Never send it to the
@@ -150,11 +150,12 @@ What the Spring Boot backend does (src/java/main/SongMapper.java, "Claude charte
      lane scheme for the song, a summary and the cues. It writes the prompt cache. If it fails
      (other than a rate limit) or takes over 75 s, the charts go ahead on the measured sections.
   2. The charts: one call per difficulty was too slow for a full song (a 3-4 minute song ran past
-     the app's 3-minute wait), so each difficulty is split into stretches cut where sections start
+     the app's wait), so each difficulty is split into stretches cut where sections start
      (about 40 s of music for Hard, 80 s for Easy and Medium; long sections are cut on bar lines)
      and every stretch is charted at once. Each call reads the song from the cache, gets the plan
-     as text, and is told its stretch's sound count, strong-sound count and a tile target
-     (Easy 15-25%, Medium 35-50%, Hard 60-85% and every strong sound, capped by the spacing).
+     as text (no tile counts: asking for exact numbers made Claude count sounds while thinking,
+     which doubled its time). The first stretch call starts alone and writes the cache; the rest
+     start once its answer begins (the plan call's cache doesn't serve them: its answer format differs).
      Notes come back as one compact line ("12:1 15:2h 15:3": id:lane, h for a hold). Easy and
      Medium run at effort medium, Hard and the plan at the configured effort (high).
   3. Server rules, deterministic: notes outside a call's stretch are dropped; a section the plan
@@ -162,9 +163,11 @@ What the Spring Boot backend does (src/java/main/SongMapper.java, "Claude charte
      same place within ~1/16 beat; skipped when under 60% of its sounds match); every difficulty
      keeps its spacing (Easy 1 beat, 2 above 150 BPM; Medium 1/2, 1 above 150; Hard 0.24), chords
      (none on Easy, only accents on Medium, two at most), nothing under a hold on Easy and Medium,
-     with the stronger sound winning a clash; no more than three quick taps in a row on one lane
+     with the stronger sound winning a clash; missed strong sounds filled in (Hard: every sound with
+     strength >= 0.6 or an accent, Medium: accents; lane from the nearest tile on the same kind of
+     sound); no more than three quick taps in a row on one lane
      (the next moves to a free neighbouring lane). Then the browser's repairs (section 3 above).
-The whole plan has a 165 s deadline; on failure every open stream is closed so nothing more is
+The whole plan has a 280 s deadline; on failure every open stream is closed so nothing more is
 spent. With Accept: application/x-ndjson the answer streams progress lines (the plan, then each
 stretch as it finishes; docs/api.md), which the app shows.
 

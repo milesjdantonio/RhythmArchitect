@@ -26,6 +26,7 @@ import { SkyGL } from './sky';
 import { FORMS, seeded, formPoints } from './forms';
 import { MAX_CLIMB, HIGHWAY_VERT, HIGHWAY_FRAG, WALL_FRAG, PAD_FRAG, UV_VERT, TILE_VERT, TILE_FRAG, SPARK_VERT, SPARK_FRAG, WORLD_VERT, RIBBON_VERT, RIBBON_FRAG, WORLD_FRAG } from './shaders';
 import { glowTexture, beamTexture, columnTexture, starTexture } from './textures';
+import { watchLost } from './lost';
 import type { SceneEvent } from '../background/scene';
 /** The WebGPU materials (gpu.ts), passed in by the stage worker for perf profile B. */
 export type GpuKit = typeof import('./gpu');
@@ -226,6 +227,8 @@ export class Stage3D {
   private offs: (() => void)[] = [];
   /** Showcase: called when the ghost hits a tile (so the backdrop can react on the menu too). */
   onGhostHit?: (lane: number, kind: HitKind) => void;
+  /** Called once if the GPU is taken away; the stage draws nothing after that (build a new one). */
+  onLost?: (why: string) => void;
   private width = 1;
   private height = 1;
 
@@ -256,6 +259,8 @@ export class Stage3D {
       this.renderer.toneMappingExposure = 1.2;
     }
     this.canvas = this.renderer.domElement;
+    // The GPU taken away (e.g. the window moved to another monitor's graphics adapter): tell the owner.
+    this.offs.push(watchLost(this.renderer, this.canvas, (why) => this.onLost?.(why)));
     if (isElement(host)) {
       this.canvas.className = 'stage-canvas';
       host.appendChild(this.canvas);
@@ -634,6 +639,18 @@ export class Stage3D {
     }
   }
 
+  /**
+   * Dev and tests only: takes the GPU away, as moving the window to another graphics adapter does
+   * (WebGPU: the device destroyed and reported lost; WebGL: the context lost).
+   */
+  loseGpu() {
+    const r = this.renderer as unknown as { backend?: { device?: { destroy(): void } }; onDeviceLost?: (i: object) => void; forceContextLoss?: () => void };
+    if (this.gpu && r.backend?.device) {
+      r.backend.device.destroy();
+      r.onDeviceLost?.({ api: 'WebGPU', message: 'lost on purpose (dev)', reason: 'unknown' });
+    } else r.forceContextLoss?.();
+  }
+
   /** Tone mapping exposure: the renderer's (WebGL) or the materials' (WebGPU). */
   private setExposure(v: number) {
     if (this.gpu) this.gpu.exposure.value = v;
@@ -728,6 +745,8 @@ export class Stage3D {
     const r = isElement(this.host) ? this.host.getBoundingClientRect() : this.host;
     this.width = Math.max(1, r.width);
     this.height = Math.max(1, r.height);
+    // The pixel ratio can change too (a monitor with other scaling, browser zoom).
+    this.renderer.setPixelRatio(Math.min(MAX_DPR, this.deviceRatio));
     this.renderer.setSize(this.width, this.height, false);
     if (isCanvasEl(this.canvas)) {
       this.canvas.style.width = `${this.width}px`;

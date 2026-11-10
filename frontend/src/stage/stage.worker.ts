@@ -37,8 +37,11 @@ let sleeping = false;
 /** The worker's own song clock (NaN until the first report). */
 let clock = Number.NaN;
 let lastWall = 0;
+/** The GPU was taken away: nothing more to draw (the page replaces this worker). */
+let lost = false;
 
 function loop(now: number) {
+  if (lost) return;
   raf(loop);
   if (!stage || !started || sleeping || !frameGate(now)) return;
   // The frame's own time (when the display shows it), not when this callback happens to run:
@@ -52,7 +55,13 @@ function loop(now: number) {
   }
   lastWall = wall;
   const t = clock;
-  stage.frame(t, ghost ? undefined : notes);
+  try {
+    stage.frame(t, ghost ? undefined : notes);
+  } catch (e) {
+    // A frame that throws right after the GPU went away: the loss handler takes it from here.
+    if (lost) return;
+    throw e;
+  }
   const pads = new Float32Array(8);
   for (let l = 0; l < 4; l++) { const p = stage.receptor(l); pads[l * 2] = p.x; pads[l * 2 + 1] = p.y; }
   scope.postMessage({ type: 'tick', pads, particles: stage.particleCount, at: wall, t: started && carry ? t : -1 } satisfies FromStage, [pads.buffer]);
@@ -75,6 +84,8 @@ async function init(m: Extract<ToStage, { type: 'init' }>) {
   // Profile B: the WebGPU materials, loaded only when asked for (A's worker never carries them).
   const gpu = perf().renderer === 'webgpu' ? await import('./gpu') : undefined;
   stage = new Stage3D(surface, { mode: m.mode, hues: m.hues, gpu });
+  // The GPU taken away: stop drawing and tell the page, which starts a fresh stage (proxy.ts).
+  stage.onLost = (why) => { lost = true; scope.postMessage({ type: 'lost', why } satisfies FromStage); };
   await stage.ready;
   // Screen pixels, as Stage3D reports them (the page turns them into fractions of the view).
   stage.onSky = (x, y, strength) => scope.postMessage({ type: 'sky', x, y, strength } satisfies FromStage);
@@ -108,5 +119,6 @@ function handle(m: ToStage) {
       break;
     case 'hold': carry = false; break;
     case 'sleep': sleeping = m.on; break;
+    case 'loseGpu': stage?.loseGpu(); break;
   }
 }

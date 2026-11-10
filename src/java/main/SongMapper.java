@@ -14,6 +14,7 @@ import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutionException;
@@ -88,8 +89,8 @@ public class SongMapper implements AutoCloseable
     /** About this much music per Hard call; Easy and Medium (fewer notes) take twice as much. */
     static final double HARD_CHUNK_SECONDS = 40;
 
-    /** The whole plan must be back before the app stops waiting (CHART_TIMEOUT_MS, 180 s). */
-    static final long PLAN_DEADLINE_SECONDS = 165;
+    /** The whole plan must be back before the app stops waiting (CHART_TIMEOUT_MS, 300 s). */
+    static final long PLAN_DEADLINE_SECONDS = 280;
 
     /** The song plan may take this long; without it the charts go ahead on the measured sections. */
     static final long SONG_PLAN_SECONDS = 75;
@@ -268,10 +269,27 @@ public class SongMapper implements AutoCloseable
         }
         CompletableFuture<Void> failed = new CompletableFuture<>();
         List<CompletableFuture<ChunkAnswer>> calls = new ArrayList<>();
-        for(Chunk chunk : chunks)
+        // The song plan's cache doesn't serve these calls (a different answer format changes the
+        // cached prefix), so the first chunk starts alone and writes it; once its answer has begun
+        // (the prefix is cached by then), the rest start and read it.
+        CountDownLatch underWay = new CountDownLatch(1);
+        for(int i = 0; i < chunks.size(); i++)
         {
+            Chunk chunk = chunks.get(i);
+            CountDownLatch primer = i == 0 ? underWay : null;
+            if(i == 1)
+            {
+                try
+                {
+                    underWay.await(30, TimeUnit.SECONDS);
+                }
+                catch(InterruptedException e)
+                {
+                    Thread.currentThread().interrupt();
+                }
+            }
             CompletableFuture<ChunkAnswer> call = CompletableFuture.supplyAsync(
-                () -> new ChunkAnswer(chunk, askChunk(request, song, planText, chunk, open)), pool);
+                () -> new ChunkAnswer(chunk, askChunk(request, song, planText, chunk, primer, open)), pool);
             call.whenComplete((answer, error) ->
             {
                 if(error != null)
@@ -324,7 +342,7 @@ public class SongMapper implements AutoCloseable
     private SongPlan songPlan(JsonNode request, String song, Set<StreamResponse<?>> open)
     {
         CompletableFuture<JsonNode> call = CompletableFuture.supplyAsync(() -> ask("song plan",
-            List.of(cachedSong(song), text(PLAN_QUESTION)), effort, planSchema(), open), pool);
+            List.of(cachedSong(song), text(PLAN_QUESTION)), effort, planSchema(), null, open), pool);
         try
         {
             return readSongPlan(request, call.get(SONG_PLAN_SECONDS, TimeUnit.SECONDS));
@@ -574,7 +592,7 @@ public class SongMapper implements AutoCloseable
         ObjectNode plan = json.createObjectNode();
         plan.put("mapper", getMapperName());
         ObjectNode charts = plan.putObject("charts");
-        int outside = 0, copied = 0, adjusted = 0, repaired = 0;
+        int outside = 0, copied = 0, filled = 0, adjusted = 0, repaired = 0;
         StringBuilder summary = new StringBuilder();
         for(String d : DIFFICULTIES)
         {
@@ -605,9 +623,14 @@ public class SongMapper implements AutoCloseable
             int[] c = { 0 };
             picks = matchRepeats(byId, songPlan.sections(), picks, c);
             copied += c[0];
+            Set<Long> filledIds = new HashSet<>();
+            int claude = picks.size();
+            picks = fillStrong(byId, d, picks, filledIds);
             int[] moved = { 0 };
             List<Pick> playable = playable(request, d, picks, moved);
-            adjusted += picks.size() - playable.size() + moved[0];
+            int keptFilled = (int) playable.stream().filter(p -> filledIds.contains(p.id())).count();
+            filled += keptFilled;
+            adjusted += claude - (playable.size() - keptFilled) + moved[0];
             Checked checked = check(request, d, toNodes(playable));
             charts.set(d, checked.notes());
             repaired += checked.fixes();
@@ -641,6 +664,10 @@ public class SongMapper implements AutoCloseable
         if(copied > 0)
         {
             notes.add(copied + " tiles copied so repeats match");
+        }
+        if(filled > 0)
+        {
+            notes.add(filled + " missed strong sounds filled in");
         }
         if(adjusted > 0)
         {
@@ -793,6 +820,97 @@ public class SongMapper implements AutoCloseable
         List<Pick> out = new ArrayList<>(unknown);
         bySound.values().forEach(out::addAll);
         return out;
+    }
+
+    /**
+     * Missed strong sounds filled in, still on real sounds: on Hard every strong sound (strength at
+     * least {@link #STRONG}) or accent without a tile; on Medium the accents; nothing on Easy. Its
+     * lane is the lane of the nearest tile on the same kind of sound (same band; for pitched sounds
+     * the nearest pitch) within 4 beats, so it follows the chart's lane scheme; otherwise by band
+     * and pitch. The playability rules then decide whether it fits (the stronger sound wins).
+     * {@code filled} collects the ids added.
+     */
+    public static List<Pick> fillStrong(Map<Long, JsonNode> byId, String difficulty, List<Pick> picks, Set<Long> filled)
+    {
+        if(difficulty.equals("easy"))
+        {
+            return picks;
+        }
+        Set<Long> charted = new HashSet<>();
+        List<Pick> known = new ArrayList<>();
+        for(Pick p : picks)
+        {
+            charted.add(p.id());
+            if(p.known())
+            {
+                known.add(p);
+            }
+        }
+        List<Integer> pitches = new ArrayList<>();
+        for(JsonNode e : byId.values())
+        {
+            if(e.path("pitched").asBoolean(false) && e.path("midi").isNumber() && "mid".equals(e.path("band").asString("")))
+            {
+                pitches.add(e.path("midi").asInt());
+            }
+        }
+        pitches.sort(null);
+        int median = pitches.isEmpty() ? 60 : pitches.get(pitches.size() / 2);
+        List<Pick> out = new ArrayList<>(picks);
+        List<JsonNode> sounds = new ArrayList<>(byId.values());
+        sounds.sort(Comparator.comparingDouble(e -> e.path("t").asDouble()));
+        for(JsonNode e : sounds)
+        {
+            long id = e.path("id").asLong();
+            boolean accent = e.path("accent").asBoolean(false);
+            boolean wanted = difficulty.equals("hard") ? accent || e.path("strength").asDouble(0) >= STRONG : accent;
+            if(!wanted || charted.contains(id))
+            {
+                continue;
+            }
+            out.add(Pick.on(e, laneLike(e, known, byId, median), false));
+            filled.add(id);
+        }
+        return out;
+    }
+
+    /** The lane for a sound: like the nearest tile on the same kind of sound, else by band and pitch. */
+    private static int laneLike(JsonNode e, List<Pick> known, Map<Long, JsonNode> byId, int median)
+    {
+        double t = e.path("t").asDouble();
+        String band = e.path("band").asString("");
+        boolean pitched = e.path("pitched").asBoolean(false) && e.path("midi").isNumber();
+        Pick best = null;
+        double bestScore = Double.MAX_VALUE;
+        for(Pick p : known)
+        {
+            double dt = Math.abs(p.t() - t);
+            if(dt > 4 || !band.equals(p.band()))
+            {
+                continue;
+            }
+            double score = dt / 4;
+            JsonNode pe = byId.get(p.id());
+            if(pitched && pe != null && pe.path("midi").isNumber())
+            {
+                score += Math.abs(pe.path("midi").asInt() - e.path("midi").asInt()) / 12.0;
+            }
+            if(score < bestScore)
+            {
+                bestScore = score;
+                best = p;
+            }
+        }
+        if(best != null)
+        {
+            return best.lane();
+        }
+        return switch(band)
+        {
+            case "low" -> 0;
+            case "high" -> 3;
+            default -> pitched ? (e.path("midi").asInt() <= median ? 1 : 2) : 2;
+        };
     }
 
     private static boolean sameTiles(List<Pick> a, List<Pick> b)
@@ -1017,16 +1135,19 @@ public class SongMapper implements AutoCloseable
     }
 
     /** One chunk's answer from Claude. */
-    private JsonNode askChunk(JsonNode request, String song, String planText, Chunk chunk, Set<StreamResponse<?>> open)
+    private JsonNode askChunk(JsonNode request, String song, String planText, Chunk chunk, CountDownLatch underWay, Set<StreamResponse<?>> open)
     {
         String what = chunk.difficulty() + " beats " + num(chunk.from()) + (chunk.last() ? "-end" : "-" + num(chunk.to()));
-        return ask(what, List.of(cachedSong(song), text(planText + "\n\n" + question(request, chunk))),
-            effortFor(chunk.difficulty()), chunkSchema(), open);
+        return ask(what, List.of(cachedSong(song), text(planText + "\n\n" + question(chunk))),
+            effortFor(chunk.difficulty()), chunkSchema(), underWay, open);
     }
 
-    /** A streamed call to Claude with a JSON answer. {@code what} names it in the logs and errors. */
+    /**
+     * A streamed call to Claude with a JSON answer. {@code what} names it in the logs and errors;
+     * {@code underWay} (if given) is counted down when the answer starts arriving.
+     */
     private JsonNode ask(String what, List<BetaContentBlockParam> blocks, BetaOutputConfig.Effort level, Map<String, JsonValue> schema,
-        Set<StreamResponse<?>> open)
+        CountDownLatch underWay, Set<StreamResponse<?>> open)
     {
         MessageCreateParams params = MessageCreateParams.builder()
             .model(model)
@@ -1051,7 +1172,14 @@ public class SongMapper implements AutoCloseable
         {
             stream = client.beta().messages().createStreaming(params);
             open.add(stream);
-            stream.stream().forEach(acc::accumulate);
+            stream.stream().forEach(event ->
+            {
+                acc.accumulate(event);
+                if(underWay != null)
+                {
+                    underWay.countDown();
+                }
+            });
         }
         catch(RateLimitException e)
         {
@@ -1074,6 +1202,10 @@ public class SongMapper implements AutoCloseable
             {
                 open.remove(stream);
                 stream.close();
+            }
+            if(underWay != null)
+            {
+                underWay.countDown(); // even on failure, so the other calls don't wait for nothing
             }
         }
 
@@ -1264,10 +1396,11 @@ public class SongMapper implements AutoCloseable
     }
 
     /**
-     * The question for one chunk: which stretch, what the plan says to follow there, and how many
-     * tiles to aim for (from the sounds in the stretch and the difficulty's spacing).
+     * The question for one chunk: which stretch, and to follow the plan there. (No tile counts:
+     * asking for exact numbers made Claude count sounds while thinking, which doubled its time; the
+     * server fills in missed strong sounds instead, see {@link #fillStrong}.)
      */
-    static String question(JsonNode request, Chunk chunk)
+    static String question(Chunk chunk)
     {
         String difficulty = chunk.difficulty();
         String range = chunk.from() == 0 && chunk.last()
@@ -1276,38 +1409,9 @@ public class SongMapper implements AutoCloseable
                 ? "beat " + num(chunk.from()) + " to the end (sounds with beat >= " + num(chunk.from()) + ")"
                 : "beats " + num(chunk.from()) + " to " + num(chunk.to()) + " (sounds with beat >= " + num(chunk.from())
                     + " and < " + num(chunk.to()) + ")";
-        int n = 0, strong = 0;
-        double first = Double.MAX_VALUE, last = 0;
-        for(JsonNode e : request.path("events"))
-        {
-            double t = e.path("t").asDouble();
-            if(!chunk.holds(t))
-            {
-                continue;
-            }
-            n++;
-            first = Math.min(first, t);
-            last = Math.max(last, t);
-            if(e.path("strength").asDouble(0) >= STRONG || e.path("accent").asBoolean(false))
-            {
-                strong++;
-            }
-        }
-        double bpm = request.path("timing").path("bpm").asDouble(120);
-        double beats = Math.max(1, last - Math.min(first, last) + 1);
-        int cap = (int) Math.floor(beats / minGap(difficulty, bpm)) + 1;
-        double[] share = switch(difficulty)
-        {
-            case "easy" -> new double[] { 0.15, 0.25 };
-            case "medium" -> new double[] { 0.35, 0.5 };
-            default -> new double[] { 0.6, 0.85 };
-        };
-        int lo = Math.min(cap, (int) Math.round(n * share[0])), hi = Math.min(cap, (int) Math.round(n * share[1]));
-        String target = "This stretch has " + n + " sounds, " + strong + " of them strong (strength >= " + num(STRONG) + " or an accent). "
-            + "Aim for about " + lo + "-" + hi + " tiles"
-            + (difficulty.equals("hard") ? ", including every strong sound unless two clash." : ", taking the strongest sounds of the part you follow first.");
         return "Chart " + difficulty.toUpperCase(Locale.ROOT) + " for " + range + ", following the plan above (its sections, what "
-            + difficulty + " follows in each, the lane scheme, and repeats charted the same way). " + target + " "
+            + difficulty + " follows in each, the lane scheme, and repeats charted the same way), at the density the brief gives for "
+            + difficulty + ". Don't count the sounds; chart them as you read. "
             + "List only notes on sounds in this stretch. Write `notes` as one line in time order, each note id:lane, with h after a "
             + "hold, e.g. `12:1 15:2h 15:3` (the same id in two lanes is a chord). In `follows`, one short sentence starting with a "
             + "verb on what this chart follows here, without naming the difficulty (e.g. \"Follows the vocal, adding kick and snare "

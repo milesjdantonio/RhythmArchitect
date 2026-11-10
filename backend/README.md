@@ -68,12 +68,13 @@ Claude lives in [../src/java/main/SongMapper.java](../src/java/main/SongMapper.j
   cache); without it (failure, or over 75 s) the charts use the measured sections;
 - **the charts**: each difficulty split into stretches cut where sections start (about 40 s of
   music for Hard, 80 s for Easy and Medium), all charted at once, one streamed call each, every
-  call given the plan and a tile target for its stretch (a whole song in one call took longer
-  than the app waits, 3 minutes);
-- then server rules: repeated sections get the same tiles on the matching sounds; spacing,
+  call given the plan (the first starts alone and writes the cache; a whole song in one call took longer
+  than the app waits);
+- then server rules: repeated sections get the same tiles on the matching sounds; missed strong
+  sounds filled in (Hard: all, Medium: accents); spacing,
   chords and holds per difficulty (the stronger sound wins a clash); no long runs on one lane;
 - model `claude-opus-5-5`, effort `high` for the plan and Hard, `medium` for Easy and Medium,
-  adaptive thinking (the model's default), 64K max tokens, a 165 s deadline for the whole plan;
+  adaptive thinking (the model's default), 64K max tokens, a 280 s deadline for the whole plan;
 - structured output: the plan as sections/lanes/summary/cues; each chart call's `notes` as one
   compact line (`12:1 15:2h 15:3`: sound id, lane, `h` for a hold) and `follows`;
 - the system prompt and the song's sound table as a cached prefix;

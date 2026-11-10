@@ -7,7 +7,7 @@ import { chartRequest, chartsFromPlan } from './charter';
 import { huesFor } from './osu';
 
 /** How long the AI charter may take before the on-device charts are used instead. */
-export const CHART_TIMEOUT_MS = 180_000;
+export const CHART_TIMEOUT_MS = 300_000;
 
 /** The charts a song gets: from the AI charter on the backend, or (when it can't) the on-device mapper. */
 export interface Charted {
