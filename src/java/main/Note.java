@@ -1,3 +1,7 @@
+package main;
+
+import java.util.Objects;
+
 public class Note
 {
     private NoteType noteType;
@@ -6,12 +10,12 @@ public class Note
     private double timeStamp;
     private int lane;
 
-    public void Note(NoteType nT, MusicNoteType mNT, double nL, double tS, int lane)
+    public Note(NoteType nT, MusicNoteType mNT, double nL, double tS, int lane)
     {
         noteType = nT;
         musicNoteType = mNT;
         noteLength = nL;
-        timeStamp tS;
+        timeStamp = tS;
         this.lane = lane;
     }
 
@@ -30,7 +34,7 @@ public class Note
         return musicNoteType;
     }
 
-    public void setMusicNoteType(NoteType mNT)
+    public void setMusicNoteType(MusicNoteType mNT)
     {
         musicNoteType = mNT;
     }
@@ -66,16 +70,22 @@ public class Note
     }
 
     @Override
-    public boolean equals(Note other)
+    public boolean equals(Object obj)
     {
-        if(other == null)
+        if(!(obj instanceof Note other))
         {
             return false;
         }
-        boolean noteTypes = noteType.equals(other.noteType);
-        boolean musicNoteTypes = musicNoteType.equals(other.musicNoteType);
+        boolean noteTypes = Objects.equals(noteType, other.noteType);
+        boolean musicNoteTypes = Objects.equals(musicNoteType, other.musicNoteType);
         boolean noteLengths = noteLength == other.noteLength;
         return noteTypes && musicNoteTypes && noteLengths;
+    }
+
+    @Override
+    public int hashCode()
+    {
+        return Objects.hash(noteType, musicNoteType, noteLength);
     }
 
     @Override

@@ -132,11 +132,17 @@ Both keep pooled judgements, a throttled HUD, and an eased video clock with a sm
 `node tools/check/flow.mjs [outDir] [width] [height]` (from `frontend/`) screenshots the app's main
 views; `node tools/check/autoplay.mjs <songId> <difficulty>` has a bot play a song and screenshots it.
 
-## The backend (mocked for now)
+## The backend
 
-The frontend talks to `/api` (or `VITE_API_BASE_URL`). `frontend/mock-server/` implements the whole
-contract inside the Vite server and keeps its songs in `frontend/.data/songs.json`. The contract is in
+The frontend talks to `/api` (or `VITE_API_BASE_URL`). The contract is in
 [docs/api.md](docs/api.md) and the types in [frontend/src/api/types.ts](frontend/src/api/types.ts).
+Two backends implement all of it:
+
+- **`backend/`** (Java, Spring Boot): the real one. Its AI charter is `src/java/main/SongMapper.java`, which calls Claude. Run it with
+  `./mvnw spring-boot:run` from `backend/` and set `VITE_API_BASE_URL=http://localhost:8080` in
+  `frontend/.env.local`; see [backend/README.md](backend/README.md).
+- **`frontend/mock-server/`**: runs inside the Vite server when `VITE_API_BASE_URL` is empty and
+  keeps its songs in `frontend/.data/songs.json`. Its charter answers by fixed rules.
 
 The mock never makes up a song. Search pulls up songs that are already mapped. **Generate
 beatmap** maps a new one, and it plays from YouTube:
@@ -234,5 +240,7 @@ frontend/               the game: everything below runs from here (npm scripts, 
     video/              the gameplay and listening recordings
     check/              screenshots and the autoplay bot
   tests/                unit/ and e2e/
+backend/                the Spring Boot backend (Java): songs, search, YouTube, fan charts
+src/java/main/          the game's Java classes: SongMapper (Claude, the AI charter), Song, Note, Queue
 docs/                   the backend contract (api.md, claude-backend.txt), resources, media
 ```

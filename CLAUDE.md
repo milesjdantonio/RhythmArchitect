@@ -14,6 +14,11 @@ Hard); they play it. The AI does not make music. Market and word everything that
   `src/game/` (rules), `src/stage/` (3D stage), `src/background/`, `src/intro/`, `src/screens/`,
   `src/components/` (shared, plus `menu/`, `play/`, `generate/`). The mock backend and the songs it
   starts with are in `mock-server/`.
+- The real backend is `backend/` at the repo root (Java 25, Spring Boot, Maven; see
+  `backend/README.md`): the same routes as the mock. Claude lives in `src/java/main/SongMapper.java`
+  at the repo root (package `main`, built into the backend), not in the backend's own code.
+  Its built-in songs are `src/main/resources/seed/songs.json` (`node tools/export-seed.mjs` from
+  `frontend/` after they change). Run `./mvnw test` there after changing it.
 
 ## Layout (fixed by the user)
 
@@ -57,8 +62,8 @@ Hard); they play it. The AI does not make music. Market and word everything that
   (`src/mapping/listen.ts`), then the backend's AI charter (Claude, `POST /api/chart`,
   `docs/claude-backend.txt`) picks which measured sounds become tiles; the browser enforces the
   rules on its plan (`src/mapping/charter.ts`) and falls back to the on-device charts.
-- Keep the request and plan types (`src/api/types.ts`), the mock (`mock-server/api.ts`) and
-  `docs/claude-backend.txt` in step.
+- Keep the request and plan types (`src/api/types.ts`), the mock (`mock-server/api.ts`), the
+  Spring Boot backend (`backend/`) and `docs/claude-backend.txt` in step.
 - If it can't listen, an osu! fan chart is the fallback (`mock-server/sources.ts`,
   `src/mapping/osu.ts`). Only tiles and a loudness curve are kept. Never download commercial audio.
 - Test with `localhost`, not `127.0.0.1` (label music refuses IPs).

@@ -1,26 +1,33 @@
+package main;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.List;
+import java.util.Map;
+
 public class Song
 {
-    private Queue<Note> chart;
+    private Map<Difficulty, Queue<Note>> charts;
     private String title;
     private String artist;
     private double duration;
     private double bpm;
 
-    public void Song(String title, String artist, double duration, double bpm)
+    public Song(String title, String artist, double duration, double bpm)
     {
         this.title = title;
         this.artist = artist;
         this.duration = duration;
         this.bpm = bpm;
+        charts = new EnumMap<Difficulty, Queue<Note>>(Difficulty.class);
     }
 
     /**
-     * Return the note queue for the difficulty.
+     * Return the note queue for the difficulty (null when it has no chart yet).
      */
     public Queue<Note> getChart(Difficulty difficulty)
     {
-        //COMING BACK
-
+        return charts.get(difficulty);
     }
 
     /*
@@ -28,7 +35,7 @@ public class Song
      */
     public void setChart(Difficulty difficulty, Queue<Note> chart)
     {
-        //COMING BACK
+        charts.put(difficulty, chart);
     }
 
     public String getTitle()
@@ -56,10 +63,13 @@ public class Song
      */
     public List<Difficulty> getAvailableDifficulties()
     {
-        List<Difficulty> difficulties = new List<Difficulty>;
+        List<Difficulty> difficulties = new ArrayList<Difficulty>();
         for(Difficulty option: Difficulty.values())
         {
-            difficulties.add(option);
+            if(charts.containsKey(option))
+            {
+                difficulties.add(option);
+            }
         }
         return difficulties;
     }

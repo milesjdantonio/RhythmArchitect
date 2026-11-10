@@ -1,4 +1,6 @@
-enum Difficulty
+package main;
+
+public enum Difficulty
 {
     EASY,
     MEDIUM,

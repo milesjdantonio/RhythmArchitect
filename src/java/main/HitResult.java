@@ -1,4 +1,6 @@
-enum HitResult
+package main;
+
+public enum HitResult
 {
     PERFECT,
     GOOD,

@@ -1,28 +1,36 @@
-import java.util.EmptyQueueException;
+package main;
+
 public class Queue<T>
 {
     private Node<T> firstNode;
     private Node<T> lastNode;
     private int size;
 
-    public void Queue<T>()
+    public Queue()
     {
         firstNode = null;
         lastNode = null;
+        size = 0;
     }
 
     public void enqueue(Node<T> item)
     {
+        item.setNext(null);
         if(isEmpty())
         {
             firstNode = item;
-            lastNode = item;
         }
         else
         {
             lastNode.setNext(item);
         }
+        lastNode = item;
         size++;
+    }
+
+    public void enqueue(T data)
+    {
+        enqueue(new Node<T>(data));
     }
 
     public T dequeue()
@@ -34,25 +42,36 @@ public class Queue<T>
         T data = firstNode.getData();
         firstNode = firstNode.getNext();
         size--;
+        if(isEmpty())
+        {
+            lastNode = null;
+        }
         return data;
     }
 
     public void clear()
     {
         size = 0;
-        frontNode = null;
+        firstNode = null;
         lastNode = null;
     }
 
-    public void isEmpty()
+    public boolean isEmpty()
     {
         return size == 0;
     }
 
-    public T peek()
+    public int getSize()
     {
-        return firstNode.getData();
+        return size;
     }
 
-
+    public T peek()
+    {
+        if(isEmpty())
+        {
+            throw new EmptyQueueException();
+        }
+        return firstNode.getData();
+    }
 }

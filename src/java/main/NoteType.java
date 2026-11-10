@@ -1,4 +1,6 @@
-enum NoteType
+package main;
+
+public enum NoteType
 {
     A,
     B,

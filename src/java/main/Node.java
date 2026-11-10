@@ -1,9 +1,16 @@
+package main;
+
 public class Node<T>
 {
     Node<T> next;
     T data;
 
-    public void Node<T>(T data, Node<T> next)
+    public Node(T data)
+    {
+        this(data, null);
+    }
+
+    public Node(T data, Node<T> next)
     {
         this.data = data;
         this.next = next;

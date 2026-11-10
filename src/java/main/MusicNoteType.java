@@ -1,4 +1,6 @@
-enum MusicNoteType
+package main;
+
+public enum MusicNoteType
 {
     NORMAL,
     START,
