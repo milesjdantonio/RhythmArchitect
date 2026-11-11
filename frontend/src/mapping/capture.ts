@@ -27,7 +27,9 @@ export class Placer {
   pcm: Float32Array;
   private next = -1;
   end = 0;
-  constructor(readonly sr: number, seconds: number) { this.pcm = new Float32Array(Math.ceil((seconds + 2) * sr)); }
+  readonly sr: number;
+  // (No parameter properties: tools/replay-listen.mjs runs this file in Node, which strips types only.)
+  constructor(sr: number, seconds: number) { this.sr = sr; this.pcm = new Float32Array(Math.ceil((seconds + 2) * sr)); }
   write(pos: number, samples: Float32Array) {
     let at = Math.round(pos * this.sr);
     if (this.next >= 0 && Math.abs(at - this.next) <= this.sr * 0.03) at = this.next;
@@ -122,28 +124,56 @@ export function chooseRecording(chunks: Chunk[], marks: Mark[], sr: number, seco
 
 /** The stretches of steady playback in the position reads, each with its offset (see placeChunks). */
 export function stretchesOf(marks: Mark[]): { from: number; to: number; offset: number }[] {
-  const stretches: { from: number; to: number; offset: number }[] = [];
+  const stretches: { from: number; to: number; offset: number; paused: boolean }[] = [];
   let run: number[] = [];
   let from = 0, to = 0;
+  // Whether the video stopped (a pause, buffering) since the last stretch: then the next one is apart.
+  let paused = true, runPaused = true;
   const close = () => {
     if (run.length >= 3) {
       const s = [...run].sort((a, b) => a - b);
-      stretches.push({ from, to, offset: s[s.length >> 1] });
+      stretches.push({ from, to, offset: s[s.length >> 1], paused: runPaused });
     }
     run = [];
   };
   for (const m of marks) {
-    if (!m.playing) { close(); continue; }
+    if (!m.playing) { close(); paused = true; continue; }
     const d = m.c - m.v;
     if (run.length) {
       // Against the recent reads (a single odd read doesn't split a stretch; a lasting jump does).
       const recent = run.slice(-31).sort((a, b) => a - b);
       if (Math.abs(d - recent[recent.length >> 1]) > STRETCH_JUMP) close();
     }
-    if (!run.length) from = m.c;
+    if (!run.length) { from = m.c; runPaused = paused; paused = false; }
     run.push(d);
     to = m.c;
   }
   close();
-  return stretches;
+  return heal(stretches);
+}
+
+/** Stretches shorter than this are a glitch in the position reads (a clock catching up), not playback of their own. */
+const STRETCH_MIN = 0.75;
+/** Neighbouring stretches whose offsets differ by less than this are one: the reads only broke off between them. */
+const STRETCH_SAME = 0.1;
+
+/**
+ * Mends the stretches a real listen gives: brief ones (a glitch in the reads) go, and neighbours
+ * with the same offset join into one, so the sound between them (heard while the reads broke off,
+ * the tab hidden or the page stalled) is kept. A pause or a seek changes the offset: those stay apart.
+ */
+function heal(stretches: { from: number; to: number; offset: number; paused: boolean }[]) {
+  const long = stretches.filter((s) => s.to - s.from >= STRETCH_MIN);
+  const kept = long.length ? long : stretches;
+  const out: { from: number; to: number; offset: number }[] = [];
+  for (const s of kept) {
+    const prev = out[out.length - 1];
+    if (prev && !s.paused && Math.abs(s.offset - prev.offset) < STRETCH_SAME) {
+      // One stretch: the longer one's offset counts more.
+      const a = prev.to - prev.from, b = s.to - s.from;
+      prev.offset = (prev.offset * a + s.offset * b) / Math.max(1e-9, a + b);
+      prev.to = s.to;
+    } else out.push({ from: s.from, to: s.to, offset: s.offset });
+  }
+  return out;
 }

@@ -9,13 +9,14 @@
 // short tick played into the tab before the song measures that delay, so tiles land on the sound.
 
 import * as Tone from 'tone';
-import { YT_STATE, ytCue, ytOnError, ytPause, ytPlayFrom, ytState, ytTime } from '../audio/youtube';
+import { YT_STATE, ytCue, ytOnError, ytPause, ytPlayFrom, ytRawTime, ytState, ytTime } from '../audio/youtube';
 import { unlockAudio } from '../audio/playback';
 import type { AutomapResult } from './automap';
 import type { FromMapper, ToMapper } from './listen.worker';
 import type { ChartProgress, SongLevels } from '../api/types';
 import type { Trained, TrainedStage } from './ensomi';
 import { Placer, chooseRecording, findTick, type Chunk, type Mark } from './capture';
+import { logChunk, logMark, newListenLog, saveListenLog } from './listenLog';
 
 export type ListenFailure = 'unsupported' | 'declined' | 'no-audio' | 'silent' | 'stopped' | 'video';
 
@@ -189,10 +190,38 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
     // comes out clearly worse (chooseRecording).
     const asHeard = new Placer(sr, duration || 600);
     let loud = 0, heard = 0;
+    // Where the video is, read as often as possible: on every frame while the tab is in view, and
+    // on every chunk of sound the audio thread hands over (those keep coming when the tab is
+    // hidden, when the page gets no frames at all), with a timer as a last resort.
+    const log = newListenLog(opts.videoId, duration, sr, delay, calibrated);
+    let finish: (() => void) | null = null;
+    let ending = false;
+    const sample = () => {
+      if (done || ending) return;
+      if (aborted() || failure) { ending = true; finish?.(); return; }
+      const st = ytState();
+      const v = ytTime();
+      const c = ctx.currentTime;
+      marks.push({ c, v, playing: st === YT_STATE.PLAYING });
+      logMark(log, c, v, ytRawTime(), st, typeof document !== 'undefined' && document.hidden);
+      const len = duration || 600;
+      opts.onProgress?.(Math.min(1, v / Math.max(1, len)));
+      // Nothing but silence 8 s in: the wrong tab, or its sound wasn't shared.
+      if (v > 8 && heard > sr * 6 && loud / heard < 1e-7) {
+        fail(new ListenError("No sound came through. Share this tab (not another one) with “Also share tab audio” on.", 'silent'));
+      }
+      if (st === YT_STATE.ENDED || (duration && v >= duration - 0.05)) {
+        // Let the last captured chunks arrive.
+        ending = true;
+        setTimeout(() => finish?.(), 400 + delay * 1000);
+      }
+    };
     tap.port.onmessage = (e: MessageEvent<{ t: number; d: Float32Array }>) => {
       if (done) return;
+      sample();
       const { t, d } = e.data;
       const c = t - delay;
+      logChunk(log, c, Math.floor(d.length / k));
       const out = new Float32Array(Math.floor(d.length / k));
       let chunk = 0;
       for (let i = 0; i < out.length; i++) {
@@ -231,33 +260,23 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
       }
     };
     ytPlayFrom(0);
-    await new Promise<void>((resolve) => {
-      const tick = () => {
-        if (aborted() || failure) { resolve(); return; }
-        const st = ytState();
-        const v = ytTime();
-        marks.push({ c: ctx.currentTime, v, playing: st === YT_STATE.PLAYING });
-        const len = duration || 600;
-        opts.onProgress?.(Math.min(1, v / Math.max(1, len)));
-        // Nothing but silence 8 s in: the wrong tab, or its sound wasn't shared.
-        if (v > 8 && heard > sr * 6 && loud / heard < 1e-7) {
-          fail(new ListenError("No sound came through. Share this tab (not another one) with “Also share tab audio” on.", 'silent'));
-        }
-        if (st === YT_STATE.ENDED || (duration && v >= duration - 0.05)) {
-          // Let the last captured chunks arrive.
-          setTimeout(resolve, 400 + delay * 1000);
-          return;
-        }
+    const backstop = setInterval(sample, 500);
+    try {
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+        const tick = () => { sample(); if (!ending && !done) requestAnimationFrame(tick); };
         requestAnimationFrame(tick);
-      };
-      requestAnimationFrame(tick);
-    });
+      });
+    } finally {
+      clearInterval(backstop);
+    }
     done = true;
     ytPause();
     if (aborted()) throw new DOMException('Cancelled', 'AbortError');
     if (failure) throw failure;
     const recording = chooseRecording(chunks, marks, sr, duration || 600, asHeard.result());
     if (import.meta.env?.DEV) console.info('[listen] ' + recording.note);
+    saveListenLog(log, recording.note);
     return { pcm: recording.pcm, sr, delay, calibrated, placement: recording.note };
   } finally {
     cleanup.forEach((f) => f());

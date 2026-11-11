@@ -83,6 +83,16 @@ Hard); they play it. The AI does not make music. Market and word everything that
   ~172 MB, `stemModel.ts`; e2e: `rythm-architect:no-stems`), and the onset mapper's own charts
   (`charts.ts`) are used. All the models run on one ONNX Runtime (`src/mapping/ort.ts`); any of
   them failing leaves the next step to carry on.
+- The recording: every chunk the audio thread hands over is kept; the video position is read on
+  each chunk (they keep coming with the tab hidden) and every frame; at the end `placeChunks`
+  (`src/mapping/capture.ts`) files it by stretches of steady playback (`stretchesOf`, healed:
+  glitches dropped, same-offset neighbours joined), and `chooseRecording` falls back to the
+  as-heard placement if that came out clearly worse. The dev tools' Listen line says which.
+- **Debugging a real listen: ask for its log, don't guess.** The user's real YouTube listens
+  differ from simulations. The dev tools' "Download listen log" saves the timing of the last
+  listen (position reads, player states, tab hidden; no audio; `src/mapping/listenLog.ts`);
+  `node tools/replay-listen.mjs <log.json>` replays it through the placement and reports what the
+  recording holds, the gaps, the hidden spans and the stretches.
 - Keep the API types (`src/api/types.ts`), the mock (`mock-server/api.ts`) and the Spring Boot
   backend (`backend/`) in step. No AI runs on the server.
 - If it can't listen, an osu! fan chart is the fallback (`mock-server/sources.ts`,

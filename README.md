@@ -180,6 +180,7 @@ npm run dev          # http://localhost:5173, with the mock backend at /api
 | `npm run video:listen` | Record the listening and loading process (Generate → listen → map → chart → load → play) to `docs/media/listening.webm`; self-contained (own server, stand-in YouTube player) |
 | `npm run map` | Re-map the bundled test tracks with the onset mapper (`frontend/src/mapping/automap.ts`) |
 | `npm run video` | Record `docs/media/gameplay.webm` (needs `npm run dev`) |
+| `node tools/replay-listen.mjs <log.json>` | Replay a real listen from its log (dev tools on a mapped song → *Download listen log*: the timing only, no audio): how much of the song the recording holds, the gaps, when the tab was hidden |
 
 **Performance.** The game screen draws as "one stage". How it draws is a profile in
 `frontend/src/lib/perf.ts`: **B where the browser has WebGPU, A where it doesn't** (`gameProfile()`,
@@ -413,6 +414,26 @@ you get it right. Nothing in the MVP plays part of a song or changes its speed.
 | `Note`, `NoteType`, `MusicNoteType`, `Difficulty`, `HitResult` | Notes keep their real times; only the clock is scaled. |
 | `SongWriter` | Charts are made the same way; practice picks part of one. |
 | The mappers (`frontend/src/mapping/`) | Practice plays existing charts. |
+
+### Idea: Overdrive, a power-up you earn
+
+The player builds up a **charge** by hitting tiles, faster the more accurate they are (a Perfect
+fills more than a Good; a miss drains some). When the meter is full, the game says so, and pressing
+**Space** sets off **Overdrive** for a while: the stage switches to a bigger, showier mode with
+more striking animations and extra effects (the light, particles and colour go further, the track
+and the backdrop react harder to every hit), in the spirit of the special mode in *Tetris Effect:
+Connected* (a reference for the feeling, not something to copy). When the charge runs out, the
+game returns to normal and the meter starts filling again.
+
+Open questions: does Overdrive change scoring (a multiplier, or looks only)? How long does it
+last, and can a second charge extend it? Can it be set off any time, or only between phrases?
+
+| Would change | How (a first guess) |
+|---|---|
+| `Score` | The charge: `addHit(HitResult)` fills it by accuracy, `addMiss()` drains it; new `getCharge()`, `isCharged()`, `startOverdrive()`, `isOverdrive()`. |
+| `Main` | `processInput` takes Space (today an "undefined key", ignored) and starts Overdrive when charged; times its end. |
+| View | `frontend/src/stage/Stage3D.ts` (and its WebGPU twin) gets an Overdrive look; `frontend/src/components/play/PlayHud.tsx` shows the meter and the cue to press Space; `frontend/src/game/engine.ts` the same rules for the offline fallback. |
+| Should not change | `Queue`, `Node`, `Note`, `Song`, `SongWriter`, the mappers: Overdrive changes how a run plays and looks, not the charts. |
 
 ### Stretch goals
 

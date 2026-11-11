@@ -75,8 +75,10 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       // The trained mapper's own, larger beat tracker (right or exactly half or double on 27 of 28
       // test songs) sets the grid when the beat tracker found no steady beat (the grid is the onset
       // mapper's guess, which reads fast songs at 2/3 of their tempo), and when the two trackers
-      // disagree by more than double or half (a steady but wrong beat: 119 BPM on a 200 BPM song).
-      // Where they agree, the beat tracker's grid stays (it is exactly right more often).
+      // disagree by more than double or half while the beat tracker's beats don't hold one straight
+      // grid (a steady-ish but wrong beat: 119 BPM, straight grid 0%, on a 200 BPM song). Where they
+      // agree, or the beat tracker's grid is straight (99.95 BPM, 97%, on that song: right; the
+      // trained mapper said 119), the beat tracker's grid stays.
       const sameBeat = (a: number, b: number) => [1, 2, 0.5].some((k) => Math.abs(a / b / k - 1) < 0.04);
       let regridded: typeof result | undefined;
       const out = await trainedCharts(ort!, pcm, sr, {
@@ -86,8 +88,8 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
         onStage: (stage, p) => post({ stage, p }),
         onProgress: (p) => post({ chart: p }),
         regrid: (g) => {
-          if (result.gridUsed && sameBeat(result.bpm, g.bpm)) return null;
-          const why = result.gridUsed ? `the beat tracker's ${result.bpm} BPM disagreed` : 'the beat tracker found no steady beat';
+          if (result.gridUsed && (sameBeat(result.bpm, g.bpm) || result.onBeatGrid)) return null;
+          const why = result.gridUsed ? `the beat tracker's ${result.bpm} BPM disagreed and drifted off one grid` : 'the beat tracker found no steady beat';
           const again = automap(pcm, sr, { grid: { ...g, confidence: 1, fit: 1 }, stems });
           again.report.beat = `the trained mapper's beat tracker: ${g.bpm} BPM, ${g.meter}/4 (used: ${why}) · ${result.report.beat ?? 'no beat tracker'}`;
           regridded = again;

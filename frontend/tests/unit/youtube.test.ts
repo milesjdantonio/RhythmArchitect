@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DIFFICULTIES } from '../../src/api/types';
 import { FollowClock } from '../../src/audio/clock';
-import { Placer, chooseRecording, findTick, placeChunks, type Mark } from '../../src/mapping/capture';
+import { Placer, chooseRecording, findTick, placeChunks, stretchesOf, type Mark } from '../../src/mapping/capture';
 import { computeLevels, decodeLevels, levelAt, levelsFromNotes } from '../../src/mapping/levels';
 import { beatGrid, fanNotes, fanSong, parseOsu } from '../../src/mapping/osu';
 import { setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchSet } from '../../mock-server/match';
@@ -215,6 +215,26 @@ describe('the listening pass', () => {
       expect(pcm[6000]).toBe(8001); // video 6 s was heard at context 18 s (after 2 s of buffering)
       expect(pcm[21000]).toBe(13001); // after the seek: video 21 s heard at context 23 s
       expect(pcm[15000]).toBe(0); // skipped by the seek: nothing heard there
+    });
+
+    it('keeps the whole song when the tab was hidden a while (no reads, then a clock catching up) or the reads glitched', () => {
+      const marks: Mark[] = [];
+      for (let c = 10; c < 40; c += 0.016) {
+        if (c > 14 && c < 26) continue; // the tab hidden for 12 s: no reads at all
+        // Back in view, the clock is off for a moment (0.3 s at +0.4 s) before it settles.
+        const glitch = c >= 26 && c < 26.3 ? 0.4 : 0;
+        // And a brief glitch later on (0.5 s at -0.3 s).
+        const blip = c >= 33 && c < 33.5 ? -0.3 : 0;
+        marks.push({ c, v: c - 10 + glitch + blip, playing: true });
+      }
+      const chunks = capture(30);
+      expect(stretchesOf(marks)).toHaveLength(1);
+      const pcm = placeChunks(chunks, marks, sr, 30);
+      // Every sample, in order, where it was heard, through the hidden stretch and the glitches.
+      expect(pcm[10000]).toBe(10001); // video 10 s: heard while the tab was hidden
+      let jumps = 0;
+      for (let i = 1; i < pcm.length; i++) if (pcm[i] - pcm[i - 1] !== 1) jumps++;
+      expect(jumps).toBe(0);
     });
 
     it('keeps the seamless placement, unless it loses the start the as-heard placement has', () => {

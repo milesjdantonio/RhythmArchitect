@@ -5,6 +5,7 @@ import { syncStatus, syncedOffset } from '../../audio/syncer';
 import { KEYS, fallTime, type Game } from '../../game/engine';
 import { laneHue } from '../../game/render';
 import { cuesFor } from '../../mapping/cues';
+import { downloadListenLog, lastListenLog } from '../../mapping/listenLog';
 import { setSettings, useSettings } from '../../lib/settings';
 import { Icon } from '../Icon';
 
@@ -53,6 +54,8 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
   const errors = useRef<HTMLCanvasElement>(null);
   const [, setTick] = useState(0);
   const [confirm, setConfirm] = useState(false);
+  // The timing log of the listen that mapped this song, if this browser made it (the last one only).
+  const [listenLog] = useState(() => (song.source.kind === 'youtube' && song.source.videoId ? lastListenLog(song.source.videoId) : null));
   const [deleteError, setDeleteError] = useState('');
   // Resync: the Map Syncer checks this song again and lines up the music playing now.
   const [resynced, setResynced] = useState(false);
@@ -197,6 +200,11 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
           <div><dt>Cues</dt><dd>{cues.length}</dd></div>
         </dl>
         <p className="dev-note mono">{song.report.sections.map((s) => `${s.label} @${s.beat}`).join(' · ')}</p>
+        {listenLog && (
+          <button type="button" className="btn btn-sm" onClick={() => downloadListenLog(listenLog)} title="The timing of the listen that mapped this song (video positions, player states, tab hidden); no audio">
+            Download listen log
+          </button>
+        )}
         {confirm ? (
           <div className="dev-confirm">
             <span>Delete this map for good?</span>
