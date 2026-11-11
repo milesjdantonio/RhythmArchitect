@@ -86,6 +86,8 @@ export interface AutomapResult {
    * beats hold one straight grid (with drift, beat 0 and the tempo are right on average only).
    */
   onBeatGrid: boolean;
+  /** The grid given (opts.grid) set the tempo and beat 0; false: the mapper's own estimate did. */
+  gridUsed: boolean;
   lengthBeats: number;
   charts: ReturnType<typeof buildCharts>;
   report: MapReport;
@@ -621,6 +623,7 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
     meter,
     offset: Math.round(offset * 1000) / 1000,
     onBeatGrid: !!grid && (grid.fit ?? 1) >= GRID_STRAIGHT,
+    gridUsed: !!grid,
     lengthBeats: Math.round(lengthBeats * 100) / 100,
     charts,
     onsets: onsets.length,

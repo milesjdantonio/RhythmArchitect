@@ -72,14 +72,24 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
     if (!charting) return;
     try {
       const { trainedCharts } = await import('./ensomi');
+      // When the beat tracker found no steady beat (the grid is the onset mapper's own guess), the
+      // trained mapper's own, larger beat tracker sets the grid instead: right or exactly half or
+      // double on 27 of 28 test songs, where the onset guess reads fast songs at 2/3 of their tempo.
+      let regridded: typeof result | undefined;
       const out = await trainedCharts(ort!, pcm, sr, {
         base: trained!.base, title: trained!.title, artist: trained!.artist,
         bpm: result.bpm, offset: result.offset, events: result.events,
         onGrid: result.onBeatGrid, gpu,
         onStage: (stage, p) => post({ stage, p }),
         onProgress: (p) => post({ chart: p }),
+        regrid: result.gridUsed ? undefined : (g) => {
+          const again = automap(pcm, sr, { grid: { ...g, confidence: 1, fit: 1 }, stems });
+          again.report.beat = `the trained mapper's beat tracker: ${g.bpm} BPM, ${g.meter}/4 (used) · ${result.report.beat ?? 'no beat tracker'}`;
+          regridded = again;
+          return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid };
+        },
       });
-      post({ trained: out });
+      post({ trained: regridded ? { ...out, result: regridded } : out });
     } catch (err) {
       console.warn('[mapper] the trained mapper failed', err);
       post({ trainedFailed: err instanceof Error ? err.message : String(err) });

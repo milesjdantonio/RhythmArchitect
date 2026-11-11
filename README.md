@@ -268,8 +268,10 @@ Before that, two models run in the browser on what was heard (the mapping worker
 - **The beat** (`beats.ts`): the Beat This! tracker (10 MB, `frontend/public/models/`) finds the beats and
   downbeats; its grid sets the tempo, beat 0 and the meter (3 or 4) whenever its beat is steady beat
   to beat for at least 40% of the song, even when it drifts off one straight grid (a long song, or the
-  capture slipping); the onset mapper's own estimate is only the fallback for when it finds no steady
-  beat (it reads fast songs at 2/3 of their tempo). On 14 Creative Commons tracks with known tempos
+  capture slipping). When it finds no steady beat, the trained mapper's own, larger beat tracker
+  (the grid of the chart Ensomi writes, `osuGrid`) sets the tempo instead: right or exactly half or
+  double on 27 of 28 test songs, though it reads fast songs at half time. The onset mapper's own
+  estimate (which reads fast songs at 2/3 of their tempo) is left only for when neither is there. On 14 Creative Commons tracks with known tempos
   (full length) it gets 11 right (two very slow songs at double time, one at 1.5 times) against 8 for
   the onset estimate; the same 14 sped up to 200 BPM, over 6 minutes, through a simulated listen
   (a coarse YouTube clock, page stalls): 12 right (one at half time, one wrong). (An earlier rule,

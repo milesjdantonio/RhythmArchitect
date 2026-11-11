@@ -190,7 +190,9 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       // The trained mapper's Easy, Medium and Hard get their checks one after another (~0.45 s
       // each) while the song is saved; the tiles land after that.
       const ticked = trained && 'charts' in trained ? new Promise((r) => setTimeout(r, 1500)) : null;
-      const song = await api.createSong(songFromListening(mapped, video, heard, charted));
+      // The song measured again on the trained mapper's beat grid, when that replaced the first one.
+      const measured = trained && 'charts' in trained && trained.result ? { ...mapped, result: trained.result } : mapped;
+      const song = await api.createSong(songFromListening(measured, video, heard, charted));
       await ticked;
       if (signal?.aborted) return;
       // Show the map landing on the sound it came from, then open it.

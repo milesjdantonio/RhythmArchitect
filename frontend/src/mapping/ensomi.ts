@@ -52,7 +52,12 @@ async function tables(path: string): Promise<Uint8Array> {
 export interface Trained {
   charts: Record<Difficulty, Chart>;
   mapper: string;
+  /** The song measured again on the model's beat grid, when that replaced the first grid (see TrainedOptions.regrid). */
+  result?: import('./automap').AutomapResult;
 }
+
+/** A beat grid: tempo, the seconds into the audio of a downbeat, beats per bar. */
+export interface BeatGrid { bpm: number; offset: number; meter: number }
 
 export interface TrainedOptions {
   base: string;
@@ -68,6 +73,13 @@ export interface TrainedOptions {
   onStage?: (stage: TrainedStage, p?: number) => void;
   /** Each difficulty once its chart is made (done 1 of 1, with its tiles). */
   onProgress?: (p: ChartProgress) => void;
+  /**
+   * The model's own beat grid (from its larger beat tracker, as its chart's timing), already moved
+   * like its tiles: return the song's grid and sounds measured again on it to place the tiles
+   * there, or null to keep the first grid. Called only when given (the first grid wasn't the
+   * beat tracker's).
+   */
+  regrid?: (grid: BeatGrid) => Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'> | null;
   title?: string;
   artist?: string;
 }
@@ -117,13 +129,49 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     o.onStage?.('chart', 1);
     const objects = result.chart.objects;
     const shift = soundShift(objects, o.events);
-    const charts = easierCharts(toChart(objects, 'hard', o, shift).notes, o);
+    // When the first grid wasn't the beat tracker's, the model's own grid (its larger beat tracker)
+    // can replace it: then the tiles go on that one.
+    let on: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'> = o;
+    const own = o.regrid ? osuGrid(result.osu, songMs / 1000) : null;
+    if (own && o.regrid) on = o.regrid({ ...own, offset: Math.round((own.offset + shift) * 1000) / 1000 }) ?? o;
+    const charts = easierCharts(toChart(objects, 'hard', on, shift).notes, on);
     for (const d of DIFFS) o.onProgress?.({ difficulty: d, done: 1, total: 1, tiles: charts[d].notes.length });
     const v = models.capabilities.model_version;
     return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${STAR}★; each difficulty a subset; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds)` };
   } finally {
     await models.dispose().catch(() => {});
   }
+}
+
+/**
+ * The model's beat grid, from the timing of the .osu chart it writes: its uninherited timing
+ * points ("time,beatLength,meter,...,1,..."), the one that covers most of the song (a chart may
+ * change tempo), its downbeat moved back to the earliest one at or after 0 s. Null without one,
+ * or out of 40-260 BPM.
+ */
+export function osuGrid(osu: string, songSeconds: number): BeatGrid | null {
+  const lines = osu.split(/\r?\n/);
+  const at = lines.findIndex((l) => l.trim() === '[TimingPoints]');
+  if (at < 0) return null;
+  const red: { t: number; beat: number; meter: number }[] = [];
+  for (let i = at + 1; i < lines.length && lines[i].trim() && !lines[i].startsWith('['); i++) {
+    const f = lines[i].split(',');
+    const beat = Number(f[1]);
+    if (f.length >= 7 && f[6].trim() === '1' && beat > 0) red.push({ t: Number(f[0]) / 1000, beat: beat / 1000, meter: Number(f[2]) || 4 });
+  }
+  if (!red.length) return null;
+  red.sort((a, b) => a.t - b.t);
+  let best = red[0], span = -1;
+  for (let i = 0; i < red.length; i++) {
+    const until = i + 1 < red.length ? red[i + 1].t : Math.max(songSeconds, red[i].t);
+    if (until - Math.max(0, red[i].t) > span) { span = until - Math.max(0, red[i].t); best = red[i]; }
+  }
+  const bpm = Math.round((60 / best.beat) * 100) / 100;
+  if (!(bpm > 40 && bpm < 260)) return null;
+  const meter = best.meter === 3 ? 3 : 4;
+  const bar = best.beat * meter;
+  const offset = best.t - Math.floor(best.t / bar) * bar;
+  return { bpm, offset: Math.round(offset * 1000) / 1000, meter };
 }
 
 /**

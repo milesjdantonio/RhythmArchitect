@@ -69,8 +69,10 @@ Hard); they play it. The AI does not make music. Market and word everything that
   beat is steady beat to beat (`confidence` ≥ `GRID_TRUST`), even if it drifts off one straight
   grid (`fit`) (`gridRefusal` in `automap.ts`; a 3:2-clash guard was tried and dropped: right
   once, wrong once). Don't judge it by one straight grid over the whole song: that threw away right
-  tempos (a 200 BPM song kept at 121). Then `automap.ts` measures every sound, the grid and the
-  sections, and the page shows them.
+  tempos (a 200 BPM song kept at 121). When it isn't steady, the trained mapper's own grid (its
+  .osu timing, `osuGrid` in `ensomi.ts`; larger tracker, often half or double) replaces the onset
+  estimate after charting: `regrid` re-runs `automap` on it, and the page saves that result. Then
+  `automap.ts` measures every sound, the grid and the sections, and the page shows them.
 - The tiles come from the trained mapper: Ensomi R2 (`src/mapping/ensomi.ts`, `@ensomi/runtime`;
   ~120 MB model from Hugging Face pinned to one commit, prefetched while listening, cached;
   `ensomiModel.ts`), run in the same worker after the onset mapper. It charts once at its lowest

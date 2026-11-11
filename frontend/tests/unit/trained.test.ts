@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChartNote, SoundEvent } from '../../src/api/types';
 import { capChord, thinChart, type ThinOptions } from '../../src/mapping/thin';
-import { easierCharts, soundShift, toChart } from '../../src/mapping/ensomi';
+import { easierCharts, osuGrid, soundShift, toChart } from '../../src/mapping/ensomi';
 
 const BPM = 120, SPB = 0.5;
 
@@ -119,5 +119,26 @@ describe('the trained mapper\'s tiles on the song\'s grid', () => {
     expect(c.medium.notes.length).toBeLessThan(c.hard.notes.length);
     expect(c.hard.notes.length).toBeLessThanOrEqual(model.length);
     for (const d of ['easy', 'medium', 'hard'] as const) expect(c[d].lanes).toBe(4);
+  });
+});
+
+describe("the trained mapper's own beat grid (its chart's timing)", () => {
+  const osu = (points: string[]) => ['osu file format v14', '', '[TimingPoints]', ...points, '', '[HitObjects]', '64,192,1000,1,0'].join('\n');
+
+  it('takes the tempo, meter and a downbeat from its timing point', () => {
+    // 100 BPM (600 ms a beat), 4/4, a downbeat at 2.135 s: within the first bar (2.4 s), so it stays.
+    expect(osuGrid(osu(['2135,600,4,2,0,60,1,0']), 360)).toEqual({ bpm: 100, offset: 2.135, meter: 4 });
+    // A downbeat far into the song moves back to the earliest one at or after 0 s.
+    expect(osuGrid(osu(['303395,600,4,2,0,60,1,0']), 360)!.offset).toBeCloseTo(303.395 - 126 * 2.4, 3);
+  });
+
+  it('with tempo changes, the timing point that covers most of the song; green lines are ignored', () => {
+    const g = osuGrid(osu(['906,608.27,4,2,0,60,1,0', '30404,-100,4,2,0,60,0,0', '122177,456.27,4,2,0,60,1,0', '141323,608.25,4,2,0,60,1,0']), 385)!;
+    expect(g.bpm).toBeCloseTo(98.64, 1); // 141 s to the end is the longest stretch
+  });
+
+  it('none without timing, or out of range', () => {
+    expect(osuGrid('[HitObjects]\n1,1,1,1,0', 60)).toBeNull();
+    expect(osuGrid(osu(['0,100,4,2,0,60,1,0']), 60)).toBeNull(); // 600 BPM
   });
 });
