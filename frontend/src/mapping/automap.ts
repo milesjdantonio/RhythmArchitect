@@ -37,9 +37,9 @@ export interface AutomapOptions {
   bpmRange?: [number, number];
   /**
    * A beat grid from the trained beat tracker (beats.ts): used instead of the mapper's own tempo
-   * and phase estimate when its confidence is at least GRID_TRUST (its meter too).
+   * and phase estimate (its meter too) when its beat is steady (see useGrid).
    */
-  grid?: { bpm: number; offset: number; meter: number; confidence: number } | null;
+  grid?: { bpm: number; offset: number; meter: number; confidence: number; fit?: number } | null;
   /**
    * The song split into parts (stems.ts), each mono at the same rate and length as the mix:
    * sounds are then found in each part on its own.
@@ -53,8 +53,27 @@ export interface AutomapOptions {
 export type PartName = 'drums' | 'bass' | 'vocals' | 'other';
 export const PART_NAMES: PartName[] = ['drums', 'bass', 'vocals', 'other'];
 
-/** The beat tracker's grid is used when at least this share of its beats sit on it. */
+/**
+ * The beat tracker's grid is used when its beats keep a steady tempo for at least this share of
+ * the song (`confidence`); its straight-grid `fit` at least this much also means the grid stays on
+ * the beat all song long.
+ */
 export const GRID_TRUST = 0.5;
+
+/**
+ * Whether the mapper takes the beat tracker's grid over its own tempo estimate: whenever the
+ * tracker found a steady beat, except in one case. When the two tempos are 3:2 apart and the
+ * tracker's beats don't hold one straight grid, a swing or triplet feel has fooled the tracker
+ * (measured on 14 Creative Commons songs with known tempos: the one song this happened on, the
+ * tracker was wrong and the onset estimate right). Returns why not, or null to use it.
+ */
+export function gridRefusal(grid: { bpm: number; confidence: number; fit?: number }, ownBpm: number): string | null {
+  if (!(grid.bpm > 40 && grid.bpm < 260)) return `${grid.bpm} BPM is out of range`;
+  if (grid.confidence < GRID_TRUST) return `its beat is steady for only ${Math.round(grid.confidence * 100)}% of the song (needs ${Math.round(GRID_TRUST * 100)}%)`;
+  const r = Math.max(grid.bpm, ownBpm) / Math.min(grid.bpm, ownBpm);
+  if (Math.abs(r - 1.5) < 0.06 && (grid.fit ?? 1) < GRID_TRUST) return 'it and the onset estimate are 3:2 apart and its beats drift off one grid (a swing or triplet feel)';
+  return null;
+}
 
 export interface AutomapResult {
   bpm: number;
@@ -62,6 +81,11 @@ export interface AutomapResult {
   meter: number;
   /** Seconds into the audio where beat 0 lands. */
   offset: number;
+  /**
+   * The grid sits on the music's beats all song long: the beat tracker's grid was used and its
+   * beats hold one straight grid (with drift, beat 0 and the tempo are right on average only).
+   */
+  onBeatGrid: boolean;
   lengthBeats: number;
   charts: ReturnType<typeof buildCharts>;
   report: MapReport;
@@ -345,14 +369,16 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
     }
   }
   bpm = Math.round(bpm * 100) / 100;
-  // The trained beat tracker's grid, when it's sure of it: its tempo, its downbeat and its meter.
-  const grid = opts.grid && opts.grid.confidence >= GRID_TRUST && opts.grid.bpm > 40 && opts.grid.bpm < 260 ? opts.grid : null;
-  // What the beat tracker found, and whether it set the grid (the dev tools show it).
+  // The trained beat tracker's grid when its beat is steady: its tempo, its downbeat and its meter.
   const ownBpm = bpm;
   const g = opts.grid;
+  const refusal = g ? gridRefusal(g, ownBpm) : null;
+  const grid = g && !refusal ? g : null;
+  // What the beat tracker found, and whether it set the grid (the dev tools show it).
+  const straight = g?.fit != null ? `, one straight grid ${Math.round(g.fit * 100)}%` : '';
   const beatNote = opts.gridError ? `Beat This! failed (${opts.gridError}); own estimate used`
     : g === null ? 'Beat This! found no steady beat; own estimate used'
-    : g ? `Beat This!: ${g.bpm} BPM, ${g.meter}/4, ${Math.round(g.confidence * 100)}% on its grid (${grid ? 'used' : `not used: needs ${Math.round(GRID_TRUST * 100)}%; own estimate ${ownBpm} BPM`})`
+    : g ? `Beat This!: ${g.bpm} BPM, ${g.meter}/4, steady ${Math.round(g.confidence * 100)}%${straight} (${grid ? `used; own estimate was ${ownBpm} BPM` : `not used: ${refusal}; own estimate ${ownBpm} BPM`})`
     : undefined;
   if (grid) {
     bpm = Math.round(grid.bpm * 100) / 100;
@@ -594,6 +620,7 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
     bpm,
     meter,
     offset: Math.round(offset * 1000) / 1000,
+    onBeatGrid: !!grid && (grid.fit ?? 1) >= GRID_TRUST,
     lengthBeats: Math.round(lengthBeats * 100) / 100,
     charts,
     onsets: onsets.length,

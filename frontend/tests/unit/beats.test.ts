@@ -55,19 +55,48 @@ describe('the map report says what the beat tracker did', () => {
   const x = new Float32Array(sr * 8);
   for (let b = 0; b < 16; b++) for (let i = 0; i < 200; i++) x[Math.floor(b * 0.5 * sr) + i] = Math.sin(i * 0.3) * (1 - i / 200);
 
-  it('used, when it is sure', async () => {
+  it('used when its beat is steady', async () => {
     const { automap } = await import('../../src/mapping/automap');
-    const r = automap(x.slice(), sr, { grid: { bpm: 120, offset: 0, meter: 4, confidence: 0.9 } });
-    expect(r.report.beat).toMatch(/120 BPM, 4\/4, 90% on its grid \(used\)/);
+    const r = automap(x.slice(), sr, { grid: { bpm: 120, offset: 0, meter: 4, confidence: 0.9, fit: 0.95 } });
+    expect(r.report.beat).toMatch(/120 BPM, 4\/4, steady 90%, one straight grid 95% \(used; own estimate was/);
     expect(r.bpm).toBe(120);
+    expect(r.onBeatGrid).toBe(true);
   });
 
-  it('not used, with why, when it is unsure; and when it failed', async () => {
+  it('used when its beat is steady but drifts off one straight grid, which the tiles then don\'t lean on', async () => {
     const { automap } = await import('../../src/mapping/automap');
-    expect(automap(x.slice(), sr, { grid: { bpm: 90, offset: 0, meter: 4, confidence: 0.3 } }).report.beat).toMatch(/30% on its grid \(not used: needs 50%; own estimate/);
+    // A long song at 200 BPM whose beats drift: the tempo is right, one straight grid explains little.
+    const r = automap(x.slice(), sr, { grid: { bpm: 199.87, offset: 0, meter: 4, confidence: 0.92, fit: 0.16 } });
+    expect(r.bpm).toBe(199.87);
+    expect(r.report.beat).toMatch(/steady 92%, one straight grid 16% \(used/);
+    expect(r.onBeatGrid).toBe(false);
+  });
+
+  it('not used, with why, when it is unsteady, 3:2 off a drifting grid, or failed', async () => {
+    const { automap, gridRefusal } = await import('../../src/mapping/automap');
+    expect(automap(x.slice(), sr, { grid: { bpm: 90, offset: 0, meter: 4, confidence: 0.3 } }).report.beat).toMatch(/not used: its beat is steady for only 30% of the song \(needs 50%\); own estimate/);
     expect(automap(x.slice(), sr, { grid: null }).report.beat).toMatch(/no steady beat/);
     expect(automap(x.slice(), sr, { gridError: 'beat model: 404' }).report.beat).toMatch(/failed \(beat model: 404\)/);
     expect(automap(x.slice(), sr).report.beat).toBeUndefined();
+    // The swing/triplet trap: 197 BPM against an onset estimate of 133, its beats off one grid.
+    expect(gridRefusal({ bpm: 197.13, confidence: 0.75, fit: 0.07 }, 133)).toMatch(/3:2/);
+    // 3:2 apart but its beats hold one grid: trusted. And 200 against 121 isn't 3:2: trusted.
+    expect(gridRefusal({ bpm: 180, confidence: 0.9, fit: 0.9 }, 120)).toBeNull();
+    expect(gridRefusal({ bpm: 199.87, confidence: 0.92, fit: 0.16 }, 120.97)).toBeNull();
+  });
+});
+
+describe('the steady score holds where one straight grid loses phase', () => {
+  it('a long song whose tempo drifts a little is still steady at the right tempo', () => {
+    // 1400 beats at 200 BPM, speeding up by 0.5% over the song.
+    const beats: number[] = [];
+    let t = 0.5;
+    for (let i = 0; i < 1400; i++) { beats.push(t); t += (60 / 200) * (1 - 0.005 * (i / 1400)); }
+    const g = gridFromBeats({ beats, downbeats: beats.filter((_, i) => i % 4 === 0) })!;
+    expect(g.bpm).toBeGreaterThan(198);
+    expect(g.bpm).toBeLessThan(202);
+    expect(g.confidence).toBeGreaterThan(0.9);
+    expect(g.fit!).toBeLessThan(g.confidence);
   });
 });
 

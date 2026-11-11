@@ -65,8 +65,11 @@ Hard); they play it. The AI does not make music. Market and word everything that
   nothing over it; shown only while it plays, inert so players can't click it).
 - The browser listens to it once through tab capture and `automap.ts` maps it
   (`src/mapping/listen.ts`, in `listen.worker.ts`). Before mapping, the worker runs the Beat This!
-  beat tracker (`src/mapping/beats.ts`, model in `public/models/`; its grid is used when its
-  confidence is at least `GRID_TRUST`). Then `automap.ts` measures every sound, the grid and the
+  beat tracker (`src/mapping/beats.ts`, model in `public/models/`). Its grid is used whenever its
+  beat is steady beat to beat (`confidence` ≥ `GRID_TRUST`), even if it drifts off one straight
+  grid (`fit`), except a 3:2 clash with the onset estimate on a drifting grid (`gridRefusal` in
+  `automap.ts`). Don't judge it by one straight grid over the whole song: that threw away right
+  tempos (a 200 BPM song kept at 121). Then `automap.ts` measures every sound, the grid and the
   sections, and the page shows them.
 - The tiles come from the trained mapper: Ensomi R2 (`src/mapping/ensomi.ts`, `@ensomi/runtime`;
   ~120 MB model from Hugging Face pinned to one commit, prefetched while listening, cached;

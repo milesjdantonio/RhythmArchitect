@@ -264,10 +264,14 @@ Before that, two models run in the browser on what was heard (the mapping worker
 `frontend/src/mapping/listen.worker.ts`; the audio still never leaves the page):
 
 - **The beat** (`beats.ts`): the Beat This! tracker (10 MB, `frontend/public/models/`) finds the beats and
-  downbeats; its grid sets the tempo, beat 0 and the meter (3 or 4) when at least half its beats fit
-  it, else the onset mapper's own estimate is used. On 14 Creative Commons tracks with known tempos it
-  got 12 right (the other two at double time) against 8 for the mapper's own estimate, which kept
-  reading fast songs at 2/3 of their tempo.
+  downbeats; its grid sets the tempo, beat 0 and the meter (3 or 4) whenever its beat is steady beat
+  to beat for at least half the song, even when it drifts off one straight grid (a long song, or the
+  capture slipping), except when its tempo and the onset mapper's are 3:2 apart on a drifting grid (a
+  swing or triplet feel fooling it); the onset mapper's own estimate is the fallback. On 14 Creative
+  Commons tracks with known tempos (full length) it gets 12 right (the other two, very slow songs,
+  at double time) against 8 for the mapper's own estimate, which kept reading fast songs at 2/3 of
+  their tempo. (An earlier rule, half the beats on one straight grid, threw away right tempos: a 200
+  BPM song was kept at 121.)
 - **The tiles** (`ensomi.ts`): Ensomi R2, a model trained on human-made osu!mania 4K charts, charts
   the song from the audio (about 20 s on WebGPU for a 3-minute song, about 90 s without). Its model
   (about 120 MB) downloads from Hugging Face while the song is listened to and stays in the
@@ -341,7 +345,7 @@ Each change says what the spec said, what we built, why, and what prompted it.
 | 9 | **Validation: key at the wrong time** | Penalize the score. | A press with no tile within reach is ignored; a tile that isn't hit becomes a miss (it breaks the combo and costs signal). | Penalizing stray presses punishes players for tapping along to the beat; missing the tile already costs points. | Play-testing. |
 | 10 | **Validation: no difficulty chosen** | Default to Easy. | `SongWriter.chartFor(song, null)` gives Easy. In the game a difficulty is always chosen: the menu starts on Medium, and a link with no or an unknown difficulty goes back to the menu. | | The e2e bad-input test. |
 | 11 | **Validation: AI fails or returns bad data** | `SongWriter` throws; the view says "Couldn't create song". | If the trained mapper fails (no model download, bad output), the song still gets charts from the on-device onset mapper, and the dev tools say why. A bad chart file makes `SongWriter` throw an `IllegalArgumentException` that names the problem. | Better a playable map than an error. | The e2e test "when the trained mapper fails". |
-| 12 | **Tests** | Tests for Node, Queue, Note, Song, SongWriter, Score and Main. | 39 JUnit tests for Node, Queue, Note, Song and SongWriter (`src/java/test/main/`, good and bad cases from the plan); 10 backend tests; 78 frontend unit tests; 22 browser tests. Score and Main have none yet (not written). | | The test plan. |
+| 12 | **Tests** | Tests for Node, Queue, Note, Song, SongWriter, Score and Main. | 39 JUnit tests for Node, Queue, Note, Song and SongWriter (`src/java/test/main/`, good and bad cases from the plan); 10 backend tests; 80 frontend unit tests; 22 browser tests. Score and Main have none yet (not written). | | The test plan. |
 | 13 | **Scope** | JavaFX, then HTML/CSS (revised scope). | HTML, CSS and TypeScript (React, three.js for the 3D stage, Tone.js for sound), songs played through YouTube's embedded player. | We know the web better, and YouTube lets any song play without downloading its audio. | The revised scope and the GTA conversation. |
 
 ### Did the model really stand alone?

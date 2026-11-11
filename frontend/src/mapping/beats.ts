@@ -24,8 +24,10 @@ export interface Grid {
   /** Seconds into the audio of a downbeat (beat 0 of some bar). */
   offset: number;
   meter: number;
-  /** Share of the tracked beats that sit on the grid, 0..1. */
+  /** How steadily the tracked beats keep this tempo, beat to beat, 0..1 (see gridFromBeats). */
   confidence: number;
+  /** How much of the song one straight grid explains, 0..1 (low: the beat drifts). */
+  fit?: number;
 }
 
 const SR = 22050;
@@ -234,10 +236,20 @@ export function gridFromBeats(all: Beats): Grid | null {
     a = (sy - period * sx) / n;
     use = beats.map((b, i) => Math.abs(b - (a + period * idx[i])) < period * 0.15);
   }
-  // Confidence: how much of the song the grid explains (tracked beats on it, over the grid's own
-  // count of beats from the first tracked beat to the last).
+  // Confidence: how steadily the tracked beats keep this tempo, beat to beat: the share of the
+  // song's beats (the grid's own count, first tracked beat to last) whose gap to the one before
+  // is a whole number of periods, within 10%. Measured locally on purpose: one straight grid over
+  // a whole song (`fit` below) loses phase with the slightest drift (a tempo not quite constant,
+  // the listening capture slipping a few ms when the video buffers) though the tempo is right.
   const span = (all.beats[all.beats.length - 1] - all.beats[0]) / period + 1;
-  const on = Math.min(1, use.filter(Boolean).length / Math.max(1, span));
+  let steady = 0;
+  for (let i = 1; i < beats.length; i++) {
+    const k = idx[i] - idx[i - 1];
+    if (k >= 1 && k <= 2 && Math.abs(beats[i] - beats[i - 1] - k * period) < period * 0.1) steady += k;
+  }
+  const on = Math.min(1, steady / Math.max(1, span));
+  // How much of the song one straight grid explains (shown in the dev tools: low means it drifts).
+  const fit = Math.min(1, use.filter(Boolean).length / Math.max(1, span));
   // Meter: 3 or 4, for the game. Bars of 3 (or 6, a compound time) when the downbeats clearly say
   // so; 4 otherwise (the tracker's 2s and 4s are the same feel, and its downbeats are its weaker guess).
   let threes = 0, fours = 0;
@@ -258,5 +270,5 @@ export function gridFromBeats(all: Beats): Grid | null {
   const bar = period * meter;
   let offset = a + ph * period;
   offset -= Math.floor(offset / bar) * bar;
-  return { bpm: Math.round((60 / period) * 100) / 100, offset: Math.round(offset * 1000) / 1000, meter, confidence: Math.round(on * 100) / 100 };
+  return { bpm: Math.round((60 / period) * 100) / 100, offset: Math.round(offset * 1000) / 1000, meter, confidence: Math.round(on * 100) / 100, fit: Math.round(fit * 100) / 100 };
 }

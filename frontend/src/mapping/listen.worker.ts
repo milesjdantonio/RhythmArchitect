@@ -11,7 +11,7 @@
 //      after the onset mapper's result has gone to the page (it shows the sounds meanwhile).
 // Each step that fails is left out, and the mapper does what it did without it.
 
-import { automap, GRID_TRUST, type PartName } from './automap';
+import { automap, type PartName } from './automap';
 import { computeLevels } from './levels';
 import type { ChartProgress } from '../api/types';
 import type { Trained, TrainedStage } from './ensomi';
@@ -75,7 +75,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       const out = await trainedCharts(ort!, pcm, sr, {
         base: trained!.base, title: trained!.title, artist: trained!.artist,
         bpm: result.bpm, offset: result.offset, events: result.events,
-        onGrid: !!grid && grid.confidence >= GRID_TRUST, gpu,
+        onGrid: result.onBeatGrid, gpu,
         onStage: (stage, p) => post({ stage, p }),
         onProgress: (p) => post({ chart: p }),
       });
