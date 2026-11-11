@@ -15,7 +15,7 @@ import type { AutomapResult } from './automap';
 import type { FromMapper, ToMapper } from './listen.worker';
 import type { ChartProgress, SongLevels } from '../api/types';
 import type { Trained, TrainedStage } from './ensomi';
-import { findTick, placeChunks, type Chunk, type Mark } from './capture';
+import { Placer, chooseRecording, findTick, type Chunk, type Mark } from './capture';
 
 export type ListenFailure = 'unsupported' | 'declined' | 'no-audio' | 'silent' | 'stopped' | 'video';
 
@@ -107,6 +107,8 @@ export interface Heard {
   /** Measured capture delay (seconds), and whether the tick was heard. */
   delay: number;
   calibrated: boolean;
+  /** How the recording was lined up with the video (dev tools; see chooseRecording). */
+  placement?: string;
 }
 
 export interface ListenOptions {
@@ -183,6 +185,9 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
     let fl = 0, fh = 0;
     const marks: Mark[] = [];
     const chunks: Chunk[] = [];
+    // Also placed as heard (each chunk by the latest reads): kept in case the seamless placement
+    // comes out clearly worse (chooseRecording).
+    const asHeard = new Placer(sr, duration || 600);
     let loud = 0, heard = 0;
     tap.port.onmessage = (e: MessageEvent<{ t: number; d: Float32Array }>) => {
       if (done) return;
@@ -206,6 +211,7 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
       for (let i = last; i >= 0 && marks[i].c > c - 1 && marks[i].playing; i--) gaps.push(marks[i].c - marks[i].v);
       gaps.sort((x, y) => x - y);
       const pos = c - gaps[gaps.length >> 1];
+      asHeard.write(pos, out);
       loud += chunk;
       heard += out.length;
       if (opts.onHear && out.length) {
@@ -250,7 +256,9 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
     ytPause();
     if (aborted()) throw new DOMException('Cancelled', 'AbortError');
     if (failure) throw failure;
-    return { pcm: placeChunks(chunks, marks, sr, duration || 600), sr, delay, calibrated };
+    const recording = chooseRecording(chunks, marks, sr, duration || 600, asHeard.result());
+    if (import.meta.env?.DEV) console.info('[listen] ' + recording.note);
+    return { pcm: recording.pcm, sr, delay, calibrated, placement: recording.note };
   } finally {
     cleanup.forEach((f) => f());
   }

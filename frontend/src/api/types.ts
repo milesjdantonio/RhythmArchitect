@@ -84,6 +84,11 @@ export interface MapReport {
    * whether its grid set the map's tempo, e.g. "Beat This!: 104 BPM, 4/4, 92% on its grid (used)".
    */
   beat?: string;
+  /**
+   * How the listening pass lined the recording up with the video (dev tools), e.g. "seamless,
+   * 1 stretch, first sound at 0.4 s" or why it fell back to placing it as it was heard.
+   */
+  listen?: string;
 }
 
 /** Synth patch for synth-played songs. Names map to Tone.js oscillator types. */

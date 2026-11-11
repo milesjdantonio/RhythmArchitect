@@ -70,6 +70,58 @@ const STRETCH_EDGE = 0.1;
  * and nothing lost when the page stalls (the stretch spans the gap in the reads).
  */
 export function placeChunks(chunks: Chunk[], marks: Mark[], sr: number, seconds: number): Float32Array {
+  const stretches = stretchesOf(marks);
+  const placer = new Placer(sr, seconds);
+  let k = 0;
+  for (const ch of chunks) {
+    const end = ch.c + ch.d.length / sr;
+    while (k < stretches.length && stretches[k].to + STRETCH_EDGE < ch.c) k++;
+    const s = stretches[k];
+    if (!s || end < s.from - STRETCH_EDGE) continue; // before the video played, or between stretches
+    // Only the part inside the stretch (none of the pre-roll, none of what follows a pause).
+    const a = Math.max(0, Math.round((s.from - STRETCH_EDGE - ch.c) * sr));
+    const b = Math.min(ch.d.length, Math.round((s.to + STRETCH_EDGE - ch.c) * sr));
+    if (b <= a) continue;
+    placer.write(ch.c + a / sr - s.offset, ch.d.subarray(a, b));
+  }
+  return placer.result();
+}
+
+/** Seconds of sound before the first 50 ms that is clearly audible (a twentieth of the whole's level), and how much of it is audible. */
+function audible(pcm: Float32Array, sr: number) {
+  const win = Math.max(1, Math.round(sr * 0.05));
+  let total = 0;
+  for (let i = 0; i < pcm.length; i++) total += pcm[i] * pcm[i];
+  const cut = (total / Math.max(1, pcm.length)) * 0.05 * 0.05; // energy: (5% of the RMS)²
+  let first = -1, on = 0, windows = 0;
+  for (let i = 0; i + win <= pcm.length; i += win) {
+    let e = 0;
+    for (let j = i; j < i + win; j++) e += pcm[j] * pcm[j];
+    windows++;
+    if (e / win > cut) { on++; if (first < 0) first = i / sr; }
+  }
+  return { first: first < 0 ? Infinity : first, seconds: (on * win) / sr };
+}
+
+/**
+ * The recording to map: the seamless placement (placeChunks), unless it came out clearly worse
+ * than placing each chunk as it was heard (`asHeard`, the earlier way): its first sound more than
+ * 2 s later, or under 90% as much sound. That has happened once, on a listen whose cause wasn't
+ * seen (an ad before the song is the likeliest); the note says which was used, for the dev tools.
+ */
+export function chooseRecording(chunks: Chunk[], marks: Mark[], sr: number, seconds: number, asHeard: Float32Array): { pcm: Float32Array; note: string } {
+  const seamless = placeChunks(chunks, marks, sr, seconds);
+  const n = stretchesOf(marks).length;
+  const a = audible(seamless, sr), b = audible(asHeard, sr);
+  const at = (x: number) => (Number.isFinite(x) ? `${x.toFixed(1)} s` : 'never');
+  if (a.first - b.first > 2 || a.seconds < b.seconds * 0.9) {
+    return { pcm: asHeard, note: `as heard (the seamless placement, ${n} stretch${n === 1 ? '' : 'es'}, started at ${at(a.first)} with ${Math.round(a.seconds)} s of sound, against ${at(b.first)} and ${Math.round(b.seconds)} s); first sound at ${at(b.first)}` };
+  }
+  return { pcm: seamless, note: `seamless, ${n} stretch${n === 1 ? '' : 'es'} of playback; first sound at ${at(a.first)}, ${Math.round(a.seconds)} s of sound (as heard: ${at(b.first)}, ${Math.round(b.seconds)} s)` };
+}
+
+/** The stretches of steady playback in the position reads, each with its offset (see placeChunks). */
+export function stretchesOf(marks: Mark[]): { from: number; to: number; offset: number }[] {
   const stretches: { from: number; to: number; offset: number }[] = [];
   let run: number[] = [];
   let from = 0, to = 0;
@@ -93,18 +145,5 @@ export function placeChunks(chunks: Chunk[], marks: Mark[], sr: number, seconds:
     to = m.c;
   }
   close();
-  const placer = new Placer(sr, seconds);
-  let k = 0;
-  for (const ch of chunks) {
-    const end = ch.c + ch.d.length / sr;
-    while (k < stretches.length && stretches[k].to + STRETCH_EDGE < ch.c) k++;
-    const s = stretches[k];
-    if (!s || end < s.from - STRETCH_EDGE) continue; // before the video played, or between stretches
-    // Only the part inside the stretch (none of the pre-roll, none of what follows a pause).
-    const a = Math.max(0, Math.round((s.from - STRETCH_EDGE - ch.c) * sr));
-    const b = Math.min(ch.d.length, Math.round((s.to + STRETCH_EDGE - ch.c) * sr));
-    if (b <= a) continue;
-    placer.write(ch.c + a / sr - s.offset, ch.d.subarray(a, b));
-  }
-  return placer.result();
+  return stretches;
 }

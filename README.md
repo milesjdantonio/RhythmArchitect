@@ -281,7 +281,8 @@ Before that, two models run in the browser on what was heard (the mapping worker
   (about 120 MB) downloads from Hugging Face while the song is listened to and stays in the
   browser's cache. Its lowest star rating is already about this game's Hard, so it charts once and
   every difficulty keeps a subset of its tiles (`thin.ts`): the strongest sounds, spaced out, each
-  stretch of the song keeping its share (Easy about 1 tile a second, Medium about 2, Hard about 5).
+  stretch of the song keeping its share (Easy about 1 tile a second, Medium about 2); Hard keeps nearly
+  all of them (chords of two at most: 4-7 a second, more on fast songs).
   Its tiles come about 29 ms early (measured on a groove with known hit times), so they move onto
   the sounds the onset mapper measured.
 - **If the trained mapper fails**: with WebGPU, Demucs (`stems.ts`) splits the song into drums,

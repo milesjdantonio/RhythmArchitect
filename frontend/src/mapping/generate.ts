@@ -12,7 +12,7 @@ export interface Charted {
   fallback?: string;
 }
 
-export function songFromListening(m: Mapped, video: VideoMatch, heard: Pick<Heard, 'calibrated' | 'delay'>, charted?: Charted): NewSong {
+export function songFromListening(m: Mapped, video: VideoMatch, heard: Pick<Heard, 'calibrated' | 'delay' | 'placement'>, charted?: Charted): NewSong {
   const r = m.result;
   const c: Charted = charted ?? { charts: r.charts, mapper: r.report.mapper };
   return {
@@ -38,6 +38,7 @@ export function songFromListening(m: Mapped, video: VideoMatch, heard: Pick<Hear
     report: {
       ...r.report,
       mapper: `${c.mapper}, listening pass${c.fallback ? ` (on-device: ${c.fallback})` : ''}`,
+      ...(heard.placement ? { listen: heard.placement } : {}),
     },
     patch: { name: 'Glass Bell', oscillator: 'triangle', attack: 0.002, decay: 0.3, sustain: 0.05, release: 0.4, cutoff: 6000, space: 0.3 },
     backing: { bass: ['C2'], drums: '................' },

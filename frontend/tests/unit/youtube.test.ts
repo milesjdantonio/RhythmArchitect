@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DIFFICULTIES } from '../../src/api/types';
 import { FollowClock } from '../../src/audio/clock';
-import { Placer, findTick, placeChunks, type Mark } from '../../src/mapping/capture';
+import { Placer, chooseRecording, findTick, placeChunks, type Mark } from '../../src/mapping/capture';
 import { computeLevels, decodeLevels, levelAt, levelsFromNotes } from '../../src/mapping/levels';
 import { beatGrid, fanNotes, fanSong, parseOsu } from '../../src/mapping/osu';
 import { setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchSet } from '../../mock-server/match';
@@ -215,6 +215,22 @@ describe('the listening pass', () => {
       expect(pcm[6000]).toBe(8001); // video 6 s was heard at context 18 s (after 2 s of buffering)
       expect(pcm[21000]).toBe(13001); // after the seek: video 21 s heard at context 23 s
       expect(pcm[15000]).toBe(0); // skipped by the seek: nothing heard there
+    });
+
+    it('keeps the seamless placement, unless it loses the start the as-heard placement has', () => {
+      const marks: Mark[] = [];
+      for (let c = 10; c < 40; c += 0.016) marks.push({ c, v: c - 10, playing: true });
+      const chunks = capture(30);
+      // As heard: the same sound in the same places.
+      const asHeard = placeChunks(chunks, marks, sr, 30);
+      const ok = chooseRecording(chunks, marks, sr, 30, asHeard);
+      expect(ok.note).toMatch(/^seamless, 1 stretch/);
+      // The position reads only begin 15 s in (as if the start went unseen): the seamless placement
+      // has nothing for the first 15 s, the as-heard one does.
+      const late = marks.filter((m) => m.c >= 25);
+      const chosen = chooseRecording(chunks, late, sr, 30, asHeard);
+      expect(chosen.note).toMatch(/^as heard/);
+      expect(chosen.pcm).toBe(asHeard);
     });
 
     it('leaves out what was heard before the video started', () => {

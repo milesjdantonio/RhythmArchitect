@@ -4,7 +4,7 @@
 //
 // Its lowest star rating (2) is already about as busy as this game's Hard, so it charts the song
 // once, at that rating, and every difficulty keeps a subset of its tiles (thin.ts): Hard most of
-// them (its busiest stretches eased, chords of two at most), Medium and Easy fewer. Its tiles come
+// them (chords of two at most), Medium and Easy fewer. Its tiles come
 // in milliseconds, a little early; they go onto the sounds the onset mapper measured and onto its
 // beat grid (soundShift, toChart).
 
@@ -25,7 +25,9 @@ const DIFFS: Difficulty[] = ['easy', 'medium', 'hard'];
 export const KEEP = {
   easy: { rate: 1.15, minGap: 0.5, share: 0.4, maxChord: 1, holdsAlone: true },
   medium: { rate: 2.1, minGap: 0.24, share: 0.65, maxChord: 1, holdsAlone: true },
-  hard: { rate: 3.8, minGap: 0.1, share: 0.9, maxChord: 2, holdsAlone: false },
+  // Hard keeps the model's chart nearly whole (chords of two at most, nothing closer than a 16th at
+  // 250 BPM): capped at 3.8 a second it felt sparse and disconnected on a 200 BPM shred song.
+  hard: { rate: 1000, minGap: 0.06, share: 1, maxChord: 2, holdsAlone: false },
 } as const;
 /** The same song makes the same charts. */
 const SEED = 7;
@@ -76,8 +78,7 @@ export interface TrainedOptions {
   /**
    * The model's own beat grid (from its larger beat tracker, as its chart's timing), already moved
    * like its tiles: return the song's grid and sounds measured again on it to place the tiles
-   * there, or null to keep the first grid. Called only when given (the first grid wasn't the
-   * beat tracker's).
+   * there, or null to keep the first grid (the worker decides: see listen.worker.ts).
    */
   regrid?: (grid: BeatGrid) => Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'> | null;
   title?: string;
@@ -129,8 +130,8 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     o.onStage?.('chart', 1);
     const objects = result.chart.objects;
     const shift = soundShift(objects, o.events);
-    // When the first grid wasn't the beat tracker's, the model's own grid (its larger beat tracker)
-    // can replace it: then the tiles go on that one.
+    // The model's own grid (its larger beat tracker) can replace the first one: then the tiles go
+    // on that one.
     let on: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'> = o;
     const own = o.regrid ? osuGrid(result.osu, songMs / 1000) : null;
     if (own && o.regrid) on = o.regrid({ ...own, offset: Math.round((own.offset + shift) * 1000) / 1000 }) ?? o;

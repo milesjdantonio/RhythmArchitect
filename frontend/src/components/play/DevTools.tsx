@@ -191,6 +191,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
           <div><dt>Mapper</dt><dd>{song.report.mapper}</dd></div>
           {song.report.summary && <div><dt>Charter</dt><dd>{song.report.summary}</dd></div>}
           {song.report.beat && <div><dt>Beat</dt><dd>{song.report.beat}</dd></div>}
+          {song.report.listen && <div><dt>Listen</dt><dd>{song.report.listen}</dd></div>}
           <div><dt>Confidence</dt><dd>{Math.round(song.report.confidence * 100)}%</dd></div>
           <div><dt>Tiles</dt><dd>{song.charts.easy.notes.length} / {song.charts.medium.notes.length} / {song.charts.hard.notes.length}</dd></div>
           <div><dt>Cues</dt><dd>{cues.length}</dd></div>
