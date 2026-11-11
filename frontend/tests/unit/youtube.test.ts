@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DIFFICULTIES } from '../../src/api/types';
 import { FollowClock } from '../../src/audio/clock';
-import { Placer, chooseRecording, findTick, placeChunks, stretchesOf, type Mark } from '../../src/mapping/capture';
+import { Placer, chooseRecording, findTick, place, placeChunks, stretchesOf, type Mark } from '../../src/mapping/capture';
 import { computeLevels, decodeLevels, levelAt, levelsFromNotes } from '../../src/mapping/levels';
 import { beatGrid, fanNotes, fanSong, parseOsu } from '../../src/mapping/osu';
 import { setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchSet } from '../../mock-server/match';
@@ -235,6 +235,38 @@ describe('the listening pass', () => {
       let jumps = 0;
       for (let i = 1; i < pcm.length; i++) if (pcm[i] - pcm[i - 1] !== 1) jumps++;
       expect(jumps).toBe(0);
+    });
+
+    it('follows an audio clock that fell behind the video, each sound where it was heard, no holes', () => {
+      // As on a real listen: in step for 10 s, then the video moves 1.3 s per second of the audio
+      // clock (the computer too busy for its audio; what came in meanwhile never reached the capture).
+      const video = (c: number) => (c < 20 ? c - 10 : 10 + 1.3 * (c - 20));
+      // What was captured at each moment of the audio clock: the sound of the video at that point (its sample number + 1).
+      const chunks = Array.from({ length: 300 }, (_, i) => {
+        const c = 10 + i * 0.1;
+        return { c, d: Float32Array.from({ length: 100 }, (_, j) => Math.round(video(c + j / sr) * sr) + 1) };
+      });
+      const marks: Mark[] = [];
+      for (let c = 10; c < 40; c += 0.016) marks.push({ c, v: video(c) + noise() * 0.04, playing: true });
+      expect(stretchesOf(marks)).toHaveLength(1);
+      const placed = place(chunks, marks, sr, 40);
+      expect(placed.followed).toBe(1);
+      expect(Math.abs(placed.lost - 6)).toBeLessThan(0.3); // 36 s of video in 30 s of capture
+      // Every moment of the video holds the sound heard at it, within a few ms; nothing silent.
+      let worst = 0, corner = 0, silent = 0;
+      for (let p = 500; p < 35500; p++) {
+        if (placed.pcm[p] === 0) { silent++; continue; }
+        const e = Math.abs(placed.pcm[p] - (p + 1));
+        // Right where the clock starts to fall behind (all at once here) the curve rounds the corner.
+        if (p > 9500 && p < 10500) corner = Math.max(corner, e);
+        else worst = Math.max(worst, e);
+      }
+      expect(silent).toBe(0);
+      expect(worst).toBeLessThan(15); // ms (sr 1000), with every read off by up to ±20 ms
+      expect(corner).toBeLessThan(40);
+      // The recording chosen is this one, and says what happened.
+      const note = chooseRecording(chunks, marks, sr, 40, placeChunks(chunks.slice(0, 100), marks, sr, 40)).note;
+      expect(note).toMatch(/^seamless, 1 stretch.*fell behind.*6 s of the song never reached/);
     });
 
     it('keeps the seamless placement, unless it loses the start the as-heard placement has', () => {

@@ -203,7 +203,7 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
       const v = ytTime();
       const c = ctx.currentTime;
       marks.push({ c, v, playing: st === YT_STATE.PLAYING });
-      logMark(log, c, v, ytRawTime(), st, typeof document !== 'undefined' && document.hidden);
+      logMark(log, c, v, ytRawTime(), st, typeof document !== 'undefined' && document.hidden, performance.now() / 1000);
       const len = duration || 600;
       opts.onProgress?.(Math.min(1, v / Math.max(1, len)));
       // Nothing but silence 8 s in: the wrong tab, or its sound wasn't shared.

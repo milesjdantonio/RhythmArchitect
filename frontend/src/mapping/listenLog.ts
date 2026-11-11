@@ -15,8 +15,11 @@ export interface ListenLog {
   /** How the recording was lined up (chooseRecording's note). */
   placement?: string;
   userAgent: string;
-  /** Position reads: audio-context time, smoothed position, the player's report, its state, tab hidden (1). */
-  marks: { c: number[]; v: number[]; raw: number[]; state: number[]; hidden: number[] };
+  /**
+   * Position reads: audio-context time, smoothed position, the player's report, its state, tab
+   * hidden (1), and the page's own clock (s: tells an audio clock that fell behind, or few frames).
+   */
+  marks: { c: number[]; v: number[]; raw: number[]; state: number[]; hidden: number[]; w?: number[] };
   /** Chunks of sound: audio-context time of the first sample (less the delay), samples. */
   chunks: { c: number[]; n: number[] };
 }
@@ -29,14 +32,14 @@ export function newListenLog(videoId: string, duration: number, sr: number, dela
   return {
     version: 1, at: new Date().toISOString(), videoId, duration: r(duration), sr, delay: r(delay, 10000), calibrated,
     userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
-    marks: { c: [], v: [], raw: [], state: [], hidden: [] },
+    marks: { c: [], v: [], raw: [], state: [], hidden: [], w: [] },
     chunks: { c: [], n: [] },
   };
 }
 
-export function logMark(log: ListenLog, c: number, v: number, raw: number, state: number, hidden: boolean) {
+export function logMark(log: ListenLog, c: number, v: number, raw: number, state: number, hidden: boolean, wall: number) {
   const m = log.marks;
-  m.c.push(r(c, 10000)); m.v.push(r(v, 10000)); m.raw.push(r(raw)); m.state.push(state); m.hidden.push(hidden ? 1 : 0);
+  m.c.push(r(c, 10000)); m.v.push(r(v, 10000)); m.raw.push(r(raw)); m.state.push(state); m.hidden.push(hidden ? 1 : 0); m.w?.push(r(wall, 10000));
 }
 
 export function logChunk(log: ListenLog, c: number, n: number) {
@@ -46,13 +49,13 @@ export function logChunk(log: ListenLog, c: number, n: number) {
 /** For the browser's storage (a few MB at most): position reads at most every 50 ms, plus every change of state or hiding and every jump. */
 function thinned(log: ListenLog): ListenLog {
   const m = log.marks;
-  const out: ListenLog['marks'] = { c: [], v: [], raw: [], state: [], hidden: [] };
+  const out: ListenLog['marks'] = { c: [], v: [], raw: [], state: [], hidden: [], w: [] };
   let at = -Infinity, prevD = NaN, prevState = NaN, prevHidden = NaN;
   for (let i = 0; i < m.c.length; i++) {
     const d = m.c[i] - m.v[i];
     if (m.c[i] - at < 0.05 && m.state[i] === prevState && m.hidden[i] === prevHidden && Math.abs(d - prevD) < 0.03) continue;
     at = m.c[i]; prevD = d; prevState = m.state[i]; prevHidden = m.hidden[i];
-    out.c.push(m.c[i]); out.v.push(m.v[i]); out.raw.push(m.raw[i]); out.state.push(m.state[i]); out.hidden.push(m.hidden[i]);
+    out.c.push(m.c[i]); out.v.push(m.v[i]); out.raw.push(m.raw[i]); out.state.push(m.state[i]); out.hidden.push(m.hidden[i]); if (m.w) out.w!.push(m.w[i]);
   }
   return { ...log, marks: out };
 }

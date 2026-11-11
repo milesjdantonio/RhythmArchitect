@@ -86,8 +86,12 @@ Hard); they play it. The AI does not make music. Market and word everything that
 - The recording: every chunk the audio thread hands over is kept; the video position is read on
   each chunk (they keep coming with the tab hidden) and every frame; at the end `placeChunks`
   (`src/mapping/capture.ts`) files it by stretches of steady playback (`stretchesOf`, healed:
-  glitches dropped, same-offset neighbours joined), and `chooseRecording` falls back to the
-  as-heard placement if that came out clearly worse. The dev tools' Listen line says which.
+  glitches dropped, neighbours that carry on where the other left off joined), and
+  `chooseRecording` falls back to the as-heard placement if that came out clearly worse. The
+  browser's audio clock can fall behind the video when the computer is busy (a real listen: ×1.3,
+  a quarter of the sound never captured): then a stretch's offset drifts and `stretchInto` follows
+  it (slices placed where the video was, overlapped, no pitch change). The dev tools' Listen line
+  says which, and how much was lost.
 - **Debugging a real listen: ask for its log, don't guess.** The user's real YouTube listens
   differ from simulations. The dev tools' "Download listen log" saves the timing of the last
   listen (position reads, player states, tab hidden; no audio; `src/mapping/listenLog.ts`);

@@ -6,7 +6,7 @@
 //   node tools/replay-listen.mjs <listen-log.json>        (from frontend/; Node 23.6+ runs the .ts directly)
 
 import { readFileSync } from 'node:fs';
-import { placeChunks, stretchesOf } from '../src/mapping/capture.ts';
+import { place, stretchesOf } from '../src/mapping/capture.ts';
 
 const file = process.argv[2];
 if (!file) { console.log('usage: node tools/replay-listen.mjs <listen-log.json>'); process.exit(1); }
@@ -44,11 +44,31 @@ const states = [];
 for (let i = 0; i < m.c.length; i++) if (i === 0 || m.state[i] !== m.state[i - 1]) states.push(`${s(m.c[i] - t0)}: ${m.state[i]}`);
 console.log(`player states (1 playing, 2 paused, 3 buffering, 0 ended, -1 unstarted): ${states.slice(0, 20).join(' · ')}${states.length > 20 ? ' · …' : ''}`);
 
+// The audio clock against the video (and the page's clock, in logs that have it): every 10 s of
+// audio clock, video seconds per audio-clock second. Well off 1 means the browser's audio fell
+// behind (the computer too busy), and that much of the sound never reached the capture.
+const speeds = [];
+for (let i = 1, a = 1; i < m.c.length; i++) {
+  if (m.c[i] - m.c[a] < 10 && i < m.c.length - 1) continue;
+  if (m.state[a] === PLAYING && m.state[i] === PLAYING) {
+    const vs = (m.v[i] - m.v[a]) / (m.c[i] - m.c[a]);
+    const ws = m.w ? (m.w[i] - m.w[a]) / (m.c[i] - m.c[a]) : NaN;
+    const fps = m.w ? (i - a) / (m.w[i] - m.w[a]) : NaN;
+    speeds.push({ at: m.c[a] - t0, vs, ws, fps });
+  }
+  a = i;
+}
+const off = speeds.filter((x) => Math.abs(x.vs - 1) > 0.02);
+console.log(`audio clock: ${off.length ? `fell behind in ${off.length} of ${speeds.length} windows of 10 s, from ${s(off[0].at)}: video ×${Math.min(...off.map((x) => x.vs)).toFixed(2)} to ×${Math.max(...off.map((x) => x.vs)).toFixed(2)} its speed` : 'kept up with the video'}`);
+if (m.w) console.log(`page clock per audio second: ${speeds.map((x) => x.ws.toFixed(2)).join(' ')}\nreads per page second: ${speeds.map((x) => Math.round(x.fps)).join(' ')}`);
+
 // The stretches, and how much of the video the placed recording holds (every chunk filled with sound).
 const st = stretchesOf(marks);
 console.log(`stretches: ${st.length}: ${st.slice(0, 12).map((x) => `${rel([x.from, x.to])} @${x.offset.toFixed(3)}`).join(', ')}${st.length > 12 ? ', …' : ''}`);
 const chunks = log.chunks.c.map((c, i) => ({ c, d: new Float32Array(log.chunks.n[i]).fill(1) }));
-const pcm = placeChunks(chunks, marks, sr, dur);
+const placed = place(chunks, marks, sr, dur);
+const pcm = placed.pcm;
+if (placed.followed) console.log(`followed the drift in ${placed.followed} stretch(es): ${s(placed.lost)} of the video never reached the capture, the rest spread over it`);
 let held = 0;
 const missing = [];
 let from = -1;
