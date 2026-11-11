@@ -30,7 +30,7 @@ public class Queue<T>
 
     public void enqueue(T data)
     {
-        enqueue(new Node<T>(data));
+        enqueue(new Node<>(data));
     }
 
     public T dequeue()
