@@ -4,6 +4,8 @@ dist/
 test-results/
 playwright-report/
 *.tsbuildinfo
+# The model driver's classes (javac -d out src/java/main/*.java)
+/out/
 
 # The mock backend's song store (local data)
 .data/

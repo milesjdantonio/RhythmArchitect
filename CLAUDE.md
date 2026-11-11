@@ -16,7 +16,12 @@ Hard); they play it. The AI does not make music. Market and word everything that
   starts with are in `mock-server/`.
 - The real backend is `backend/` at the repo root (Java 25, Spring Boot, Maven; see
   `backend/README.md`): the same routes as the mock. The game's own Java classes (`Song`, `Note`,
-  `Queue`...) are in `src/java/main/` at the repo root (package `main`, built into the backend).
+  `Queue`, `SongWriter`...) are in `src/java/main/` at the repo root (package `main`, built into the
+  backend; no libraries, no view: `ModelDemo` drives them with plain `javac`), their JUnit tests in
+  `src/java/test/main/` (run by `./mvnw test`), and the built-in songs' charts for them in
+  `src/java/charts/` (`node tools/export-charts.mjs` from `frontend/`). This is a CS 2114 project:
+  the README's Reflection, Next Steps and Attribution sections follow the course rubric; keep them
+  true when things change. `Main` (the controller) and `Score` are Darsh's: don't write them.
   No AI runs on the server. Its built-in songs are `src/main/resources/seed/songs.json` (`node tools/export-seed.mjs` from
   `frontend/` after they change). Run `./mvnw test` there after changing it.
 

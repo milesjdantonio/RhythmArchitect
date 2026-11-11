@@ -559,6 +559,77 @@ test.describe('Rythm Architect', () => {
     await expect(results.locator('.grade')).toHaveText('F');
   });
 
+  // The bad-input cases named in the scope: none of them crashes the app.
+  test('survives the bad input named in the scope: empty or unknown songs, bad links, stray keys', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await skipIntro(page);
+    await fakeYouTube(page);
+    await page.goto('/#/');
+    // An empty or blank title: Generate isn't offered (hidden, or there but disabled).
+    const generate = page.getByRole('button', { name: 'Generate beatmap' });
+    const offered = async () => (await generate.count()) > 0 && (await generate.isEnabled());
+    expect(await offered()).toBe(false);
+    await title(page).fill('   ');
+    await page.waitForTimeout(400); // the search runs as you type
+    expect(await offered()).toBe(false);
+    // A misspelled or unknown song: the video search finds nothing; it says so and nothing opens.
+    await page.route('**/api/youtube**', (r) => r.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'No video found for that song. Check the spelling and try again.' }) }));
+    await title(page).fill('Levitatinggg Dua Lipaa');
+    await page.getByRole('button', { name: 'Generate beatmap' }).click();
+    await expect(page.getByRole('alert')).toContainText('Check the spelling');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await page.unroute('**/api/youtube**');
+    // Bad links: no difficulty chosen, an unknown difficulty, a song that doesn't exist.
+    await page.goto('/#/play/demo-neon-blueprint');
+    await expect(title(page)).toBeVisible();
+    await page.goto('/#/play/demo-neon-blueprint/banana');
+    await expect(title(page)).toBeVisible();
+    await page.goto('/#/play/no-such-song/easy');
+    await expect(page.getByRole('alert')).toContainText('Map not found');
+    // Playing: keys that aren't D F J K, and lane keys pressed with no tile near, change nothing.
+    await page.goto('/#/play/demo-neon-blueprint/easy');
+    await startButton(page).click();
+    await page.waitForFunction(() => (window as unknown as { __rythm?: unknown }).__rythm);
+    const judged = () => page.evaluate(() => (window as unknown as { __rythm: { game: { stats: { judged: number; score: number } } } }).__rythm.game.stats);
+    const before = await judged();
+    for (const key of ['KeyQ', 'KeyZ', 'Digit1', 'ArrowUp', 'KeyA', 'Semicolon']) await page.keyboard.press(key);
+    expect(await judged()).toEqual(before);
+    // Long before the first tile reaches the line: too early to count for anything.
+    const firstTile = await page.evaluate(() => (window as unknown as { __rythm: { game: { notes: { time: number }[] } } }).__rythm.game.notes[0].time);
+    const now = await page.evaluate(() => (window as unknown as { __rythm: Rythm }).__rythm.time());
+    if (firstTile - now > 0.5) {
+      for (const key of ['KeyD', 'KeyF', 'KeyJ', 'KeyK']) await page.keyboard.press(key);
+      expect(await judged()).toEqual(before);
+    }
+    // The song plays on.
+    await page.waitForFunction((t) => (window as unknown as { __rythm: Rythm }).__rythm.time() > t + 1, now);
+    expect(errors).toEqual([]);
+  });
+
+  test('when the trained mapper fails, the song still gets charts (the onset mapper\'s own)', async ({ page, request }) => {
+    test.setTimeout(240_000);
+    await skipIntro(page);
+    await fakeYouTube(page, { seconds: 20 });
+    // The trained mapper on, its model somewhere that has none: it fails, and the app carries on.
+    await page.addInitScript(() => {
+      localStorage.removeItem('rythm-architect:no-ensomi');
+      localStorage.setItem('rythm-architect:ensomi-base', `${location.origin}/no-model-here/`);
+    });
+    await page.goto('/#/');
+    // A title no other test maps (they share one song store).
+    await title(page).fill('Fallback Toccata');
+    await artist(page).fill('E2E Mapper Down');
+    await page.getByRole('button', { name: 'Generate beatmap' }).click();
+    await page.getByRole('button', { name: 'Listen and map' }).click();
+    await expect(page).toHaveURL(/#\/song\/yt-e2einkfury1-/, { timeout: 150_000 });
+    const id = decodeURIComponent(/#\/song\/([^?]+)/.exec(page.url())![1]);
+    const song = (await (await request.get(`/api/songs/${id}`)).json()) as Song;
+    expect(song.report.mapper).toContain('Onset mapper');
+    expect(song.report.mapper).toContain('trained mapper failed');
+    for (const d of ['easy', 'medium', 'hard'] as const) expect(song.charts[d].notes.length).toBeGreaterThan(0);
+  });
+
   test('works on a phone: start screen and touch lanes @phone', async ({ page, isMobile }) => {
     test.skip(!isMobile, 'phone only');
     await skipIntro(page);

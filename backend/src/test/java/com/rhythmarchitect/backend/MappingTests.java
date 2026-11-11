@@ -1,7 +1,6 @@
 package com.rhythmarchitect.backend;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -14,14 +13,12 @@ import com.rhythmarchitect.backend.match.Text;
 import com.rhythmarchitect.backend.osu.Osu;
 
 import main.Difficulty;
-import main.Note;
-import main.Queue;
 import main.Song;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
-/** The pure parts: text matching, the osu! port, and the song classes (src/java/main). */
+/** The pure parts: text matching and the osu! port. (The model's own tests are in src/java/test.) */
 class MappingTests {
 
     @Test
@@ -79,40 +76,5 @@ class MappingTests {
         assertEquals(48, song.path("report").path("energy").size());
         assertEquals("Chorus", song.path("report").path("sections").get(1).path("label").asString());
         assertTrue(com.rhythmarchitect.backend.songs.NewSongCheck.problem(song) == null, "a fan song passes the new-song checks");
-    }
-
-    @Test
-    void queueIsFirstInFirstOut() {
-        Queue<String> q = new Queue<>();
-        assertTrue(q.isEmpty());
-        q.enqueue("a");
-        q.enqueue("b");
-        q.enqueue("c");
-        assertEquals(3, q.getSize());
-        assertEquals("a", q.dequeue());
-        assertEquals("b", q.peek());
-        assertEquals("b", q.dequeue());
-        assertEquals("c", q.dequeue());
-        assertThrows(main.EmptyQueueException.class, q::dequeue);
-        q.enqueue("d");
-        assertEquals("d", q.peek());
-    }
-
-    @Test
-    void songHoldsAChartPerDifficulty() {
-        Song song = new Song("Ink and Fury", "SchmollCrossword OST", 104.7, 176);
-        assertEquals("Ink and Fury", song.getTitle());
-        assertEquals(176, song.getBpm());
-        Queue<Note> hard = new Queue<>();
-        hard.enqueue(new Note(main.NoteType.C, main.MusicNoteType.START, 0.25, 4.0, 0));
-        hard.enqueue(new Note(main.NoteType.D, main.MusicNoteType.START, 1.0, 5.5, 2));
-        song.setChart(Difficulty.HARD, hard);
-        assertTrue(song.getAvailableDifficulties().contains(Difficulty.HARD));
-        Queue<Note> chart = song.getChart(Difficulty.HARD);
-        assertEquals(2, chart.getSize());
-        Note first = chart.dequeue();
-        assertEquals(4.0, first.getTimeStamp());
-        assertEquals(0, first.getLane());
-        assertEquals(5.5, chart.peek().getTimeStamp());
     }
 }
