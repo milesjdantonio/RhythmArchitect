@@ -200,8 +200,9 @@ The two real tracks were composed by Claude for SchmollCrossword (MIT); see [NOT
 `frontend/src/mapping/automap.ts` finds every onset in the audio and times each one to its attack within a
 few milliseconds (attacks within 20 ms of a 16th are placed on it; the rest keep their exact time).
 How long each sound rings decides holds; its pitch decides the lane; the biggest downbeats become
-chords on Hard. For songs mapped by listening, the AI charter on the backend then picks which of
-those sounds each difficulty plays (it can only name measured sounds, so it can't add or move one);
+chords on Hard. For songs mapped by listening, a trained mapper places the tiles (below); if it
+can't, the AI charter on the backend picks which of those sounds each difficulty plays (it can only
+name measured sounds, so it can't add or move one);
 without it, `frontend/src/mapping/charts.ts` picks them by how much they stand out, never at random and never
 adding a note that isn't there.
 
@@ -213,10 +214,17 @@ Before that, two models run in the browser on what was heard (the mapping worker
   it, else the onset mapper's own estimate is used. On 14 Creative Commons tracks with known tempos it
   got 12 right (the other two at double time) against 8 for the mapper's own estimate, which kept
   reading fast songs at 2/3 of their tempo.
-- **The parts** (`stems.ts`): with WebGPU, Demucs splits the song into drums, bass, vocals and other,
-  and the onset mapper finds each part's sounds on its own (pitch from the part, drums never pitched).
-  Its model (about 172 MB) downloads from Hugging Face while the song is listened to and stays in the
-  browser's cache. Without WebGPU the song is mapped from the whole mix, as before.
+- **The tiles** (`ensomi.ts`): Ensomi R2, a model trained on human-made osu!mania 4K charts, charts
+  the song from the audio (about 20 s on WebGPU for a 3-minute song, about 90 s without). Its model
+  (about 120 MB) downloads from Hugging Face while the song is listened to and stays in the
+  browser's cache. Its lowest star rating is already about this game's Hard, so it charts once and
+  every difficulty keeps a subset of its tiles (`thin.ts`): the strongest sounds, spaced out, each
+  stretch of the song keeping its share (Easy about 1 tile a second, Medium about 2, Hard about 5).
+  Its tiles come about 29 ms early (measured on a groove with known hit times), so they move onto
+  the sounds the onset mapper measured.
+- **If the trained mapper fails**: with WebGPU, Demucs (`stems.ts`) splits the song into drums,
+  bass, vocals and other so the onset mapper finds each part's sounds on its own (model about 172 MB,
+  cached likewise), and the AI charter on the backend picks the tiles as described above.
 
 ## Layout
 

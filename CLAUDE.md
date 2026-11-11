@@ -61,13 +61,20 @@ Hard); they play it. The AI does not make music. Market and word everything that
 - The browser listens to it once through tab capture and `automap.ts` maps it
   (`src/mapping/listen.ts`, in `listen.worker.ts`). Before mapping, the worker runs the Beat This!
   beat tracker (`src/mapping/beats.ts`, model in `public/models/`; its grid is used when its
-  confidence is at least `GRID_TRUST`) and, with WebGPU, splits the song into parts with Demucs
-  (`src/mapping/stems.ts`; ~172 MB model from Hugging Face, prefetched while listening, cached;
-  `stemModel.ts`). Both run on ONNX Runtime (`src/mapping/ort.ts`); either failing leaves the
-  mapper as it was. e2e tests switch splitting off (localStorage `rythm-architect:no-stems`).
-  Then the backend's AI charter (Claude, `POST /api/chart`,
-  `docs/claude-backend.txt`) picks which measured sounds become tiles; the browser enforces the
-  rules on its plan (`src/mapping/charter.ts`) and falls back to the on-device charts.
+  confidence is at least `GRID_TRUST`). Then `automap.ts` measures every sound, the grid and the
+  sections, and the page shows them.
+- The tiles come from the trained mapper: Ensomi R2 (`src/mapping/ensomi.ts`, `@ensomi/runtime`;
+  ~120 MB model from Hugging Face pinned to one commit, prefetched while listening, cached;
+  `ensomiModel.ts`), run in the same worker after the onset mapper. It charts once at its lowest
+  star rating (2); every difficulty keeps a subset of its tiles (`src/mapping/thin.ts`, `KEEP`),
+  and its tiles move onto the onset mapper's measured sounds (`soundShift`: they come ~29 ms early).
+  e2e tests switch it off (localStorage `rythm-architect:no-ensomi`).
+- Only if it fails: with WebGPU the song is split with Demucs (`src/mapping/stems.ts`, ~172 MB,
+  `stemModel.ts`; not when the trained mapper is used; e2e: `rythm-architect:no-stems`), and the
+  backend's AI charter (Claude, `POST /api/chart`, `docs/claude-backend.txt`) picks which measured
+  sounds become tiles; the browser enforces the rules on its plan (`src/mapping/charter.ts`) and
+  falls back to the on-device charts. All the models run on one ONNX Runtime (`src/mapping/ort.ts`);
+  any of them failing leaves the next step to carry on.
 - Keep the request and plan types (`src/api/types.ts`), the mock (`mock-server/api.ts`), the
   Spring Boot backend (`backend/`) and `docs/claude-backend.txt` in step.
 - If it can't listen, an osu! fan chart is the fallback (`mock-server/sources.ts`,

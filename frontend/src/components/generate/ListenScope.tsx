@@ -3,6 +3,7 @@ import type { ChartProgress, Difficulty } from '../../api/types';
 import { isCalm } from '../../lib/settings';
 import { Icon } from '../Icon';
 import type { AuraHandle } from './ListenAura';
+import type { TrainedStage } from '../../mapping/ensomi';
 
 export interface ScopeHandle {
   /** What's heard, every ~12 ms: where in the song (s), its loudness, and its lows, mids and highs. */
@@ -11,8 +12,10 @@ export interface ScopeHandle {
   sounds: (list: { sec: number; band: number; strength: number }[], bars: number[]) => void;
   /** The finished map: every tile (song seconds, lane 0-3), flown from its sound into its lane; and how many tiles each difficulty has. */
   tiles: (tiles: { time: number; lane: number }[], counts?: Record<Difficulty, number>) => void;
-  /** How far the AI charter has got with one difficulty (each time it charts a chunk of the song). */
+  /** How far the AI charter has got with one difficulty (each time it charts a chunk of the song); or, from the trained mapper, each difficulty once made. */
   progress: (p: ChartProgress) => void;
+  /** Where the trained mapper has got: getting ready, listening to the song, charting it (0..1 of the song charted). */
+  trained: (stage: TrainedStage, p?: number) => void;
   /** What the mapper is doing ("splitting the song") and how far, 0..1, while it maps. */
   mapping: (what: string, p?: number) => void;
 }
@@ -53,6 +56,10 @@ const LANE_KEYS = ['D', 'F', 'J', 'K'];
  *           finished the lanes flash, it gets a check and its tile count, and the next one starts.
  *           (The chunks are charted in parallel; the reveal goes in order, catching up quickly on
  *           a difficulty that already finished.)
+ *           The trained mapper makes one chart for all three: while it gets ready and listens, a
+ *           light runs along all three meters; while it charts, the lanes fill with light up to
+ *           the part of the song it has charted, and all three meters with it; then Easy, Medium
+ *           and Hard, made from that chart, get their checks and tile counts one after another.
  *   done    Every tile leaps from its sound down into its lane, left to right, and lands with a
  *           flash; then the tile counts of Easy, Medium and Hard count up.
  *
@@ -90,6 +97,9 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       // which goes one difficulty at a time (pNow), its fill easing to that difficulty's progress
       pDone: new Float32Array(3), pTotal: new Float32Array(3), pTiles: new Float32Array(3), pOn: false, pReading: false,
       pNow: 0, pFill: 0, pShown: new Uint8Array(3), pShownAt: 0, pTileShown: new Float32Array(3),
+      // the trained mapper: its stage (0 none, 1 getting ready, 2 listening, 3 charting), how much
+      // of the song it has charted, and the lanes' fill easing to that
+      tStage: 0, tP: 0, tFill: 0,
       // what the mapper is doing, for the line under the field
       mapWhat: 'finding the beat', mapP: -1,
       // sparks and rings
@@ -189,6 +199,11 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
         const st = S.current;
         st.mapWhat = what;
         st.mapP = p ?? -1;
+      },
+      trained(stage, p) {
+        const st = S.current;
+        st.tStage = stage === 'load' ? 1 : stage === 'listen' ? 2 : 3;
+        st.tP = Math.max(st.tP, Math.min(1, p ?? 0));
       },
       progress(p) {
         const st = S.current;
@@ -367,14 +382,43 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
           g.fillStyle = '#fff';
           g.fillRect(0, lanesTop - 4, w * open, 0.6);
 
+          // Light filling the lanes left to right up to fx, with a bright front.
+          const fillTo = (fx: number) => {
+            for (let l = 0; l < LANES; l++) {
+              g.globalAlpha = 0.22;
+              g.fillStyle = laneFill[l];
+              g.fillRect(0, laneY(l, h) - 1.5, fx, 3);
+            }
+            if (fx > 1) {
+              const top = laneY(0, h) - 8, bot = laneY(LANES - 1, h) + 8;
+              const edge = g.createLinearGradient(fx - 40, 0, fx, 0);
+              edge.addColorStop(0, `hsl(${hues[1]} 100% 80% / 0)`);
+              edge.addColorStop(1, `hsl(${hues[1]} 100% 85% / 0.3)`);
+              g.globalAlpha = 1;
+              g.fillStyle = edge;
+              g.fillRect(fx - 40, top, 40, bot - top);
+              g.fillStyle = '#fff';
+              g.globalAlpha = 0.85;
+              g.fillRect(fx - 0.5, top, 1, bot - top);
+            }
+          };
+
+          // The trained mapper charting: the lanes fill up to the part of the song it has charted.
+          if (st.tStage === 3 && !st.pOn && !done) {
+            st.tFill += (st.tP - st.tFill) * Math.min(1, dt * 4);
+            fillTo(w * st.tFill);
+          }
+
           // The charter's progress, one difficulty at a time: its lanes fill with light left to
           // right as its chunks come back; finished, the lanes flash and the next one starts.
+          // From the trained mapper each one is made already: they're ticked off one after another.
           if (st.pOn && !st.pReading && !done && st.pNow < 3) {
             const i = st.pNow;
             const finished = st.pTotal[i] > 0 && st.pDone[i] >= st.pTotal[i];
             const target = st.pTotal[i] > 0 ? st.pDone[i] / st.pTotal[i] : 0;
             // Eases toward the real progress; quicker when catching up on a difficulty already done.
-            st.pFill += (target - st.pFill) * Math.min(1, dt * (finished ? 6 : 2.5));
+            if (st.tStage > 0 && finished) st.pFill = 1;
+            else st.pFill += (target - st.pFill) * Math.min(1, dt * (finished ? 6 : 2.5));
             if (finished && st.pFill > 0.985 && now - st.pShownAt > 450) {
               st.pShown[i] = 1;
               st.pShownAt = now;
@@ -387,26 +431,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
               }
               ring(w * 0.5, laneY(1.5, h), i);
               aura?.current?.pulse(i, 1);
-            } else {
-              const fx = w * st.pFill;
-              for (let l = 0; l < LANES; l++) {
-                g.globalAlpha = 0.22;
-                g.fillStyle = laneFill[l];
-                g.fillRect(0, laneY(l, h) - 1.5, fx, 3);
-              }
-              if (fx > 1) {
-                const top = laneY(0, h) - 8, bot = laneY(LANES - 1, h) + 8;
-                const edge = g.createLinearGradient(fx - 40, 0, fx, 0);
-                edge.addColorStop(0, `hsl(${hues[1]} 100% 80% / 0)`);
-                edge.addColorStop(1, `hsl(${hues[1]} 100% 85% / 0.3)`);
-                g.globalAlpha = 1;
-                g.fillStyle = edge;
-                g.fillRect(fx - 40, top, 40, bot - top);
-                g.fillStyle = '#fff';
-                g.globalAlpha = 0.85;
-                g.fillRect(fx - 0.5, top, 1, bot - top);
-              }
-            }
+            } else fillTo(w * st.pFill);
           }
 
           // The measured sounds.
@@ -540,24 +565,30 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
         if (status.current && now - lastText > 120) {
           lastText = now;
           // (The finished ones have their checks beside it; kept short so the row doesn't wrap.)
-          const building = !charting || !st.pOn ? '' : st.pReading ? 'the AI is reading the whole song'
-            : st.pNow < 3 ? `the AI is charting ${DIFF_NAMES[st.pNow]}` : '';
+          const trainedNow = st.tStage > 0 && !st.pOn;
+          const building = trainedNow
+            ? st.tStage === 1 ? 'the AI is getting ready' : st.tStage === 2 ? 'the AI is listening to the song' : `the AI is charting the song ${Math.round(st.tP * 100)}%`
+            : !charting || !st.pOn ? '' : st.pReading ? 'the AI is reading the whole song'
+            : st.pNow < 3 ? (st.tStage > 0 ? `${DIFF_NAMES[st.pNow]} from its chart` : `the AI is charting ${DIFF_NAMES[st.pNow]}`) : '';
           const text = done ? 'Every tile on a sound' : building ? building : charting ? `${st.sn} sounds · the AI is charting` : ph === 'map' ? `${st.heard} sounds heard · ${st.mapWhat}${st.mapP >= 0 ? ` ${Math.round(st.mapP * 100)}%` : ''}` : `${st.heard} sounds heard`;
           if (status.current.textContent !== text) status.current.textContent = text;
           // The difficulties under the field while the charter builds them.
           const el = countsEl.current;
-          if (el && charting && st.pOn && !done) {
+          if (el && (charting || trainedNow) && (st.pOn || trainedNow) && !done) {
             if (el.dataset.mode !== 'chart') { el.dataset.mode = 'chart'; el.dataset.on = 'true'; }
             for (let i = 0; i < 3; i++) {
               const item = el.children[i] as HTMLElement | undefined;
               if (!item) continue;
-              const state = st.pShown[i] ? 'done' : i === st.pNow && !st.pReading ? 'now' : 'wait';
+              // The trained mapper makes all three at once: all three are lit together.
+              const state = st.pShown[i] ? 'done' : trainedNow || (i === st.pNow && !st.pReading) ? 'now' : 'wait';
               if (item.dataset.state !== state) item.dataset.state = state;
-              const fill = st.pShown[i] ? 1 : i === st.pNow ? st.pFill : 0;
+              const busy = trainedNow && st.tStage < 3 ? 'true' : 'false';
+              if (item.dataset.busy !== busy) item.dataset.busy = busy;
+              const fill = st.pShown[i] ? 1 : trainedNow ? st.tFill : i === st.pNow ? st.pFill : 0;
               const bar = item.querySelector<HTMLElement>('.scope-meter > i');
               if (bar) bar.style.transform = `scaleX(${fill.toFixed(3)})`;
               const b = item.querySelector('b');
-              const v = String(Math.round(st.pShown[i] ? st.pTileShown[i] : i === st.pNow ? st.pTiles[i] : 0));
+              const v = trainedNow ? '' : String(Math.round(st.pShown[i] ? st.pTileShown[i] : i === st.pNow ? st.pTiles[i] : 0));
               if (b && b.textContent !== v) b.textContent = v;
             }
           }

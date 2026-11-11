@@ -19,6 +19,7 @@
     "video:listen": "node tools/video/record-listening.mjs"
   },
   "dependencies": {
+    "@ensomi/runtime": "0.3.2",
     "@rive-app/canvas": "^2.49.0",
     "demucs-web": "1.0.2",
     "motion": "^14.9.0",

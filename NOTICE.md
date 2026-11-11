@@ -29,8 +29,14 @@ line to the song's 104 BPM (each tile keeps its exact time) and lined up with th
 - **Demucs v4** (htdemucs) source separation by Meta AI ([facebookresearch/demucs](https://github.com/facebookresearch/demucs)),
   MIT. Not in this repository: the browser downloads timcsy's ONNX export
   ([timcsy/demucs-web-onnx](https://huggingface.co/timcsy/demucs-web-onnx), MIT) once and caches it.
-- Runtime libraries: [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) (MIT) and
-  [demucs-web](https://github.com/timcsy/demucs-web) (MIT).
+- **Ensomi R2** trained osu!mania 4K mapper ([sed-i/ensomi-r2](https://huggingface.co/sed-i/ensomi-r2)), MIT.
+  Not in this repository: the browser downloads its files (pinned to commit
+  `2bb35c61b1a4d725e9c4c1b40c0bc85f6be2651e`) once and caches it. Its `beatthis.onnx`,
+  `beatthis-mel-filter.bin` and `beatthis-hann-window.bin` are from Beat This! (CPJKU, MIT; the notice
+  ships with the model as `BeatThis-LICENSE.txt`). Run with [@ensomi/runtime](https://github.com/ensomi-labs/runtime)
+  (Apache-2.0); its WebAssembly core and resampler tables are bundled into the site.
+- Runtime libraries: [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) (MIT),
+  [demucs-web](https://github.com/timcsy/demucs-web) (MIT) and [fflate](https://github.com/101arrowz/fflate) (MIT).
 
 ## Fonts
 

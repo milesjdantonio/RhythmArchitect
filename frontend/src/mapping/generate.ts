@@ -9,7 +9,7 @@ import { huesFor } from './osu';
 /** How long the AI charter may take before the on-device charts are used instead. */
 export const CHART_TIMEOUT_MS = 300_000;
 
-/** The charts a song gets: from the AI charter on the backend, or (when it can't) the on-device mapper. */
+/** The charts a song gets: from the trained mapper, the AI charter on the backend, or (when neither can) the on-device mapper. */
 export interface Charted {
   charts: Record<Difficulty, Chart>;
   mapper: string;

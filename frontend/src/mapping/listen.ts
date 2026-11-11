@@ -13,7 +13,8 @@ import { YT_STATE, ytCue, ytOnError, ytPause, ytPlayFrom, ytState, ytTime } from
 import { unlockAudio } from '../audio/playback';
 import type { AutomapResult } from './automap';
 import type { FromMapper, ToMapper } from './listen.worker';
-import type { SongLevels } from '../api/types';
+import type { ChartProgress, SongLevels } from '../api/types';
+import type { Trained, TrainedStage } from './ensomi';
 import { Placer, findTick } from './capture';
 
 export type ListenFailure = 'unsupported' | 'declined' | 'no-audio' | 'silent' | 'stopped' | 'video';
@@ -257,14 +258,35 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
   }
 }
 
-export interface Mapped { result: AutomapResult; levels: SongLevels }
+export interface Mapped {
+  result: AutomapResult;
+  levels: SongLevels;
+  /**
+   * The trained mapper's charts, when the page asked for them (they come after the rest): null,
+   * with why, when it couldn't chart the song.
+   */
+  trained?: Promise<Trained | { failed: string }>;
+}
+
+export interface MapOptions {
+  split?: boolean;
+  /** Chart with the trained mapper (ensomi.ts), its files read from `base` (ensomiModel.ts). */
+  trained?: { base: string; title?: string; artist?: string };
+  onProgress?: (what: string, p?: number) => void;
+  /** Where the trained mapper has got (charting: 0..1 of the song), and each difficulty once made. */
+  onStage?: (stage: TrainedStage, p?: number) => void;
+  onChart?: (p: ChartProgress) => void;
+  /** Stops the worker (the trained charts then never come). */
+  signal?: AbortSignal;
+}
 
 /**
  * Runs the mapper on what was heard, in a worker so the page stays smooth: the beat tracker, the
- * song split into parts (when `split` and the browser has WebGPU), then the onset mapper.
+ * song split into parts (when `split` and the browser has WebGPU), then the onset mapper; and,
+ * when asked, the trained mapper (whose charts `trained` resolves to, after this resolves).
  * `onProgress` hears what it's doing ("splitting the song", 0..1).
  */
-export function mapHeard(pcm: Float32Array, sr: number, opts: { split?: boolean; onProgress?: (what: string, p?: number) => void } = {}): Promise<Mapped> {
+export function mapHeard(pcm: Float32Array, sr: number, opts: MapOptions = {}): Promise<Mapped> {
   return new Promise<Mapped>((resolve, reject) => {
     let worker: Worker;
     try {
@@ -276,13 +298,27 @@ export function mapHeard(pcm: Float32Array, sr: number, opts: { split?: boolean;
         .catch(reject);
       return;
     }
+    let charted: ((t: Trained | { failed: string }) => void) | null = null;
+    const stop = (why: string) => { worker.terminate(); charted?.({ failed: why }); charted = null; };
+    opts.signal?.addEventListener('abort', () => { stop('cancelled'); reject(new DOMException('Cancelled', 'AbortError')); }, { once: true });
     worker.onmessage = (e: MessageEvent<FromMapper>) => {
       const m = e.data;
       if ('progress' in m) { opts.onProgress?.(m.progress, m.p); return; }
+      if ('chart' in m) { opts.onChart?.(m.chart); return; }
+      if ('stage' in m) { opts.onStage?.(m.stage, m.p); return; }
+      if ('result' in m) {
+        const out: Mapped = { result: m.result, levels: m.levels };
+        if (m.trained) out.trained = new Promise((r) => { charted = r; });
+        else worker.terminate();
+        resolve(out);
+        return;
+      }
       worker.terminate();
-      if ('error' in m) reject(new Error(m.error)); else resolve(m);
+      if ('trained' in m) { charted?.(m.trained); charted = null; return; }
+      if ('trainedFailed' in m) { charted?.({ failed: m.trainedFailed }); charted = null; return; }
+      reject(new Error(m.error));
     };
-    worker.onerror = (e) => { worker.terminate(); reject(new Error(e.message || 'The mapper failed.')); };
-    worker.postMessage({ pcm, sr, split: !!opts.split } satisfies ToMapper, [pcm.buffer]);
+    worker.onerror = (e) => { stop(e.message || 'the mapper failed'); reject(new Error(e.message || 'The mapper failed.')); };
+    worker.postMessage({ pcm, sr, split: !!opts.split, trained: opts.trained } satisfies ToMapper, [pcm.buffer]);
   });
 }

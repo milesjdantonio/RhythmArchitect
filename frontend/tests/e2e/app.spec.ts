@@ -16,8 +16,9 @@ async function fakeYouTube(page: Page, { share = 'tab' as 'tab' | 'decline' | 's
   await page.addInitScript(({ share, seconds }) => {
     const w = window as unknown as Record<string, unknown>;
     w.__fakeYtSeconds = seconds;
-    // No song splitting in tests (it would download its 172 MB model).
+    // No song splitting or trained mapper in tests (they would download their 172 and 120 MB models).
     localStorage.setItem('rythm-architect:no-stems', '1');
+    localStorage.setItem('rythm-architect:no-ensomi', '1');
     // 'none': a browser that can't share a tab's sound at all.
     if (share === 'none') { Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', { value: undefined, configurable: true }); return; }
     navigator.mediaDevices.getDisplayMedia = async () => {

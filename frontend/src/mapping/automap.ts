@@ -45,6 +45,8 @@ export interface AutomapOptions {
    * sounds are then found in each part on its own.
    */
   stems?: Partial<Record<PartName, Float32Array>> | null;
+  /** Why there's no grid when the beat tracker failed (for the report). */
+  gridError?: string;
 }
 
 /** The parts a song is split into (Demucs's four stems). */
@@ -345,6 +347,13 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
   bpm = Math.round(bpm * 100) / 100;
   // The trained beat tracker's grid, when it's sure of it: its tempo, its downbeat and its meter.
   const grid = opts.grid && opts.grid.confidence >= GRID_TRUST && opts.grid.bpm > 40 && opts.grid.bpm < 260 ? opts.grid : null;
+  // What the beat tracker found, and whether it set the grid (the dev tools show it).
+  const ownBpm = bpm;
+  const g = opts.grid;
+  const beatNote = opts.gridError ? `Beat This! failed (${opts.gridError}); own estimate used`
+    : g === null ? 'Beat This! found no steady beat; own estimate used'
+    : g ? `Beat This!: ${g.bpm} BPM, ${g.meter}/4, ${Math.round(g.confidence * 100)}% on its grid (${grid ? 'used' : `not used: needs ${Math.round(GRID_TRUST * 100)}%; own estimate ${ownBpm} BPM`})`
+    : undefined;
   if (grid) {
     bpm = Math.round(grid.bpm * 100) / 100;
     meter = grid.meter;
@@ -592,6 +601,6 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
     onsetInfo: onsets.map((o) => ({ sec: Math.round(o.sec * 1000) / 1000, midi: o.midi, clarity: Math.round(o.clarity * 100) / 100, bright: Math.round(o.bright), band: o.band })),
     events,
     barEnergy,
-    report: { mapper: grid ? 'Onset mapper v3 (exact attacks, Beat This! grid)' : 'Onset mapper v2 (exact attacks)', confidence: Math.round(confidence * 100) / 100, sections, energy: curve, cues },
+    report: { mapper: grid ? 'Onset mapper v3 (exact attacks, Beat This! grid)' : 'Onset mapper v2 (exact attacks)', confidence: Math.round(confidence * 100) / 100, sections, energy: curve, cues, ...(beatNote ? { beat: beatNote } : {}) },
   };
 }

@@ -5,6 +5,7 @@ import type { Difficulty, Song, SongSummary, VideoMatch } from '../../api/types'
 import { stopSong, unlockAudio } from '../../audio/playback';
 import { canListen, ListenError, listenTo, mapHeard, requestTabAudio } from '../../mapping/listen';
 import { canSplit, prefetchStemModel } from '../../mapping/stemModel';
+import { ensomiBase, prefetchEnsomi } from '../../mapping/ensomiModel';
 import { ytCue, ytPause, VideoError } from '../../audio/youtube';
 import { holdQuiet } from '../../lib/quiet';
 import { chartWithAI, fallbackNote, listenProblem, songFromListening } from '../../mapping/generate';
@@ -140,10 +141,14 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       return;
     }
     setFlow({ step: 'listen', video, progress: 0 });
-    // With WebGPU the song is split into its parts before mapping (stems.ts): the splitter's model
-    // (about 172 MB, cached after the first time) downloads while the song is listened to.
-    const split = canSplit();
-    void split.then((yes) => { if (yes) prefetchStemModel().catch(() => {}); });
+    // The trained mapper charts the song (ensomi.ts): its model (about 120 MB, cached after the
+    // first time) downloads while the song is listened to. Without it, with WebGPU, the song is
+    // split into its parts before mapping (stems.ts; the splitter's model, about 172 MB, likewise).
+    const base = ensomiBase();
+    const split = base ? Promise.resolve(false) : canSplit();
+    let fetched = 0;
+    const fetching = base ? prefetchEnsomi(base, (p) => { fetched = p; }).catch(() => {}) : null;
+    if (!base) void split.then((yes) => { if (yes) prefetchStemModel().catch(() => {}); });
     try {
       const heard = await listenTo(stream, {
         videoId: video.videoId, seconds: video.seconds, signal,
@@ -151,7 +156,21 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
         onHear: (pos, rms, low, mid, high) => scope.current?.hear(pos, rms, low, mid, high),
       });
       setFlow({ step: 'map', video, progress: 0.5 });
-      const mapped = await mapHeard(heard.pcm, heard.sr, { split: await split, onProgress: (what, p) => scope.current?.mapping(what, p) });
+      // The model's download usually finishes during the song; if not, it finishes first (once).
+      if (fetching) {
+        const shown = setInterval(() => scope.current?.mapping('getting the trained mapper', fetched), 250);
+        await fetching;
+        clearInterval(shown);
+        if (signal?.aborted) return;
+      }
+      const mapped = await mapHeard(heard.pcm, heard.sr, {
+        split: await split,
+        trained: base ? { base, title: video.songTitle, artist: video.songArtist } : undefined,
+        onProgress: (what, p) => scope.current?.mapping(what, p),
+        onStage: (stage, p) => scope.current?.trained(stage, p),
+        onChart: (p) => scope.current?.progress(p),
+        signal,
+      });
       // What was measured settles into the field (every sound, the bar lines) while the AI charts it.
       {
         const r = mapped.result, spb = 60 / r.bpm;
@@ -159,10 +178,22 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
         for (let b = r.offset; b < r.offset + r.lengthBeats * spb; b += spb * 4) bars.push(b);
         scope.current?.sounds(r.events.map((e) => ({ sec: e.sec, band: e.band === 'low' ? 0 : e.band === 'mid' ? 1 : 2, strength: e.strength })), bars);
       }
-      // The AI charts it from what was measured (the backend; on-device charts if it can't).
+      // The trained mapper charts it from the audio; if it can't, the backend's AI charts it from
+      // what was measured (and the on-device charts if that can't either).
       setFlow({ step: 'chart', video, progress: 0.75 });
-      const charted = await chartWithAI(mapped, video, signal, (p) => scope.current?.progress(p));
+      const trained = mapped.trained ? await mapped.trained : null;
+      if (signal?.aborted) return;
+      let charted = trained && 'charts' in trained
+        ? { charts: trained.charts, mapper: trained.mapper }
+        : await chartWithAI(mapped, video, signal, (p) => scope.current?.progress(p));
+      // The dev tools say why the trained mapper didn't chart it.
+      if (trained && 'failed' in trained) charted = { ...charted, mapper: `${charted.mapper} (trained mapper failed: ${trained.failed})` };
+      // The trained mapper's Easy, Medium and Hard get their checks one after another (~0.45 s
+      // each) while the song is saved; the tiles land after that.
+      const ticked = trained && 'charts' in trained ? new Promise((r) => setTimeout(r, 1500)) : null;
       const song = await api.createSong(songFromListening(mapped, video, heard, charted));
+      await ticked;
+      if (signal?.aborted) return;
       // Show the map landing on the sound it came from, then open it.
       const spb = 60 / song.bpm, at = song.source.offset ?? 0;
       scope.current?.tiles(song.charts.hard.notes.map((n) => ({ time: at + n.t * spb, lane: n.lane })),

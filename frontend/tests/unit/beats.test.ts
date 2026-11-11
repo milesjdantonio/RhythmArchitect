@@ -49,6 +49,28 @@ describe('the beat grid from tracked beats', () => {
   });
 });
 
+describe('the map report says what the beat tracker did', () => {
+  // Four seconds of clicks at 120 BPM.
+  const sr = 22050;
+  const x = new Float32Array(sr * 8);
+  for (let b = 0; b < 16; b++) for (let i = 0; i < 200; i++) x[Math.floor(b * 0.5 * sr) + i] = Math.sin(i * 0.3) * (1 - i / 200);
+
+  it('used, when it is sure', async () => {
+    const { automap } = await import('../../src/mapping/automap');
+    const r = automap(x.slice(), sr, { grid: { bpm: 120, offset: 0, meter: 4, confidence: 0.9 } });
+    expect(r.report.beat).toMatch(/120 BPM, 4\/4, 90% on its grid \(used\)/);
+    expect(r.bpm).toBe(120);
+  });
+
+  it('not used, with why, when it is unsure; and when it failed', async () => {
+    const { automap } = await import('../../src/mapping/automap');
+    expect(automap(x.slice(), sr, { grid: { bpm: 90, offset: 0, meter: 4, confidence: 0.3 } }).report.beat).toMatch(/30% on its grid \(not used: needs 50%; own estimate/);
+    expect(automap(x.slice(), sr, { grid: null }).report.beat).toMatch(/no steady beat/);
+    expect(automap(x.slice(), sr, { gridError: 'beat model: 404' }).report.beat).toMatch(/failed \(beat model: 404\)/);
+    expect(automap(x.slice(), sr).report.beat).toBeUndefined();
+  });
+});
+
 describe('the tracker\'s input and output', () => {
   it('peaks are the local maxima above 0, a plateau counted once', () => {
     const l = Float32Array.from([-1, 2, -1, -1, -1, -1, 0.5, 0.5, -1, -1, -1, -1, -0.2, -1]);

@@ -36,8 +36,16 @@ const config = {
   // Workers as ES modules, so they can split: the stage worker loads its WebGPU materials
   // (src/stage/gpu.ts) only when /demo's version B asks for them.
   worker: { format: 'es' as const },
-  // ONNX Runtime (the mapping worker's models: src/mapping/ort.ts) finds its WebAssembly relative
-  // to itself; Vite's dependency pre-bundling would move it.
-  optimizeDeps: { exclude: ['onnxruntime-web'] },
+  // ONNX Runtime (the mapping worker's models: src/mapping/ort.ts) and the trained mapper's runtime
+  // (src/mapping/ensomi.ts) find their WebAssembly relative to themselves; Vite's dependency
+  // pre-bundling would move it.
+  // Its own dependency is bundled up front (found later, it would reload the page mid-mapping).
+  optimizeDeps: { exclude: ['onnxruntime-web', '@ensomi/runtime'], include: ['@ensomi/runtime > fflate'] },
+  // One ONNX Runtime: the trained mapper's runtime brings its own copy (and asks for its CPU-only
+  // build when it isn't handed one), but it's always handed the app's WebGPU build.
+  resolve: {
+    dedupe: ['onnxruntime-web'],
+    alias: [{ find: /^onnxruntime-web\/wasm$/, replacement: 'onnxruntime-web/webgpu' }],
+  },
   preview: { port: 4173 },
 };

@@ -79,6 +79,11 @@ export interface MapReport {
   cues?: Cue[];
   /** What the charter says each difficulty follows (from the AI charter, when it gives one). */
   summary?: string;
+  /**
+   * What the trained beat tracker found (dev tools): its tempo, meter and how sure it was, and
+   * whether its grid set the map's tempo, e.g. "Beat This!: 104 BPM, 4/4, 92% on its grid (used)".
+   */
+  beat?: string;
 }
 
 /** Synth patch for synth-played songs. Names map to Tone.js oscillator types. */

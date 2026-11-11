@@ -1,4 +1,5 @@
-// ONNX Runtime for the browser's models (the beat tracker, beats.ts; the song splitter, stems.ts).
+// ONNX Runtime for the browser's models (the beat tracker, beats.ts; the song splitter, stems.ts;
+// the trained mapper, ensomi.ts).
 // The WebGPU build: it runs on the graphics chip where the browser has WebGPU, and on the CPU
 // (WebAssembly) otherwise. Imported only by the mapping worker, so the page never loads it.
 
@@ -12,6 +13,7 @@ ort.env.wasm.numThreads = 1;
 ort.env.logLevel = 'error';
 
 export { ort };
+export type Ort = typeof ort;
 
 /** WebGPU is there and gives an adapter (the song splitter needs it; the beat tracker doesn't). */
 export async function hasWebGpu(): Promise<boolean> {

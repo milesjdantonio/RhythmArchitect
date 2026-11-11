@@ -101,7 +101,8 @@
 .scope-counts[data-on='true'] { opacity: 1; transform: none; }
 .scope-counts b { font-family: var(--font-display); font-weight: 400; font-size: 15px; letter-spacing: 0.02em; color: var(--ink); margin-left: 4px; text-shadow: 0 0 12px var(--glowA); font-variant-numeric: tabular-nums; }
 /* While the AI charter builds them: Easy, then Medium, then Hard, each with a meter; the one being
-   built is lit, finished ones get a check (ListenScope). */
+   built is lit, finished ones get a check (ListenScope). The trained mapper makes all three from
+   one chart: all three are lit and fill together, then get their checks one after another. */
 .scope-counts > span { position: relative; display: inline-flex; align-items: baseline; padding-bottom: 5px; transition: opacity 300ms var(--ease-out), color 300ms var(--ease-out); }
 .scope-counts[data-mode='chart'] > span[data-state='wait'] { opacity: 0.4; }
 .scope-counts[data-mode='chart'] > span[data-state='now'] { color: var(--ink); }
@@ -112,6 +113,10 @@
 .scope-meter > i { display: block; height: 100%; transform: scaleX(0); transform-origin: left; background: var(--ink); box-shadow: 0 0 8px var(--glowA); transition: transform 160ms linear; }
 .scope-counts > span[data-state='now'] .scope-meter > i { animation: scope-now 1.4s var(--ease-soft) infinite; }
 @keyframes scope-now { 50% { opacity: 0.55; } }
+/* The trained mapper getting ready or listening (no percentage yet): a light runs along the meters. */
+.scope-meter::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 30%; background: linear-gradient(90deg, transparent, var(--ink), transparent); opacity: 0; transform: translateX(-100%); }
+.scope-counts > span[data-busy='true'] .scope-meter::after { opacity: 0.7; animation: scope-busy 1.3s var(--ease-soft) infinite; }
+@keyframes scope-busy { to { transform: translateX(340%); } }
 /* The aura behind the dialog (ListenAura): full screen, half resolution, under the card. */
 .listen-aura { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
 /* "Live": a pulse on live state only (the listening pass is happening now). */
@@ -120,4 +125,4 @@
   background: var(--miss); box-shadow: 0 0 10px var(--miss); animation: live-dot 1.6s var(--ease-soft) infinite;
 }
 @keyframes live-dot { 50% { opacity: 0.35; transform: scale(0.8); } }
-@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } .scope-counts, .scope-counts > span, .scope-check, .scope-meter > i { transition: none; } .scope-meter > i { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } .scope-counts, .scope-counts > span, .scope-check, .scope-meter > i { transition: none; } .scope-meter > i, .scope-meter::after { animation: none !important; } }
