@@ -1,7 +1,7 @@
 # The Spring Boot backend (backend/), with the game's classes it builds in (src/java/main:
-# SongMapper, Song, Note, Queue...). Built from the repo root so both folders are in the context.
+# Song, Note, Queue...). Built from the repo root so both folders are in the context.
 #   docker build -t rythm-backend .
-#   docker run -p 8080:8080 -e ANTHROPIC_API_KEY=... rythm-backend
+#   docker run -p 8080:8080 -e YOUTUBE_API_KEY=... rythm-backend
 
 FROM eclipse-temurin:25-jdk AS build
 WORKDIR /src

@@ -3,10 +3,7 @@
 // heard. The audio is decoded by a real browser (Node has no MP3 decoder), driven by Playwright
 // against a temporary Vite server. Mapping songs on request is the backend's job (docs/api.md).
 //
-//   node tools/map-audio.mjs [id,id] [--request]
-//
-// --request also writes docs/samples/<id>.chart-request.json: what the browser sends the AI
-// charter (POST /api/chart) for that track, for building and testing the backend against.
+//   node tools/map-audio.mjs [id,id]
 //
 // Re-run after changing automap.ts or charts.ts, then re-record the gameplay video (npm run video).
 
@@ -26,7 +23,6 @@ const TRACKS = [
   { id: 'the-restless-stacks', title: 'The Restless Stacks', artist: 'SchmollCrossword OST', meter: 3, key: 'D', scale: 'minor', scaleLabel: 'Minor', mood: 'Dark', hues: [168, 286], bpmRange: [100, 200] },
 ];
 const args = process.argv.slice(2);
-const writeRequest = args.includes('--request');
 const only = args.find((a) => !a.startsWith('--'))?.split(',');
 
 const port = 5197;
@@ -51,9 +47,7 @@ try {
           for (let i = 0; i < d.length; i++) mono[i] += d[i] / audio.numberOfChannels;
         }
         const r = automap(mono, audio.sampleRate, { meter: t.meter, key: t.key, scale: t.scale, bpmRange: t.bpmRange, seed: 11 });
-        const { chartRequest } = await import('/src/mapping/charter.ts');
-        const request = chartRequest(r, { title: t.title, artist: t.artist, seconds: Math.round(audio.duration * 10) / 10 }, t.meter);
-        return { ...r, duration: audio.duration, request };
+        return { ...r, duration: audio.duration };
       }, t);
       const out = {
         id: t.id, title: t.title, artist: t.artist, meter: t.meter, key: t.key, scale: t.scaleLabel, mood: t.mood, hues: t.hues,
@@ -62,10 +56,6 @@ try {
         report: res.report, charts: res.charts,
       };
       writeFileSync(join(root, 'mock-server', 'songs', 'tracks', `${t.id}.json`), JSON.stringify(out));
-      if (writeRequest) {
-        mkdirSync(join(root, '..', 'docs', 'samples'), { recursive: true });
-        writeFileSync(join(root, '..', 'docs', 'samples', `${t.id}.chart-request.json`), JSON.stringify(res.request, null, 1));
-      }
       const c = (d) => `${res.charts[d].notes.length}`;
       console.log(`${t.id}: ${res.bpm} BPM, beat 0 at ${res.offset}s, ${res.duration.toFixed(1)}s, ${res.onsets} onsets, confidence ${res.report.confidence}; easy ${c('easy')} / medium ${c('medium')} / hard ${c('hard')} tiles; sections ${res.report.sections.map((s) => s.label).join(' → ')}`);
     }

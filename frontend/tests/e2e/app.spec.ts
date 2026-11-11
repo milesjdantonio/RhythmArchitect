@@ -220,9 +220,9 @@ test.describe('Rythm Architect', () => {
     const song = (await (await request.get(`/api/songs/${id}`)).json()) as Song;
     expect(song.source).toMatchObject({ kind: 'youtube', videoId: 'e2eInkFury1', chart: 'listened' });
     expect(song.source.credit).toContain('measured'); // the calibration tick was heard
-    // The AI charter (the mock's stand-in for Claude) picked the tiles from what was measured.
-    expect(song.report.mapper).toContain('Mock charter');
-    expect(song.report.mapper).not.toContain('on-device');
+    // The trained mapper is off in tests: the onset mapper's own charts.
+    expect(song.report.mapper).toContain('Onset mapper');
+    expect(song.report.mapper).not.toContain('failed');
     expect(song.levels?.rate).toBe(30);
     expect(song.levels!.bass.length).toBeGreaterThan(1000);
     // The same audio, mapped offline from the file (the bundled map): the tiles must land on the

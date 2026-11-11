@@ -22,7 +22,8 @@ export type ToStage =
   | { type: 'init'; canvas: OffscreenCanvas; width: number; height: number; dpr: number; mode: StageMode; hues?: [number, number]; profile: string }
   | { type: 'size'; width: number; height: number; dpr: number }
   | { type: 'notes'; time: Float32Array; end: Float32Array; lane: Uint8Array; hold: Uint8Array }
-  | { type: 'batch'; calls: [string, unknown[]][]; frame?: { t: number; at: number; state: Uint8Array } }
+  /** `frame.state`: the state of the notes from index `frame.from` on (the ones that can still change). */
+  | { type: 'batch'; calls: [string, unknown[]][]; frame?: { t: number; at: number; state: Uint8Array; from: number } }
   | { type: 'hold' }
   | { type: 'sleep'; on: boolean }
   /** Dev and tests only: take the GPU away (see Stage3D.loseGpu). */
@@ -53,6 +54,14 @@ export const wallMs = () => performance.timeOrigin + performance.now();
 const STICKY = new Set(['setTiming', 'setHues', 'setGhostChart', 'setFever']);
 /** Fresh stages at most this many times a minute (then it stops: something is badly wrong). */
 const MAX_RESTARTS = 3;
+/**
+ * Each frame only the notes that can still change are sent (their state, one byte each): from the
+ * first that ended under BEHIND seconds ago (a miss is judged a moment late, a missed tile falls
+ * past the line) to those AHEAD seconds from now (nothing further away is judged). Not the whole
+ * song every frame.
+ */
+const BEHIND = 2;
+const AHEAD = 1;
 
 export class StageProxy {
   static supported() {
@@ -68,7 +77,9 @@ export class StageProxy {
   private calls: [string, unknown[]][] = [];
   private flushing = false;
   private notes: StageNote[] | null = null;
-  private state = new Uint8Array(0);
+  /** The first note that can still change (the notes are in time order). */
+  private from = 0;
+  private lastT = Number.NEGATIVE_INFINITY;
   private pads: Float32Array<ArrayBufferLike> = new Float32Array(8);
   private particles = 0;
   /** Frames the worker drew per second (over half-second windows), for the dev tools. */
@@ -164,30 +175,41 @@ export class StageProxy {
       queueMicrotask(() => { if (this.calls.length) this.flush(); this.flushing = false; });
     }
   }
-  private flush(frame?: { t: number; at: number; state: Uint8Array }) {
+  private flush(frame?: { t: number; at: number; state: Uint8Array; from: number }) {
     const calls = this.calls;
     this.calls = [];
     this.post({ type: 'batch', calls, frame }, frame ? [frame.state.buffer] : []);
   }
 
   /**
-   * The song time to draw, and the notes (sent whole once, then one byte of state each per frame).
-   * `at`: when the time was read (performance.now()), so the worker carries it on from then.
+   * The song time to draw, and the notes (sent whole once, then one byte of state per frame for
+   * each note that can still change). `at`: when the time was read (performance.now()), so the
+   * worker carries it on from then.
    */
   frame(t: number, notes?: StageNote[], at = performance.now()) {
     // Showcase: no notes (the worker's stage plays its ghost chart).
     const list = notes ?? [];
+    let all = false;
     if (notes && list !== this.notes) {
       this.notes = list;
       const n = list.length;
       const time = new Float32Array(n), end = new Float32Array(n), lane = new Uint8Array(n), hold = new Uint8Array(n);
       list.forEach((x, i) => { time[i] = x.time; end[i] = x.end; lane[i] = x.lane; hold[i] = x.hold ? 1 : 0; });
       this.post({ type: 'notes', time, end, lane, hold }, [time.buffer, end.buffer, lane.buffer, hold.buffer]);
+      all = true;
     }
-    if (this.state.length !== list.length) this.state = new Uint8Array(list.length);
-    const state = new Uint8Array(list.length);
-    for (let i = 0; i < list.length; i++) state[i] = packNote(list[i]);
-    this.flush({ t, at: performance.timeOrigin + at, state });
+    // Time went back (a restart): every note's state goes again, then the window moves on from 0.
+    if (t < this.lastT - 0.25) all = true;
+    this.lastT = t;
+    if (all) this.from = 0;
+    while (this.from < list.length && list[this.from].end < t - BEHIND) this.from++;
+    const from = all ? 0 : this.from;
+    let to = from;
+    if (all) to = list.length;
+    else while (to < list.length && list[to].time < t + AHEAD) to++;
+    const state = new Uint8Array(to - from);
+    for (let i = from; i < to; i++) state[i - from] = packNote(list[i]);
+    this.flush({ t, at: performance.timeOrigin + at, state, from: all ? 0 : this.from });
   }
 
   /** Stop carrying the time on (the game paused). */

@@ -10,14 +10,14 @@ Hard); they play it. The AI does not make music. Market and word everything that
 - Read [README.md](README.md) for the layout, [docs/api.md](docs/api.md) for the backend contract,
   [docs/resources.md](docs/resources.md) for tools and rules.
 - Code by area: `src/audio/` (playback.ts, youtube.ts, ambient.ts), `src/mapping/` (the Generate
-  pipeline: listening, automap, charts, charter, osu), `src/library/` (song cache, search, bank),
+  pipeline: listening, beats, automap, charts, ensomi (the trained mapper), thin, osu), `src/library/` (song cache, search, bank),
   `src/game/` (rules), `src/stage/` (3D stage), `src/background/`, `src/intro/`, `src/screens/`,
   `src/components/` (shared, plus `menu/`, `play/`, `generate/`). The mock backend and the songs it
   starts with are in `mock-server/`.
 - The real backend is `backend/` at the repo root (Java 25, Spring Boot, Maven; see
-  `backend/README.md`): the same routes as the mock. Claude lives in `src/java/main/SongMapper.java`
-  at the repo root (package `main`, built into the backend), not in the backend's own code.
-  Its built-in songs are `src/main/resources/seed/songs.json` (`node tools/export-seed.mjs` from
+  `backend/README.md`): the same routes as the mock. The game's own Java classes (`Song`, `Note`,
+  `Queue`...) are in `src/java/main/` at the repo root (package `main`, built into the backend).
+  No AI runs on the server. Its built-in songs are `src/main/resources/seed/songs.json` (`node tools/export-seed.mjs` from
   `frontend/` after they change). Run `./mvnw test` there after changing it.
 
 ## Layout (fixed by the user)
@@ -69,14 +69,12 @@ Hard); they play it. The AI does not make music. Market and word everything that
   star rating (2); every difficulty keeps a subset of its tiles (`src/mapping/thin.ts`, `KEEP`),
   and its tiles move onto the onset mapper's measured sounds (`soundShift`: they come ~29 ms early).
   e2e tests switch it off (localStorage `rythm-architect:no-ensomi`).
-- Only if it fails: with WebGPU the song is split with Demucs (`src/mapping/stems.ts`, ~172 MB,
-  `stemModel.ts`; not when the trained mapper is used; e2e: `rythm-architect:no-stems`), and the
-  backend's AI charter (Claude, `POST /api/chart`, `docs/claude-backend.txt`) picks which measured
-  sounds become tiles; the browser enforces the rules on its plan (`src/mapping/charter.ts`) and
-  falls back to the on-device charts. All the models run on one ONNX Runtime (`src/mapping/ort.ts`);
-  any of them failing leaves the next step to carry on.
-- Keep the request and plan types (`src/api/types.ts`), the mock (`mock-server/api.ts`), the
-  Spring Boot backend (`backend/`) and `docs/claude-backend.txt` in step.
+- Only if it's off or fails: with WebGPU the song is split with Demucs (`src/mapping/stems.ts`,
+  ~172 MB, `stemModel.ts`; e2e: `rythm-architect:no-stems`), and the onset mapper's own charts
+  (`charts.ts`) are used. All the models run on one ONNX Runtime (`src/mapping/ort.ts`); any of
+  them failing leaves the next step to carry on.
+- Keep the API types (`src/api/types.ts`), the mock (`mock-server/api.ts`) and the Spring Boot
+  backend (`backend/`) in step. No AI runs on the server.
 - If it can't listen, an osu! fan chart is the fallback (`mock-server/sources.ts`,
   `src/mapping/osu.ts`). Only tiles and a loudness curve are kept. Never download commercial audio.
 - Test with `localhost`, not `127.0.0.1` (label music refuses IPs).

@@ -100,9 +100,8 @@
 .scope-counts { display: flex; gap: 14px; opacity: 0; transform: translateY(4px); transition: opacity 400ms var(--ease-out), transform 400ms var(--ease-out); text-transform: uppercase; }
 .scope-counts[data-on='true'] { opacity: 1; transform: none; }
 .scope-counts b { font-family: var(--font-display); font-weight: 400; font-size: 15px; letter-spacing: 0.02em; color: var(--ink); margin-left: 4px; text-shadow: 0 0 12px var(--glowA); font-variant-numeric: tabular-nums; }
-/* While the AI charter builds them: Easy, then Medium, then Hard, each with a meter; the one being
-   built is lit, finished ones get a check (ListenScope). The trained mapper makes all three from
-   one chart: all three are lit and fill together, then get their checks one after another. */
+/* While the trained mapper makes them (ListenScope): all three from one chart, so all three are
+   lit and their meters fill together; then each gets a check, one after another. */
 .scope-counts > span { position: relative; display: inline-flex; align-items: baseline; padding-bottom: 5px; transition: opacity 300ms var(--ease-out), color 300ms var(--ease-out); }
 .scope-counts[data-mode='chart'] > span[data-state='wait'] { opacity: 0.4; }
 .scope-counts[data-mode='chart'] > span[data-state='now'] { color: var(--ink); }

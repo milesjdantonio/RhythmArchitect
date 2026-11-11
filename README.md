@@ -119,7 +119,7 @@ npm run dev          # http://localhost:5173, with the mock backend at /api
 | `npm run rive` / `rive:check` | Rebuild the `.riv` files from `frontend/tools/rive/art/`, and check them in the real runtime |
 | `npm run rive:bake` | Bake the hit and hold bursts to the sprite sheets the game's stage draws (`frontend/public/rive/baked/`) |
 | `npm run video:listen` | Record the listening and loading process (Generate → listen → map → chart → load → play) to `docs/media/listening.webm`; self-contained (own server, stand-in YouTube player) |
-| `npm run map` | Re-map the bundled test tracks with the onset mapper (`frontend/src/mapping/automap.ts`); add `-- --request` to also write sample AI-charter requests to `docs/samples/` |
+| `npm run map` | Re-map the bundled test tracks with the onset mapper (`frontend/src/mapping/automap.ts`) |
 | `npm run video` | Record `docs/media/gameplay.webm` (needs `npm run dev`) |
 
 **Performance.** The game screen draws as "one stage". How it draws is a profile in
@@ -138,11 +138,11 @@ The frontend talks to `/api` (or `VITE_API_BASE_URL`). The contract is in
 [docs/api.md](docs/api.md) and the types in [frontend/src/api/types.ts](frontend/src/api/types.ts).
 Two backends implement all of it:
 
-- **`backend/`** (Java, Spring Boot): the real one. Its AI charter is `src/java/main/SongMapper.java`, which calls Claude. Run it with
+- **`backend/`** (Java, Spring Boot): the real one (no AI runs on it: songs are charted in the browser). Run it with
   `./mvnw spring-boot:run` from `backend/` and set `VITE_API_BASE_URL=http://localhost:8080` in
   `frontend/.env.local`; see [backend/README.md](backend/README.md).
 - **`frontend/mock-server/`**: runs inside the Vite server when `VITE_API_BASE_URL` is empty and
-  keeps its songs in `frontend/.data/songs.json`. Its charter answers by fixed rules.
+  keeps its songs in `frontend/.data/songs.json`.
 
 The mock never makes up a song. Search pulls up songs that are already mapped. **Generate
 beatmap** maps a new one, and it plays from YouTube:
@@ -153,12 +153,9 @@ beatmap** maps a new one, and it plays from YouTube:
 2. **Listen once.** Press *Listen and map* and share this tab with its audio. The song plays once
    while the browser records what it hears (filed by the video's position; a short tick first
    measures the capture delay), then the onset mapper (`automap.ts`, in a worker) measures the beat
-   and every sound, and the recording is dropped. The measurements (no audio) go to the backend's
-   **AI charter** (`POST /api/chart`, Claude: [docs/claude-backend.txt](docs/claude-backend.txt)),
-   which picks which sounds each difficulty plays and where; the browser checks its plan and builds
-   the charts (`frontend/src/mapping/charter.ts`), or uses the on-device charts if the charter can't answer.
-   The mock answers with the on-device rules (`MOCK_CHARTER=off` makes it act like a backend
-   without one). Only the tiles and a loudness curve for the visuals are kept. The
+   and every sound, a **trained mapper** (Ensomi R2, also in the browser) charts the song, and the
+   recording is dropped (see *How a map stays true to the song*). If the trained mapper can't, the
+   onset mapper's own charts are used. Only the tiles and a loudness curve for the visuals are kept. The
    mapper finds notes with SuperFlux over a 24-bands-per-octave spectrogram, so a melody that only
    changes pitch still gets its notes (on the benchmark in `frontend/tests/unit/automap-band.test.ts` it finds
    every note, against 62-85% before); lanes follow pitch, or brightness for drums, ranked within
@@ -201,10 +198,8 @@ The two real tracks were composed by Claude for SchmollCrossword (MIT); see [NOT
 few milliseconds (attacks within 20 ms of a 16th are placed on it; the rest keep their exact time).
 How long each sound rings decides holds; its pitch decides the lane; the biggest downbeats become
 chords on Hard. For songs mapped by listening, a trained mapper places the tiles (below); if it
-can't, the AI charter on the backend picks which of those sounds each difficulty plays (it can only
-name measured sounds, so it can't add or move one);
-without it, `frontend/src/mapping/charts.ts` picks them by how much they stand out, never at random and never
-adding a note that isn't there.
+can't, `frontend/src/mapping/charts.ts` picks them from the measured sounds by how much they stand
+out, never at random and never adding a note that isn't there.
 
 Before that, two models run in the browser on what was heard (the mapping worker,
 `frontend/src/mapping/listen.worker.ts`; the audio still never leaves the page):
@@ -224,7 +219,7 @@ Before that, two models run in the browser on what was heard (the mapping worker
   the sounds the onset mapper measured.
 - **If the trained mapper fails**: with WebGPU, Demucs (`stems.ts`) splits the song into drums,
   bass, vocals and other so the onset mapper finds each part's sounds on its own (model about 172 MB,
-  cached likewise), and the AI charter on the backend picks the tiles as described above.
+  cached likewise), and `charts.ts` picks the tiles as described above.
 
 ## Layout
 
@@ -237,8 +232,8 @@ frontend/               the game: everything below runs from here (npm scripts, 
     main.tsx, App.tsx   start-up and the routes
     api/                types (the backend contract) and the client
     audio/              playback (Tone.js: real tracks, synth songs, previews), YouTube, the menu's music
-    mapping/            the Generate pipeline: listening, the onset mapper, charts, the AI charter's
-                        rules, osu! fan charts, loudness and visual cues
+    mapping/            the Generate pipeline: listening, the beat tracker, the onset mapper, the
+                        trained mapper, charts, osu! fan charts, loudness and visual cues
     library/            the songs cache, search and the music bank's letter groups
     game/               rules (engine.ts), autoplay, the 2D fallback renderer
     stage/              the three.js stage (Stage3D.ts, with its shaders, textures and particle forms),
@@ -262,6 +257,6 @@ frontend/               the game: everything below runs from here (npm scripts, 
     check/              screenshots and the autoplay bot
   tests/                unit/ and e2e/
 backend/                the Spring Boot backend (Java): songs, search, YouTube, fan charts
-src/java/main/          the game's Java classes: SongMapper (Claude, the AI charter), Song, Note, Queue
-docs/                   the backend contract (api.md, claude-backend.txt), resources, media
+src/java/main/          the game's Java classes: Song, Note, Queue, Node...
+docs/                   the backend contract (api.md), resources, media
 ```

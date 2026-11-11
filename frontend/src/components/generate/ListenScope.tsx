@@ -12,7 +12,7 @@ export interface ScopeHandle {
   sounds: (list: { sec: number; band: number; strength: number }[], bars: number[]) => void;
   /** The finished map: every tile (song seconds, lane 0-3), flown from its sound into its lane; and how many tiles each difficulty has. */
   tiles: (tiles: { time: number; lane: number }[], counts?: Record<Difficulty, number>) => void;
-  /** How far the AI charter has got with one difficulty (each time it charts a chunk of the song); or, from the trained mapper, each difficulty once made. */
+  /** A difficulty the trained mapper has made (done 1 of 1, with its tiles). */
   progress: (p: ChartProgress) => void;
   /** Where the trained mapper has got: getting ready, listening to the song, charting it (0..1 of the song charted). */
   trained: (stage: TrainedStage, p?: number) => void;
@@ -49,17 +49,12 @@ const LANE_KEYS = ['D', 'F', 'J', 'K'];
  *   map     A beam sweeps the song again and again while the mapper finds the beat and every
  *           note; the stars flare as it passes.
  *   chart   The measured sounds settle in exactly where they are (a wave, left to right), the bar
- *           lines draw down, and four lanes open below. While the AI charter decides, threads of
- *           light reach from sounds down to lanes, flickering, and a light drifts across. As the
- *           charter reports progress, Easy, Medium and Hard are built one at a time: the lanes
- *           fill with light left to right as that difficulty's chunks come back; when it's
- *           finished the lanes flash, it gets a check and its tile count, and the next one starts.
- *           (The chunks are charted in parallel; the reveal goes in order, catching up quickly on
- *           a difficulty that already finished.)
- *           The trained mapper makes one chart for all three: while it gets ready and listens, a
- *           light runs along all three meters; while it charts, the lanes fill with light up to
- *           the part of the song it has charted, and all three meters with it; then Easy, Medium
- *           and Hard, made from that chart, get their checks and tile counts one after another.
+ *           lines draw down, and four lanes open below. While the AI (the trained mapper) works,
+ *           threads of light reach from sounds down to lanes, flickering. It makes one chart for
+ *           all three difficulties: while it gets ready and listens, a light runs along all three
+ *           meters; while it charts, the lanes fill with light up to the part of the song it has
+ *           charted, and all three meters with it; then Easy, Medium and Hard, made from that
+ *           chart, get their checks and tile counts one after another (the lanes flash for each).
  *   done    Every tile leaps from its sound down into its lane, left to right, and lands with a
  *           flash; then the tile counts of Easy, Medium and Hard count up.
  *
@@ -93,9 +88,9 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       // tiles
       tx: new Float32Array(TILES), tl: new Uint8Array(TILES), ty: new Float32Array(TILES), tn: 0, tilesAt: 0, landed: new Uint8Array(TILES),
       laneFlash: new Float32Array(LANES), counts: null as Record<Difficulty, number> | null, burstDone: false,
-      // the charter's progress, per difficulty: chunks done / total, tiles so far; and the reveal,
-      // which goes one difficulty at a time (pNow), its fill easing to that difficulty's progress
-      pDone: new Float32Array(3), pTotal: new Float32Array(3), pTiles: new Float32Array(3), pOn: false, pReading: false,
+      // each difficulty once made (done / total, its tiles); and the reveal, one difficulty at a
+      // time (pNow)
+      pDone: new Float32Array(3), pTotal: new Float32Array(3), pTiles: new Float32Array(3), pOn: false,
       pNow: 0, pFill: 0, pShown: new Uint8Array(3), pShownAt: 0, pTileShown: new Float32Array(3),
       // the trained mapper: its stage (0 none, 1 getting ready, 2 listening, 3 charting), how much
       // of the song it has charted, and the lanes' fill easing to that
@@ -208,9 +203,6 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       progress(p) {
         const st = S.current;
         st.pOn = true;
-        // The song plan: the AI reads the whole song before any difficulty is charted.
-        if (p.difficulty === 'plan') { st.pReading = p.done < p.total; return; }
-        st.pReading = false;
         const i = DIFFS.indexOf(p.difficulty);
         if (i < 0) return;
         st.pDone[i] = p.done;
@@ -307,7 +299,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
           }
         }
 
-        // The lanes, waiting (faint) until the charter opens them.
+        // The lanes, waiting (faint) until charting opens them.
         if (!charting) {
           g.globalAlpha = 0.07;
           for (let l = 0; l < LANES; l++) { g.fillStyle = laneFill[l]; g.fillRect(28, laneY(l, h) - 0.5, w - 28, 1); }
@@ -409,17 +401,13 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
             fillTo(w * st.tFill);
           }
 
-          // The charter's progress, one difficulty at a time: its lanes fill with light left to
-          // right as its chunks come back; finished, the lanes flash and the next one starts.
-          // From the trained mapper each one is made already: they're ticked off one after another.
-          if (st.pOn && !st.pReading && !done && st.pNow < 3) {
+          // The difficulties made from the trained mapper's chart, ticked off one after another
+          // (~0.45 s apart): the lanes flash for each.
+          if (st.pOn && !done && st.pNow < 3) {
             const i = st.pNow;
             const finished = st.pTotal[i] > 0 && st.pDone[i] >= st.pTotal[i];
-            const target = st.pTotal[i] > 0 ? st.pDone[i] / st.pTotal[i] : 0;
-            // Eases toward the real progress; quicker when catching up on a difficulty already done.
-            if (st.tStage > 0 && finished) st.pFill = 1;
-            else st.pFill += (target - st.pFill) * Math.min(1, dt * (finished ? 6 : 2.5));
-            if (finished && st.pFill > 0.985 && now - st.pShownAt > 450) {
+            st.pFill = finished ? 1 : 0;
+            if (finished && now - st.pShownAt > 450) {
               st.pShown[i] = 1;
               st.pShownAt = now;
               st.pTileShown[i] = st.pTiles[i];
@@ -453,7 +441,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
             g.fillRect(x - 0.8 - s * 0.6, y - 0.8 - s * 0.6, 1.6 + s * 1.2, 1.6 + s * 1.2);
           }
 
-          // Threads: the charter considering sounds for lanes, until it answers.
+          // Threads: the AI considering sounds for lanes, until its chart is done.
           if (!done && st.sn > 0 && !calm && open > 0.5) {
             st.lClock -= dt;
             if (st.lClock <= 0) {
@@ -526,7 +514,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
             const e = 1 - Math.pow(1 - k, 3);
             const spans = countsEl.current.querySelectorAll<HTMLElement>('b');
             spans.forEach((b, i) => {
-              // From where the charter's progress left it (its count before the browser's checks).
+              // From the count its check showed.
               const from = st.pOn ? st.pTileShown[i] : 0;
               const v = String(Math.round(from + (st.counts![DIFFS[i]] - from) * e));
               if (b.textContent !== v) b.textContent = v;
@@ -568,11 +556,10 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
           const trainedNow = st.tStage > 0 && !st.pOn;
           const building = trainedNow
             ? st.tStage === 1 ? 'the AI is getting ready' : st.tStage === 2 ? 'the AI is listening to the song' : `the AI is charting the song ${Math.round(st.tP * 100)}%`
-            : !charting || !st.pOn ? '' : st.pReading ? 'the AI is reading the whole song'
-            : st.pNow < 3 ? (st.tStage > 0 ? `${DIFF_NAMES[st.pNow]} from its chart` : `the AI is charting ${DIFF_NAMES[st.pNow]}`) : '';
+            : !charting || !st.pOn ? '' : st.pNow < 3 ? `${DIFF_NAMES[st.pNow]} from its chart` : '';
           const text = done ? 'Every tile on a sound' : building ? building : charting ? `${st.sn} sounds · the AI is charting` : ph === 'map' ? `${st.heard} sounds heard · ${st.mapWhat}${st.mapP >= 0 ? ` ${Math.round(st.mapP * 100)}%` : ''}` : `${st.heard} sounds heard`;
           if (status.current.textContent !== text) status.current.textContent = text;
-          // The difficulties under the field while the charter builds them.
+          // The difficulties under the field while the trained mapper makes them.
           const el = countsEl.current;
           if (el && (charting || trainedNow) && (st.pOn || trainedNow) && !done) {
             if (el.dataset.mode !== 'chart') { el.dataset.mode = 'chart'; el.dataset.on = 'true'; }
@@ -580,7 +567,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
               const item = el.children[i] as HTMLElement | undefined;
               if (!item) continue;
               // The trained mapper makes all three at once: all three are lit together.
-              const state = st.pShown[i] ? 'done' : trainedNow || (i === st.pNow && !st.pReading) ? 'now' : 'wait';
+              const state = st.pShown[i] ? 'done' : trainedNow || i === st.pNow ? 'now' : 'wait';
               if (item.dataset.state !== state) item.dataset.state = state;
               const busy = trainedNow && st.tStage < 3 ? 'true' : 'false';
               if (item.dataset.busy !== busy) item.dataset.busy = busy;

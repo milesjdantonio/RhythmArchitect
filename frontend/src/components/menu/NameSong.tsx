@@ -8,7 +8,7 @@ import { canSplit, prefetchStemModel } from '../../mapping/stemModel';
 import { ensomiBase, prefetchEnsomi } from '../../mapping/ensomiModel';
 import { ytCue, ytPause, VideoError } from '../../audio/youtube';
 import { holdQuiet } from '../../lib/quiet';
-import { chartWithAI, fallbackNote, listenProblem, songFromListening } from '../../mapping/generate';
+import { fallbackNote, listenProblem, songFromListening, type Charted } from '../../mapping/generate';
 import { bus } from '../../lib/bus';
 import { href, navigate } from '../../lib/router';
 import { upsert, useSearch } from '../../library/songs';
@@ -178,16 +178,15 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
         for (let b = r.offset; b < r.offset + r.lengthBeats * spb; b += spb * 4) bars.push(b);
         scope.current?.sounds(r.events.map((e) => ({ sec: e.sec, band: e.band === 'low' ? 0 : e.band === 'mid' ? 1 : 2, strength: e.strength })), bars);
       }
-      // The trained mapper charts it from the audio; if it can't, the backend's AI charts it from
-      // what was measured (and the on-device charts if that can't either).
+      // The trained mapper charts it from the audio; if it can't, the onset mapper's own charts.
       setFlow({ step: 'chart', video, progress: 0.75 });
       const trained = mapped.trained ? await mapped.trained : null;
       if (signal?.aborted) return;
-      let charted = trained && 'charts' in trained
+      const r = mapped.result;
+      const charted: Charted = trained && 'charts' in trained
         ? { charts: trained.charts, mapper: trained.mapper }
-        : await chartWithAI(mapped, video, signal, (p) => scope.current?.progress(p));
-      // The dev tools say why the trained mapper didn't chart it.
-      if (trained && 'failed' in trained) charted = { ...charted, mapper: `${charted.mapper} (trained mapper failed: ${trained.failed})` };
+        // (The dev tools say why the trained mapper didn't chart it.)
+        : { charts: r.charts, mapper: r.report.mapper, ...(trained ? { fallback: `the trained mapper failed: ${trained.failed}` } : {}) };
       // The trained mapper's Easy, Medium and Hard get their checks one after another (~0.45 s
       // each) while the song is saved; the tiles land after that.
       const ticked = trained && 'charts' in trained ? new Promise((r) => setTimeout(r, 1500)) : null;

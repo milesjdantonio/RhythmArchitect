@@ -34,7 +34,6 @@ class ApiTests {
     static void props(DynamicPropertyRegistry r) throws Exception {
         dir = Files.createTempDirectory("rythm-test");
         r.add("rythm.songs-file", () -> dir.resolve("songs.json").toString());
-        r.add("rythm.anthropic.api-key", () -> "");
         r.add("rythm.youtube.api-key", () -> "");
     }
 
@@ -111,13 +110,6 @@ class ApiTests {
         mvc.perform(get("/api/songs/" + id)).andExpect(jsonPath("$.charts.hard.notes", hasSize(2)));
         mvc.perform(delete("/api/songs/" + id)).andExpect(status().isNoContent());
         mvc.perform(get("/api/songs/" + id)).andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("Song not found"));
-    }
-
-    @Test
-    void chartWithoutAKeyIs501() throws Exception {
-        mvc.perform(post("/api/chart").contentType(MediaType.APPLICATION_JSON).content("{\"version\":1}"))
-            .andExpect(status().isNotImplemented())
-            .andExpect(jsonPath("$.error").value("This server has no AI charter."));
     }
 
     @Test

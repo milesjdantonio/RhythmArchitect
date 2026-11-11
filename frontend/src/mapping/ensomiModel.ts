@@ -48,27 +48,33 @@ export function cachedSource(base: string): (path: string) => Promise<Uint8Array
     const res = await fetch(url);
     if (res.status === 404) throw missing(path);
     if (!res.ok) throw new Error(`trained mapper: ${path} ${res.status}`);
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    await cache?.put(url, new Response(bytes.slice())).catch(() => {});
-    return bytes;
+    if (cache) {
+      // Straight into the cache, then read once from there (no second copy in memory).
+      const kept = await cache.put(url, res).then(() => cache.match(url), () => undefined);
+      if (kept) return new Uint8Array(await kept.arrayBuffer());
+      return new Uint8Array(await (await fetch(url)).arrayBuffer());
+    }
+    return new Uint8Array(await res.arrayBuffer());
   };
 }
 
 /**
  * Downloads the model's files into the cache, those not there yet (resolves when they all are),
- * with how much of it is there, 0..1.
+ * with how much of it is there, 0..1. Files already cached aren't read (only looked up), and new
+ * ones stream from the network into the cache: the page never holds the model in memory.
  */
 export async function prefetchEnsomi(base: string, onProgress?: (p: number) => void): Promise<void> {
   if (typeof caches === 'undefined') return;
-  const read = cachedSource(base);
-  const manifest = JSON.parse(new TextDecoder().decode(await read(MANIFEST))) as { files: { path: string; size: number }[] };
+  const cache = await caches.open(CACHE);
+  const manifest = JSON.parse(new TextDecoder().decode(await cachedSource(base)(MANIFEST))) as { files: { path: string; size: number }[] };
   const total = manifest.files.reduce((a, f) => a + f.size, 0) || 1;
   let got = 0;
   // A few at a time, the biggest file (the beat model) among the first.
   const queue = [...manifest.files];
   await Promise.all(Array.from({ length: 4 }, async () => {
     for (let f = queue.shift(); f; f = queue.shift()) {
-      await read(f.path);
+      const url = new URL(f.path, base).href;
+      if (!(await cache.match(url))) await cache.add(url);
       got += f.size;
       onProgress?.(got / total);
     }

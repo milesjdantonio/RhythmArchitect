@@ -77,7 +77,7 @@ export interface MapReport {
   energy: number[];
   /** Moments for the visuals to react to. */
   cues?: Cue[];
-  /** What the charter says each difficulty follows (from the AI charter, when it gives one). */
+  /** What each difficulty follows, as the AI charter of earlier versions put it (older songs only). */
   summary?: string;
   /**
    * What the trained beat tracker found (dev tools): its tempo, meter and how sure it was, and
@@ -219,7 +219,7 @@ export interface FanChartRequest {
  * Times are exact; `t` is in beats from beat 0 of the grid, `sec` in seconds into the video.
  */
 export interface SoundEvent {
-  /** Stable id within this request; the chart plan refers to sounds by it. */
+  /** Stable id within the song (in time order). */
   id: number;
   /** Beat it sounds on (snapped to a 16th when within 20 ms of one, else exact to 1/1000). */
   t: number;
@@ -249,75 +249,15 @@ export interface SoundEvent {
   part?: 'drums' | 'bass' | 'vocals' | 'other';
 }
 
-/**
- * What the browser measured in a song, sent to the AI charter (POST /api/chart). No audio: the
- * timing grid, the song's shape and every sound found in it. The backend decides which sounds
- * become tiles on each difficulty, and in which lanes (see ChartPlan and docs/claude-backend.txt).
- */
-export interface ChartRequest {
-  version: 1;
-  song: { title: string; artist: string; videoId?: string; seconds: number };
-  timing: {
-    bpm: number;
-    /** Seconds into the video where beat 0 lands. */
-    offset: number;
-    /** Beats per bar. */
-    meter: number;
-    lengthBeats: number;
-    /** How sure the measurement is of the tempo and grid, 0..1. */
-    confidence: number;
-  };
-  /** Loudness of every bar, 0..1 (bar k starts at beat k × meter). */
-  barEnergy: number[];
-  /** Rough sections from loudness (8-bar blocks) and the loudness moments found (drops, breaks). */
-  sections: { label: string; beat: number }[];
-  cues: Cue[];
-  events: SoundEvent[];
-  /** What the app enforces on the answer (for the backend's prompt). */
-  rules: { lanes: number; difficulties: Difficulty[]; maxNotesPerSound: number; minHoldBeats: number };
-}
-
-/** A tile in a chart plan: which sound it is, its lane, and whether it's held. */
-export interface PlanNote {
-  /** A SoundEvent id from the request. Two notes with the same id (different lanes) make a chord. */
-  id: number;
-  /** 0..lanes-1, left to right (keys D F J K). */
-  lane: number;
-  /** Held for the sound's ring (at least rules.minHoldBeats; never longer than the sound rings). */
-  hold?: boolean;
-  /** Hold length in beats (optional; defaults to how long the sound rings, up to 8). */
-  len?: number;
-}
-
-/** The AI charter's answer (POST /api/chart): the tiles of each difficulty, by sound id. */
-export interface ChartPlan {
-  /** Who charted it, shown in the dev tools, e.g. "Claude charter v1 (claude-opus-5-5)". */
-  mapper: string;
-  charts: Record<Difficulty, PlanNote[]>;
-  /** Better section labels than the loudness guess (optional), e.g. Verse, Chorus, Bridge. */
-  sections?: { label: string; beat: number }[];
-  /** Moments for the visuals (optional; replaces the measured cues when given). */
-  cues?: Cue[];
-  /** One or two sentences on what each difficulty follows (dev tools). */
-  summary?: string;
-}
-
-/**
- * How far the AI charter has got (POST /api/chart with Accept: application/x-ndjson). First the
- * song plan ("plan": 0 of 1 while the AI reads the whole song, then 1 of 1); then it splits each
- * difficulty into chunks of the song, and says so each time one is charted.
- */
+/** One difficulty made by the trained mapper (src/mapping/ensomi.ts), for the charting screen. */
 export interface ChartProgress {
-  difficulty: Difficulty | 'plan';
-  /** Chunks charted so far, out of `total`. */
+  difficulty: Difficulty;
+  /** Made: done = total. */
   done: number;
   total: number;
-  /** Tiles picked so far (before the browser's checks). */
+  /** Its tiles. */
   tiles: number;
 }
-
-/** One line of the streamed chart answer: progress while it works, then the plan or an error. */
-export type ChartStreamLine = { progress: ChartProgress } | { plan: ChartPlan } | { error: string; status?: number };
 
 /** A song mapped by listening in the browser, to be saved (POST /api/songs). */
 export type NewSong = Omit<Song, 'id' | 'createdAt' | 'best' | 'plays' | 'favorite' | 'builtIn'>;

@@ -13,11 +13,6 @@
 //   GET    /api/library               -> { results: SongSummary[] }  (every song, A to Z by title: the music bank)
 //   GET    /api/youtube?title=&artist= -> VideoMatch  (the YouTube video that plays the song)
 //   POST   /api/fan-chart             FanChartRequest -> Song (201)  (an osu! fan chart, saved)
-//   POST   /api/chart                 ChartRequest -> ChartPlan  (the AI charter: which measured sounds; with
-//                                     Accept: application/x-ndjson, progress lines first, then { plan }
-//                                     become tiles. The real backend asks Claude (docs/claude-backend.txt);
-//                                     this mock answers by the fixed rules of src/mapping/charts.ts.
-//                                     MOCK_CHARTER=off makes it answer 501, as a backend without one would.)
 //
 // The mock never makes up a song. A new song plays from YouTube; its tiles come from the browser
 // listening to the video once (then POST /api/songs), or else from a fan-made osu! chart.
@@ -26,8 +21,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { ChartRequest, FanChartRequest, NewSong, ScoreSubmit, Song, SongPatch, SongSummary } from '../src/api/types';
-import { rulesPlan } from '../src/mapping/charter';
+import type { FanChartRequest, NewSong, ScoreSubmit, Song, SongPatch, SongSummary } from '../src/api/types';
 import { sortAtoZ } from '../src/library/bank';
 import { DIFFICULTIES } from '../src/api/types';
 import { builtInSongs } from './songs/builtins';
@@ -283,34 +277,6 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
         if (!title) return fail(res, 400, 'Type the title of the song (or paste its YouTube link).');
         if (title.length > 300 || artist.length > MAX_FIELD) return fail(res, 400, `Keep the title and artist under ${MAX_FIELD} characters each.`);
         return send(res, 200, await findVideo(title, artist));
-      }
-      if (parts[0] === 'chart' && parts.length === 1 && method === 'POST') {
-        if (process.env.MOCK_CHARTER === 'off') return fail(res, 501, 'This server has no AI charter.');
-        const body = (await readJson(req, 4_000_000)) as ChartRequest;
-        if (body?.version !== 1 || !Array.isArray(body.events) || !(body.timing?.bpm > 0)) return fail(res, 400, 'Not a chart request.');
-        const plan = { ...rulesPlan(body, 'Mock charter (fixed rules; the real backend asks Claude)'), summary: 'Mock: every difficulty picks the most prominent sounds by fixed rules; lanes follow pitch.' };
-        if (!(req.headers.accept ?? '').includes('application/x-ndjson')) {
-          await delay(600);
-          return send(res, 200, plan);
-        }
-        // Streamed, like the real backend: progress as each chunk of a difficulty is "charted", then the plan.
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'application/x-ndjson');
-        const line = (o: unknown) => res.write(`${JSON.stringify(o)}\n`);
-        const chunks: Record<string, number> = { easy: 2, medium: 2, hard: 4 };
-        // The song plan first (the AI reads the whole song), then the chunks.
-        line({ progress: { difficulty: 'plan', done: 0, total: 1, tiles: 0 } });
-        await delay(500);
-        line({ progress: { difficulty: 'plan', done: 1, total: 1, tiles: 0 } });
-        for (const d of DIFFICULTIES) line({ progress: { difficulty: d, done: 0, total: chunks[d], tiles: 0 } });
-        for (const d of DIFFICULTIES) {
-          for (let k = 1; k <= chunks[d]; k++) {
-            await delay(250);
-            line({ progress: { difficulty: d, done: k, total: chunks[d], tiles: Math.round((plan.charts[d].length * k) / chunks[d]) } });
-          }
-        }
-        line({ plan });
-        return res.end();
       }
       if (parts[0] === 'fan-chart' && parts.length === 1 && method === 'POST') {
         const body = (await readJson(req)) as FanChartRequest;

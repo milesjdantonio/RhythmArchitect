@@ -229,12 +229,37 @@ let shownRect = '';
 let shownSlot: HTMLElement | null = null;
 let glideUntil = 0;
 
+// Where the slot is costs a layout read (getBoundingClientRect), which makes the browser lay the
+// page out again right then if anything changed since the last frame (the HUD, a judgement word).
+// So it's read every frame only while the slot may be moving (just after it changes, the window
+// resizes or scrolls, the slot resizes, the video shows or hides: for MOVING_MS), else four times
+// a second, which catches anything else that moves it.
+const MOVING_MS = 900;
+const SETTLED_EVERY_MS = 250;
+let movingUntil = 0;
+let measureAt = 0;
+let watched: HTMLElement | null = null;
+const moving = () => { movingUntil = performance.now() + MOVING_MS; };
+const slotSize = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(moving) : null;
+if (typeof window !== 'undefined') {
+  addEventListener('resize', moving, { passive: true });
+  addEventListener('scroll', moving, { passive: true, capture: true });
+}
+function watch(slot: HTMLElement | null) {
+  if (slot === watched) return;
+  if (watched) slotSize?.unobserve(watched);
+  watched = slot;
+  if (slot) slotSize?.observe(slot);
+  moving();
+}
+
 // The dock runs with the UI's per-frame work, never put off: YouTube won't play a hidden player,
 // and it is this that shows the player when the video starts.
 function place() {
   follow = 0;
   if (!dock) { if (slots.length) follow = nextFrame(place, ORDER.ui); return; }
   const slot = slots[slots.length - 1];
+  watch(slot ?? null);
   if (!slot) {
     dock.dataset.shown = 'false';
     shownRect = '';
@@ -248,9 +273,7 @@ function place() {
   const live = intent === 'play' && !warming && (state === YT_STATE.PLAYING || state === YT_STATE.BUFFERING);
   const visible = live || slot.dataset.idle === 'show';
   const figure = slot.closest<HTMLElement>('.video-slot') ?? slot;
-  if (figure.dataset.live !== String(visible)) figure.dataset.live = String(visible);
-  const r = slot.getBoundingClientRect();
-  const key = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+  if (figure.dataset.live !== String(visible)) { figure.dataset.live = String(visible); moving(); }
   // Moving to a new spot (another screen's slot) glides; following its own slot is exact.
   const now = performance.now();
   if (slot !== shownSlot) {
@@ -259,11 +282,18 @@ function place() {
   }
   const gliding = now < glideUntil;
   if ((dock.dataset.glide === 'true') !== gliding) dock.dataset.glide = String(gliding);
-  if (key !== shownRect) {
-    shownRect = key;
-    dock.style.transform = `translate(${Math.round(r.left)}px, ${Math.round(r.top)}px)`;
-    dock.style.width = `${Math.round(r.width)}px`;
-    dock.style.height = `${Math.round(r.height)}px`;
+  if (now < movingUntil || now >= measureAt || !shownRect) {
+    measureAt = now + SETTLED_EVERY_MS;
+    const r = slot.getBoundingClientRect();
+    const key = `${Math.round(r.left)},${Math.round(r.top)},${Math.round(r.width)},${Math.round(r.height)}`;
+    if (key !== shownRect) {
+      // It moved by itself (an animation, a layout change): follow it every frame for a while.
+      if (shownRect) moving();
+      shownRect = key;
+      dock.style.transform = `translate(${Math.round(r.left)}px, ${Math.round(r.top)}px)`;
+      dock.style.width = `${Math.round(r.width)}px`;
+      dock.style.height = `${Math.round(r.height)}px`;
+    }
   }
   if (dock.dataset.shown !== String(visible)) dock.dataset.shown = String(visible);
   follow = nextFrame(place, ORDER.ui);

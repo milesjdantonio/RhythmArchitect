@@ -708,7 +708,8 @@ export class Stage3D {
 
   /** Showcase only: the chart the ghost plays, looped. */
   setGhostChart(notes: StageNote[]) {
-    this.ghostNotes = notes.map((n) => ({ ...n, judged: undefined, holding: false, holdResult: undefined }));
+    // In time order, as the tile layout expects.
+    this.ghostNotes = notes.map((n) => ({ ...n, judged: undefined, holding: false, holdResult: undefined })).sort((a, b) => a.time - b.time);
     this.ghostLoop = Math.max(8, ...notes.map((n) => n.end)) + this.spb * 4;
   }
 
@@ -1229,8 +1230,9 @@ export class Stage3D {
   /**
    * Draws the stage at song time `t` (seconds from beat 0).
    * play: pass the live game's notes. showcase: leave notes out and the ghost plays its chart.
+   * `from`: the first note that can still show (the ones before it have passed for good).
    */
-  frame(t: number, notes?: StageNote[]) {
+  frame(t: number, notes?: StageNote[], from = 0) {
     const now = performance.now() / 1000;
     const dt = Math.min(0.05, Math.max(0, now - (this.lastT || now)));
     this.lastT = now;
@@ -1327,7 +1329,7 @@ export class Stage3D {
 
     this.stepSky(dt);
     this.stepFail(dt);
-    this.layoutNotes(list, songT);
+    this.layoutNotes(list, songT, notes ? from : 0);
     this.stepSparks(dt);
     this.stepDust(dt);
     this.stepGlints(dt);
@@ -1359,13 +1361,19 @@ export class Stage3D {
     }
   }
 
-  private layoutNotes(notes: StageNote[], t: number) {
+  /**
+   * The tiles and hold bars on the track. Only the notes from `from` up to the far end of the
+   * track are looked at: the notes are in time order, so the first one beyond it ends the walk.
+   */
+  private layoutNotes(notes: StageNote[], t: number, from = 0) {
     let h = 0, b = 0;
     const m = this.tmp;
-    for (const n of notes) {
+    for (let i = Math.max(0, from); i < notes.length; i++) {
+      const n = notes[i];
       const z0 = -(n.time - t) * this.speed;
       const z1 = -(n.end - t) * this.speed;
-      if (z0 < -L - 1 && z1 < -L - 1) continue;
+      // Beyond the far end of the track (its end too, as it ends after it starts): so is every later note.
+      if (z0 < -L - 1) break;
       if (n.hold) {
         if (n.holdResult === 'done') continue;
       } else if (n.judged && n.judged !== 'miss') continue;

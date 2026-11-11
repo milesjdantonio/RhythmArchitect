@@ -15,9 +15,9 @@
 //   5. Each onset becomes a note: its pitch (or, for a drum, its brightness) picks the lane, how long it
 //      rings decides holds, the biggest downbeats become chords on Hard. charts.ts then picks
 //      which of these notes Easy, Medium and Hard play. Nothing is added or moved.
-//   6. Every sound is also exported as a SoundEvent (with the loudness of each bar), for the AI
-//      charter on the backend (POST /api/chart, src/lib/charter.ts): it picks which sounds become
-//      tiles and where; these charts are the fallback when it can't.
+//   6. Every sound is also exported as a SoundEvent: the trained mapper (ensomi.ts) lines its
+//      tiles up with them and weighs them by how strongly they stand out. These charts are the
+//      fallback when it can't chart the song.
 //
 // Pure functions over a mono Float32Array, so it runs in a browser, a worker or a test.
 
@@ -70,7 +70,7 @@ export interface AutomapResult {
   onsetTimes: number[];
   /** Dev: what the mapper heard in each sound (pitch, how clearly pitched, brightness, band). */
   onsetInfo: { sec: number; midi: number; clarity: number; bright: number; band: number }[];
-  /** Every sound found, described for the AI charter (one per onset, ids in time order). */
+  /** Every sound found, described (one per onset, ids in time order): the trained mapper lines its tiles up with them. */
   events: SoundEvent[];
   /** Loudness of every bar from beat 0, 0..1. */
   barEnergy: number[];

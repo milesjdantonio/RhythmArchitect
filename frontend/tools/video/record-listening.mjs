@@ -1,7 +1,7 @@
 // Records the listening and loading process into docs/media/listening.webm (plus a still,
 // listening.png): Name a Song → a song that isn't mapped yet → Generate beatmap → the video is
 // found → Listen and map → the song plays once while the skyline fills in → finding the beat and
-// every note → the AI charter → the map lands → the song on stage → Play → the loading screen →
+// every note → the charts → the map lands → the song on stage → Play → the loading screen →
 // the first seconds of the run.
 // Re-run whenever the Generate flow, the listening / mapping / charting screens or the loader
 // change:  npm run video:listen
@@ -9,7 +9,8 @@
 // Self-contained: it starts its own dev server (port 5198) with a throwaway song store and the
 // end-to-end tests' stand-in for YouTube (tests/e2e/fake-youtube.js: a bundled track plays as a
 // 40-second "video", and tab sharing is simulated), so it needs no network or API keys and never
-// touches .data/songs.json. The charter is the mock's (fixed rules), until the backend's is used.
+// touches .data/songs.json. So the trained mapper is off (its model is a 120 MB download): the
+// charts are the on-device mapper's.
 
 import { mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -43,6 +44,7 @@ try {
     await page.route('https://i.ytimg.com/**', (r) => r.abort());
     await page.addInitScript(() => {
       sessionStorage.setItem('rythm-architect:intro', 'skip');
+      localStorage.setItem('rythm-architect:no-ensomi', '1');
       window.__fakeYtSeconds = 40;
       // Tab sharing, simulated: the "video's" sound goes straight into the capture.
       navigator.mediaDevices.getDisplayMedia = async () => {

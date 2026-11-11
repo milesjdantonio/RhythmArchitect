@@ -1,55 +1,15 @@
 // Turning what the listening pass heard into a song the backend can store.
 
-import { api } from '../api/client';
-import type { ChartProgress, Chart, Cue, Difficulty, NewSong, VideoMatch } from '../api/types';
+import type { Chart, Difficulty, NewSong, VideoMatch } from '../api/types';
 import type { Heard, ListenError, Mapped } from './listen';
-import { chartRequest, chartsFromPlan } from './charter';
 import { huesFor } from './osu';
 
-/** How long the AI charter may take before the on-device charts are used instead. */
-export const CHART_TIMEOUT_MS = 300_000;
-
-/** The charts a song gets: from the trained mapper, the AI charter on the backend, or (when neither can) the on-device mapper. */
+/** The charts a song gets: from the trained mapper (ensomi.ts), or (when it can't) the on-device mapper (automap.ts). */
 export interface Charted {
   charts: Record<Difficulty, Chart>;
   mapper: string;
-  sections?: { label: string; beat: number }[];
-  cues?: Cue[];
-  summary?: string;
-  /** Why the on-device charts were used (the AI charter was unavailable, slow or wrong). */
+  /** Why the on-device charts were used (the trained mapper failed). */
   fallback?: string;
-}
-
-/**
- * Asks the backend's AI charter which of the sounds the browser found become tiles (POST
- * /api/chart: the measurements go, no audio). If it can't answer (no backend, an error, too slow,
- * an unusable plan), the on-device charts from the mapper are used, so a map is always made.
- * Cancelling (the player's signal) throws an AbortError as usual.
- */
-export async function chartWithAI(m: Mapped, video: VideoMatch, signal?: AbortSignal, onProgress?: (p: ChartProgress) => void): Promise<Charted> {
-  const r = m.result;
-  const seconds = video.seconds || r.offset + (r.lengthBeats * 60) / r.bpm;
-  const req = chartRequest(r, { title: video.songTitle, artist: video.songArtist, videoId: video.videoId, seconds: Math.round(seconds * 10) / 10 });
-  const own: Charted = { charts: r.charts, mapper: r.report.mapper };
-  if (r.events.length === 0) return { ...own, fallback: 'no sounds found' };
-  const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(), CHART_TIMEOUT_MS);
-  const onAbort = () => ctl.abort();
-  signal?.addEventListener('abort', onAbort);
-  try {
-    const plan = await api.chartSong(req, ctl.signal, onProgress);
-    const { charts, fixes } = chartsFromPlan(req, plan);
-    if (fixes && import.meta.env?.DEV) console.info(`[charter] ${fixes} notes in the plan were fixed or dropped`);
-    return { charts, mapper: String(plan.mapper || 'AI charter'), sections: plan.sections, cues: plan.cues, summary: plan.summary };
-  } catch (e) {
-    if (signal?.aborted) throw new DOMException('Cancelled', 'AbortError');
-    const why = (e as Error).name === 'AbortError' ? 'the AI charter took too long' : (e as Error).message || 'the AI charter failed';
-    if (import.meta.env?.DEV) console.info(`[charter] using the on-device charts: ${why}`);
-    return { ...own, fallback: why };
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener('abort', onAbort);
-  }
 }
 
 export function songFromListening(m: Mapped, video: VideoMatch, heard: Pick<Heard, 'calibrated' | 'delay'>, charted?: Charted): NewSong {
@@ -78,9 +38,6 @@ export function songFromListening(m: Mapped, video: VideoMatch, heard: Pick<Hear
     report: {
       ...r.report,
       mapper: `${c.mapper}, listening pass${c.fallback ? ` (on-device: ${c.fallback})` : ''}`,
-      sections: c.sections?.length ? c.sections : r.report.sections,
-      cues: c.cues ?? r.report.cues,
-      ...(c.summary ? { summary: c.summary } : {}),
     },
     patch: { name: 'Glass Bell', oscillator: 'triangle', attack: 0.002, decay: 0.3, sustain: 0.05, release: 0.4, cutoff: 6000, space: 0.3 },
     backing: { bass: ['C2'], drums: '................' },

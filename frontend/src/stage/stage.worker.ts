@@ -26,6 +26,8 @@ const raf = (cb: FrameRequestCallback) => (scope.requestAnimationFrame ? scope.r
 let stage: Stage3D | null = null;
 let surface: StageSurface | null = null;
 let notes: StageNote[] = [];
+/** The first note that can still change or show (the page moves it on as the song plays). */
+let noteFrom = 0;
 let songT = -4;
 let sentAt = 0;
 let carry = true;
@@ -56,7 +58,7 @@ function loop(now: number) {
   lastWall = wall;
   const t = clock;
   try {
-    stage.frame(t, ghost ? undefined : notes);
+    stage.frame(t, ghost ? undefined : notes, noteFrom);
   } catch (e) {
     // A frame that throws right after the GPU went away: the loss handler takes it from here.
     if (lost) return;
@@ -105,12 +107,14 @@ function handle(m: ToStage) {
     case 'size': stage?.setSurface(m.width, m.height, m.dpr); break;
     case 'notes':
       notes = Array.from(m.time, (time, i) => ({ time, end: m.end[i], lane: m.lane[i], hold: m.hold[i] === 1 }));
+      noteFrom = 0;
       break;
     case 'batch':
       if (stage) for (const [name, args] of m.calls) (stage as unknown as Record<string, (...a: unknown[]) => void>)[name]?.(...args);
       if (m.frame) {
-        const { state } = m.frame;
-        for (let i = 0; i < notes.length && i < state.length; i++) unpackNote(notes[i], state[i]);
+        const { state, from } = m.frame;
+        for (let i = 0; i < state.length && from + i < notes.length; i++) unpackNote(notes[from + i], state[i]);
+        noteFrom = from;
         songT = m.frame.t;
         sentAt = m.frame.at;
         carry = true;

@@ -32,7 +32,6 @@ Base URL: `VITE_API_BASE_URL` (empty means same origin). All bodies are JSON. Er
 | Route | Body | Returns |
 |---|---|---|
 | `GET /api/youtube?title=&artist=` | | `VideoMatch`: the video that plays the song. `title` may be a YouTube link (no API key needed; checked with oEmbed). Searching by name needs `YOUTUBE_API_KEY` on the server (else `503` with a message saying so). `422` when the video can't be embedded. |
-| `POST /api/chart` | `ChartRequest` (what the browser measured: the beat grid and every sound, no audio) | `ChartPlan`: which sounds become tiles on each difficulty, by sound id, with lanes and holds. The AI charter (Claude); see [claude-backend.txt](claude-backend.txt). `501` if the server has none. |
 | `POST /api/songs` | `NewSong` (a song the browser mapped by listening; `source.kind` must be `youtube`) | `201 Song` |
 | `POST /api/fan-chart` | `{ title, artist, videoId, seconds? }` | `201 Song`: a fan-made osu! chart of the song, lined up with the video, saved. `404` if there's none. |
 | `PATCH /api/songs/:id` | `{ offset }` | `Song` with `source.offset` changed (the dev tools' Song sync). |
@@ -43,43 +42,13 @@ files every captured sample under the video position it was heard at, and measur
 onset mapper (`frontend/src/mapping/automap.ts`): the beat grid and every sound, exact to a few ms. The audio
 never leaves the page.
 
-Then the AI charts it: the browser sends the measurements to `POST /api/chart` and the backend
-(Claude) answers with a `ChartPlan`, choosing which of those sounds each difficulty plays, in
-which lane, which are held. A plan can only name sounds by id, so every tile stays on a real sound
-at its measured time; the browser checks the plan (`chartsFromPlan` in `frontend/src/mapping/charter.ts`:
-unknown sounds and bad lanes dropped, holds kept to how long the sound rings, at most two tiles per
-sound) and builds the charts. If the charter isn't there, fails, takes over 5 minutes, or leaves a
-difficulty nearly empty, the on-device charts (`frontend/src/mapping/charts.ts`) are used instead and
-`report.mapper` says so. Then the song is saved with `POST /api/songs`: the charts, the report and
-`levels` (a loudness curve, three bands × 30 per second, one byte each).
+Then the AI charts it, also in the browser: a trained mapper (Ensomi R2, `frontend/src/mapping/ensomi.ts`)
+reads the audio and places the tiles, and each difficulty keeps a subset of them; its tiles are
+moved onto the sounds the onset mapper measured. If it can't (its model didn't download, or it
+failed), the onset mapper's own charts (`frontend/src/mapping/charts.ts`) are used and
+`report.mapper` says so. No AI runs on the server. Then the song is saved with `POST /api/songs`:
+the charts, the report and `levels` (a loudness curve, three bands × 30 per second, one byte each).
 When it can't listen (no tab audio, sharing declined, a phone), it asks for a fan chart instead.
-
-### The AI charter: `POST /api/chart`
-
-`ChartRequest` (types in `frontend/src/api/types.ts`; real examples in [samples/](samples/), written by
-`node frontend/tools/map-audio.mjs --request`):
-
-- `song`: `{ title, artist, videoId?, seconds }`
-- `timing`: `{ bpm, offset (seconds into the video of beat 0), meter, lengthBeats, confidence }`
-- `barEnergy`: loudness of every bar, 0..1; `sections` (8-bar blocks labelled by loudness) and
-  `cues` (drops, builds, breaks measured from loudness): rough, the charter may relabel them.
-- `events`: every sound found, `{ id, t (beat), sec, band (low|mid|high), pitched, midi, note,
-  bright, strength (0..1), len (beats it rings), onBeat, accent }`. Typically 5-10 per second.
-- `rules`: `{ lanes: 4, difficulties, maxNotesPerSound: 2, minHoldBeats: 1 }`.
-
-`ChartPlan`: `{ mapper, charts: { easy, medium, hard }, sections?, cues?, summary? }`, each chart a
-list of `{ id, lane (0-3), hold?, len? }`. Two notes with the same id are a chord. `mapper` and
-`summary` show in the dev tools; `sections` and `cues`, when given, replace the measured ones
-(they drive the visuals).
-
-Progress (optional): the app sends `Accept: application/x-ndjson, application/json`. A backend may
-then answer `application/x-ndjson`, one JSON object per line, while it works:
-`{ "progress": { difficulty: "plan", done: 0, total: 1 } }` while it reads the whole song and
-plans it (then `done: 1`), `{ "progress": { difficulty, done, total, tiles } }` each time it charts
-a chunk of a difficulty (`done` of `total` chunks, `tiles` picked so far), then `{ "plan": ChartPlan }`, or
-`{ "error": "...", "status": 502 }` if it fails after it started. The Generate dialog shows Easy,
-Medium and Hard being built from these. A plain JSON `ChartPlan` answer still works (no progress).
-Types: `ChartProgress`, `ChartStreamLine`.
 
 `VideoMatch`: `{ videoId, title, channel, songTitle, songArtist, seconds?, thumbnail? }`
 (`songTitle`/`songArtist` are what the song is filed under).

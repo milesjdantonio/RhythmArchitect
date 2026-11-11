@@ -22,15 +22,19 @@ export const JudgePool = memo(forwardRef<JudgePoolHandle>(function JudgePool(_pr
   const els = useRef<(HTMLSpanElement | null)[]>([]);
   const next = useRef(0);
   const byLane = useRef<(HTMLSpanElement | null)[]>([null, null, null, null]);
+  // Each word's running animation, kept here: asking an element for its animations
+  // (getAnimations) makes the browser recompute styles first, on every hit.
+  const anims = useRef(new Map<HTMLSpanElement, Animation>());
+  const stop = (el: HTMLSpanElement) => { anims.current.get(el)?.cancel(); anims.current.delete(el); };
 
   useImperativeHandle(ref, () => ({
     show(j) {
       const prev = byLane.current[j.lane];
-      if (prev) { prev.getAnimations().forEach((a) => a.cancel()); prev.style.opacity = '0'; }
+      if (prev) { stop(prev); prev.style.opacity = '0'; }
       const el = els.current[next.current];
       next.current = (next.current + 1) % SIZE;
       if (!el) return;
-      el.getAnimations().forEach((a) => a.cancel());
+      stop(el);
       el.className = `judge judge-lean${j.miss ? ' judge-miss' : ''}${j.perfect ? ' judge-perfect' : ''}${j.hold ? ' judge-hold' : ''}`;
       (el.firstChild as Text).data = j.text;
       const small = el.lastChild as HTMLElement;
@@ -40,11 +44,11 @@ export const JudgePool = memo(forwardRef<JudgePoolHandle>(function JudgePool(_pr
       el.style.top = `${j.y + 40}px`;
       el.style.color = j.color ?? '';
       el.style.opacity = '0';
-      el.animate(FRAMES, { duration: j.perfect ? 760 : 700, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' });
+      anims.current.set(el, el.animate(FRAMES, { duration: j.perfect ? 760 : 700, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' }));
       byLane.current[j.lane] = el;
     },
     clear() {
-      for (const el of els.current) { el?.getAnimations().forEach((a) => a.cancel()); if (el) el.style.opacity = '0'; }
+      for (const el of els.current) { if (el) { stop(el); el.style.opacity = '0'; } }
     },
   }), []);
 

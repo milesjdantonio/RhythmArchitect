@@ -19,7 +19,7 @@ import { VideoSlot } from '../VideoSlot';
  *            here with the problem, and the button tries again.
  *   listen — the video plays once while the browser listens
  *   map    — the mapper finds the beat and every note (in the browser)
- *   chart  — the AI charter (backend) picks which notes each difficulty plays; then it's saved
+ *   chart  — the trained mapper (in the browser) charts the song, all three difficulties; then it's saved
  *   fan    — browsers that can't share a tab's sound: a fan-made osu! chart, lined up with the video
  */
 export interface Flow {
