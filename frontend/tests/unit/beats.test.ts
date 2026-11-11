@@ -72,17 +72,16 @@ describe('the map report says what the beat tracker did', () => {
     expect(r.onBeatGrid).toBe(false);
   });
 
-  it('not used, with why, when it is unsteady, 3:2 off a drifting grid, or failed', async () => {
+  it('not used, with why, only when it is unsteady or failed', async () => {
     const { automap, gridRefusal } = await import('../../src/mapping/automap');
-    expect(automap(x.slice(), sr, { grid: { bpm: 90, offset: 0, meter: 4, confidence: 0.3 } }).report.beat).toMatch(/not used: its beat is steady for only 30% of the song \(needs 50%\); own estimate/);
+    expect(automap(x.slice(), sr, { grid: { bpm: 90, offset: 0, meter: 4, confidence: 0.3 } }).report.beat).toMatch(/not used: its beat is steady for only 30% of the song \(needs 40%\); own estimate/);
     expect(automap(x.slice(), sr, { grid: null }).report.beat).toMatch(/no steady beat/);
     expect(automap(x.slice(), sr, { gridError: 'beat model: 404' }).report.beat).toMatch(/failed \(beat model: 404\)/);
     expect(automap(x.slice(), sr).report.beat).toBeUndefined();
-    // The swing/triplet trap: 197 BPM against an onset estimate of 133, its beats off one grid.
-    expect(gridRefusal({ bpm: 197.13, confidence: 0.75, fit: 0.07 }, 133)).toMatch(/3:2/);
-    // 3:2 apart but its beats hold one grid: trusted. And 200 against 121 isn't 3:2: trusted.
-    expect(gridRefusal({ bpm: 180, confidence: 0.9, fit: 0.9 }, 120)).toBeNull();
-    expect(gridRefusal({ bpm: 199.87, confidence: 0.92, fit: 0.16 }, 120.97)).toBeNull();
+    // Steady enough: trusted, whatever the onset estimate says and however it drifts.
+    expect(gridRefusal({ bpm: 195.71, confidence: 0.46, fit: 0.06 })).toBeNull();
+    expect(gridRefusal({ bpm: 199.87, confidence: 0.92, fit: 0.16 })).toBeNull();
+    expect(gridRefusal({ bpm: 300, confidence: 0.9 })).toMatch(/out of range/);
   });
 });
 

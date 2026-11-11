@@ -15,7 +15,7 @@ import type { AutomapResult } from './automap';
 import type { FromMapper, ToMapper } from './listen.worker';
 import type { ChartProgress, SongLevels } from '../api/types';
 import type { Trained, TrainedStage } from './ensomi';
-import { Placer, findTick } from './capture';
+import { findTick, placeChunks, type Chunk, type Mark } from './capture';
 
 export type ListenFailure = 'unsupported' | 'declined' | 'no-audio' | 'silent' | 'stopped' | 'video';
 
@@ -175,29 +175,19 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
     const calibrated = found !== null && found >= 0 && found < 0.4;
     const delay = calibrated ? found! : DEFAULT_DELAY;
 
-    // 2. The song, once through. The player's position is sampled every frame (context time ->
-    // video position) so each captured chunk can be placed where it was heard.
-    const placer = new Placer(sr, duration || 600);
+    // 2. The song, once through. Every captured chunk is kept as it came (the capture is seamless),
+    // and the player's position is read every frame (context time -> video position); when the
+    // song is over, the sound is filed under the positions it was heard at (placeChunks).
     // Band split for the animation: two one-pole low-passes (~200 Hz and ~2.5 kHz).
     const aL = Math.exp((-2 * Math.PI * 200) / sr), aH = Math.exp((-2 * Math.PI * 2500) / sr);
     let fl = 0, fh = 0;
-    const marks: { c: number; v: number; playing: boolean }[] = [];
+    const marks: Mark[] = [];
+    const chunks: Chunk[] = [];
     let loud = 0, heard = 0;
     tap.port.onmessage = (e: MessageEvent<{ t: number; d: Float32Array }>) => {
       if (done) return;
       const { t, d } = e.data;
       const c = t - delay;
-      // The latest mark at or before c (marks are in time order): was the video playing then?
-      let last = -1;
-      for (let i = marks.length - 1; i >= 0; i--) if (marks[i].c <= c) { last = i; break; }
-      const m = marks[last];
-      if (!m || !m.playing || c - m.c > 0.25) return;
-      // Where it was: the video runs at 1x, so context time minus position is a constant while it
-      // plays. The median over the last second of marks irons out frame-to-frame jitter.
-      const gaps: number[] = [];
-      for (let i = last; i >= 0 && marks[i].c > c - 1 && marks[i].playing; i--) gaps.push(marks[i].c - marks[i].v);
-      gaps.sort((x, y) => x - y);
-      const pos = c - gaps[gaps.length >> 1];
       const out = new Float32Array(Math.floor(d.length / k));
       let chunk = 0;
       for (let i = 0; i < out.length; i++) {
@@ -206,9 +196,18 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
         out[i] = sum / k;
         chunk += out[i] * out[i];
       }
+      chunks.push({ c, d: out });
+      // Live, for the animation and the silence check only: where it is now, from the latest marks.
+      let last = -1;
+      for (let i = marks.length - 1; i >= 0; i--) if (marks[i].c <= c) { last = i; break; }
+      const m = marks[last];
+      if (!m || !m.playing || c - m.c > 0.25) return;
+      const gaps: number[] = [];
+      for (let i = last; i >= 0 && marks[i].c > c - 1 && marks[i].playing; i--) gaps.push(marks[i].c - marks[i].v);
+      gaps.sort((x, y) => x - y);
+      const pos = c - gaps[gaps.length >> 1];
       loud += chunk;
       heard += out.length;
-      placer.write(pos, out);
       if (opts.onHear && out.length) {
         const SUB = 256;
         for (let s0 = 0; s0 < out.length; s0 += SUB) {
@@ -232,8 +231,7 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
         const st = ytState();
         const v = ytTime();
         marks.push({ c: ctx.currentTime, v, playing: st === YT_STATE.PLAYING });
-        if (marks.length > 600) marks.splice(0, 300);
-        const len = duration || placer.pcm.length / sr;
+        const len = duration || 600;
         opts.onProgress?.(Math.min(1, v / Math.max(1, len)));
         // Nothing but silence 8 s in: the wrong tab, or its sound wasn't shared.
         if (v > 8 && heard > sr * 6 && loud / heard < 1e-7) {
@@ -252,7 +250,7 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
     ytPause();
     if (aborted()) throw new DOMException('Cancelled', 'AbortError');
     if (failure) throw failure;
-    return { pcm: placer.result(), sr, delay, calibrated };
+    return { pcm: placeChunks(chunks, marks, sr, duration || 600), sr, delay, calibrated };
   } finally {
     cleanup.forEach((f) => f());
   }

@@ -67,8 +67,8 @@ Hard); they play it. The AI does not make music. Market and word everything that
   (`src/mapping/listen.ts`, in `listen.worker.ts`). Before mapping, the worker runs the Beat This!
   beat tracker (`src/mapping/beats.ts`, model in `public/models/`). Its grid is used whenever its
   beat is steady beat to beat (`confidence` ≥ `GRID_TRUST`), even if it drifts off one straight
-  grid (`fit`), except a 3:2 clash with the onset estimate on a drifting grid (`gridRefusal` in
-  `automap.ts`). Don't judge it by one straight grid over the whole song: that threw away right
+  grid (`fit`) (`gridRefusal` in `automap.ts`; a 3:2-clash guard was tried and dropped: right
+  once, wrong once). Don't judge it by one straight grid over the whole song: that threw away right
   tempos (a 200 BPM song kept at 121). Then `automap.ts` measures every sound, the grid and the
   sections, and the page shows them.
 - The tiles come from the trained mapper: Ensomi R2 (`src/mapping/ensomi.ts`, `@ensomi/runtime`;

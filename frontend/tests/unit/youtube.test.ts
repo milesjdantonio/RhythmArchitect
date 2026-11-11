@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DIFFICULTIES } from '../../src/api/types';
 import { FollowClock } from '../../src/audio/clock';
-import { Placer, findTick } from '../../src/mapping/capture';
+import { Placer, findTick, placeChunks, type Mark } from '../../src/mapping/capture';
 import { computeLevels, decodeLevels, levelAt, levelsFromNotes } from '../../src/mapping/levels';
 import { beatGrid, fanNotes, fanSong, parseOsu } from '../../src/mapping/osu';
 import { setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchSet } from '../../mock-server/match';
@@ -171,6 +171,60 @@ describe('the listening pass', () => {
     expect(pcm[4999]).toBe(0);
     expect(pcm[5000]).toBe(3);
     expect(pcm.length).toBe(5100);
+  });
+
+  describe('placing the whole capture at the end (placeChunks)', () => {
+    const sr = 1000;
+    // The capture: 100-sample chunks from context time 10 s on, each sample's value its index.
+    const capture = (seconds: number) => Array.from({ length: seconds * 10 }, (_, i) => ({ c: 10 + i * 0.1, d: Float32Array.from({ length: 100 }, (_, j) => i * 100 + j + 1) }));
+    let seed = 5;
+    const noise = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
+
+    it('is seamless though the player\'s position wobbles by tens of milliseconds', () => {
+      // The video starts at context time 10 s; reads every 16 ms, each off by up to ±40 ms.
+      const marks: Mark[] = [];
+      for (let c = 10; c < 40; c += 0.016) marks.push({ c, v: c - 10 + noise() * 0.08, playing: true });
+      const pcm = placeChunks(capture(30), marks, sr, 30);
+      // Every sample once, in order, where it was heard (within the median's few ms).
+      let jumps = 0;
+      for (let i = 1; i < pcm.length; i++) if (pcm[i] !== 0 && pcm[i - 1] !== 0 && pcm[i] - pcm[i - 1] !== 1) jumps++;
+      expect(jumps).toBe(0);
+      const at = pcm.indexOf(10001); // heard at context 20 s: video 10 s
+      expect(Math.abs(at - 10000)).toBeLessThan(15);
+    });
+
+    it('keeps what was heard while the page stalled (no position reads for a second)', () => {
+      const marks: Mark[] = [];
+      for (let c = 10; c < 40; c += 0.016) if (c < 18 || c > 19.2) marks.push({ c, v: c - 10, playing: true });
+      const pcm = placeChunks(capture(30), marks, sr, 30);
+      expect(pcm[8500]).toBe(8501); // video 8.5 s, in the stall
+      expect(pcm.slice(7900, 9300).every((x, i) => x === 7901 + i)).toBe(true);
+    });
+
+    it('drops the sound of a pause and goes on where the video goes on; a seek starts a new stretch', () => {
+      const marks: Mark[] = [];
+      // Plays 0-5 s, buffers 2 s (the video stands at 5 s), plays on from 5 s, then seeks to 20 s at video 10 s.
+      for (let c = 10; c < 40; c += 0.016) {
+        if (c < 15) marks.push({ c, v: c - 10, playing: true });
+        else if (c < 17) marks.push({ c, v: 5, playing: false });
+        else if (c < 22) marks.push({ c, v: c - 12, playing: true });
+        else marks.push({ c, v: c - 2, playing: true });
+      }
+      const pcm = placeChunks(capture(30), marks, sr, 40);
+      expect(pcm[4000]).toBe(4001); // before the pause
+      expect(pcm[6000]).toBe(8001); // video 6 s was heard at context 18 s (after 2 s of buffering)
+      expect(pcm[21000]).toBe(13001); // after the seek: video 21 s heard at context 23 s
+      expect(pcm[15000]).toBe(0); // skipped by the seek: nothing heard there
+    });
+
+    it('leaves out what was heard before the video started', () => {
+      const marks: Mark[] = [];
+      for (let c = 10; c < 13; c += 0.016) marks.push({ c, v: 0, playing: false });
+      for (let c = 13; c < 40; c += 0.016) marks.push({ c, v: c - 13, playing: true });
+      const pcm = placeChunks(capture(30), marks, sr, 30);
+      expect(pcm[0]).toBeGreaterThan(2800); // the first sound placed is from about context 12.9 s on
+      expect(pcm[1000]).toBe(4001);
+    });
   });
 
   it('finds the calibration tick in the captured sound', () => {

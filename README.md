@@ -210,8 +210,10 @@ beatmap** maps a new one, and it plays from YouTube:
    YouTube by name needs a free YouTube Data API key: `YOUTUBE_API_KEY` in `frontend/.env.local`, see
    `frontend/.env.example`). The video shows in YouTube's own embedded player. Its audio is never downloaded.
 2. **Listen once.** Press *Listen and map* and share this tab with its audio. The song plays once
-   while the browser records what it hears (filed by the video's position; a short tick first
-   measures the capture delay), then the onset mapper (`automap.ts`, in a worker) measures the beat
+   while the browser records what it hears (a short tick first measures the capture delay; at the
+   end the recording is filed by the video's position, one offset per stretch of steady playback,
+   so it stays seamless and nothing is lost when the page stalls: `placeChunks` in
+   `frontend/src/mapping/capture.ts`), then the onset mapper (`automap.ts`, in a worker) measures the beat
    and every sound, a **trained mapper** (Ensomi R2, also in the browser) charts the song, and the
    recording is dropped (see *How a map stays true to the song*). If the trained mapper can't, the
    onset mapper's own charts are used. Only the tiles and a loudness curve for the visuals are kept. The
@@ -265,13 +267,13 @@ Before that, two models run in the browser on what was heard (the mapping worker
 
 - **The beat** (`beats.ts`): the Beat This! tracker (10 MB, `frontend/public/models/`) finds the beats and
   downbeats; its grid sets the tempo, beat 0 and the meter (3 or 4) whenever its beat is steady beat
-  to beat for at least half the song, even when it drifts off one straight grid (a long song, or the
-  capture slipping), except when its tempo and the onset mapper's are 3:2 apart on a drifting grid (a
-  swing or triplet feel fooling it); the onset mapper's own estimate is the fallback. On 14 Creative
-  Commons tracks with known tempos (full length) it gets 12 right (the other two, very slow songs,
-  at double time) against 8 for the mapper's own estimate, which kept reading fast songs at 2/3 of
-  their tempo. (An earlier rule, half the beats on one straight grid, threw away right tempos: a 200
-  BPM song was kept at 121.)
+  to beat for at least 40% of the song, even when it drifts off one straight grid (a long song, or the
+  capture slipping); the onset mapper's own estimate is only the fallback for when it finds no steady
+  beat (it reads fast songs at 2/3 of their tempo). On 14 Creative Commons tracks with known tempos
+  (full length) it gets 11 right (two very slow songs at double time, one at 1.5 times) against 8 for
+  the onset estimate; the same 14 sped up to 200 BPM, over 6 minutes, through a simulated listen
+  (a coarse YouTube clock, page stalls): 12 right (one at half time, one wrong). (An earlier rule,
+  half the beats on one straight grid, threw away right tempos: a 200 BPM song was kept at 121.)
 - **The tiles** (`ensomi.ts`): Ensomi R2, a model trained on human-made osu!mania 4K charts, charts
   the song from the audio (about 20 s on WebGPU for a 3-minute song, about 90 s without). Its model
   (about 120 MB) downloads from Hugging Face while the song is listened to and stays in the
