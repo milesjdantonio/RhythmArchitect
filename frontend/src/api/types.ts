@@ -237,6 +237,11 @@ export interface SoundEvent {
   onBeat: boolean;
   /** One of the biggest hits of the song, on a bar's downbeat. */
   accent: boolean;
+  /**
+   * The part it was heard in, when the browser split the song (vocals, drums, bass, other);
+   * missing when it was found in the whole mix.
+   */
+  part?: 'drums' | 'bass' | 'vocals' | 'other';
 }
 
 /**

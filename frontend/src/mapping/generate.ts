@@ -60,7 +60,7 @@ export function songFromListening(m: Mapped, video: VideoMatch, heard: Pick<Hear
     artist: video.songArtist,
     prompt: `${video.songTitle}${video.songArtist ? ` by ${video.songArtist}` : ''}`,
     bpm: r.bpm,
-    meter: 4,
+    meter: r.meter ?? 4,
     key: 'C',
     scale: 'Minor',
     mood: 'Mapped by listening',

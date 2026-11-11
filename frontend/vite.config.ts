@@ -36,5 +36,8 @@ const config = {
   // Workers as ES modules, so they can split: the stage worker loads its WebGPU materials
   // (src/stage/gpu.ts) only when /demo's version B asks for them.
   worker: { format: 'es' as const },
+  // ONNX Runtime (the mapping worker's models: src/mapping/ort.ts) finds its WebAssembly relative
+  // to itself; Vite's dependency pre-bundling would move it.
+  optimizeDeps: { exclude: ['onnxruntime-web'] },
   preview: { port: 4173 },
 };

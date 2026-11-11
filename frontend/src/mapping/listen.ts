@@ -12,6 +12,7 @@ import * as Tone from 'tone';
 import { YT_STATE, ytCue, ytOnError, ytPause, ytPlayFrom, ytState, ytTime } from '../audio/youtube';
 import { unlockAudio } from '../audio/playback';
 import type { AutomapResult } from './automap';
+import type { FromMapper, ToMapper } from './listen.worker';
 import type { SongLevels } from '../api/types';
 import { Placer, findTick } from './capture';
 
@@ -258,24 +259,30 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
 
 export interface Mapped { result: AutomapResult; levels: SongLevels }
 
-/** Runs the mapper on what was heard, in a worker so the page stays smooth. */
-export function mapHeard(pcm: Float32Array, sr: number): Promise<Mapped> {
+/**
+ * Runs the mapper on what was heard, in a worker so the page stays smooth: the beat tracker, the
+ * song split into parts (when `split` and the browser has WebGPU), then the onset mapper.
+ * `onProgress` hears what it's doing ("splitting the song", 0..1).
+ */
+export function mapHeard(pcm: Float32Array, sr: number, opts: { split?: boolean; onProgress?: (what: string, p?: number) => void } = {}): Promise<Mapped> {
   return new Promise<Mapped>((resolve, reject) => {
     let worker: Worker;
     try {
       worker = new Worker(new URL('./listen.worker.ts', import.meta.url), { type: 'module' });
     } catch {
-      // No workers: map on the page (it pauses for a second or two).
+      // No workers: map on the page (it pauses for a second or two), without the models.
       Promise.all([import('./automap'), import('./levels')])
         .then(([a, l]) => resolve({ result: a.automap(pcm, sr), levels: l.computeLevels(pcm, sr) }))
         .catch(reject);
       return;
     }
-    worker.onmessage = (e: MessageEvent<Mapped | { error: string }>) => {
+    worker.onmessage = (e: MessageEvent<FromMapper>) => {
+      const m = e.data;
+      if ('progress' in m) { opts.onProgress?.(m.progress, m.p); return; }
       worker.terminate();
-      if ('error' in e.data) reject(new Error(e.data.error)); else resolve(e.data);
+      if ('error' in m) reject(new Error(m.error)); else resolve(m);
     };
     worker.onerror = (e) => { worker.terminate(); reject(new Error(e.message || 'The mapper failed.')); };
-    worker.postMessage({ pcm, sr }, [pcm.buffer]);
+    worker.postMessage({ pcm, sr, split: !!opts.split } satisfies ToMapper, [pcm.buffer]);
   });
 }

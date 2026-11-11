@@ -13,6 +13,8 @@ export interface ScopeHandle {
   tiles: (tiles: { time: number; lane: number }[], counts?: Record<Difficulty, number>) => void;
   /** How far the AI charter has got with one difficulty (each time it charts a chunk of the song). */
   progress: (p: ChartProgress) => void;
+  /** What the mapper is doing ("splitting the song") and how far, 0..1, while it maps. */
+  mapping: (what: string, p?: number) => void;
 }
 
 const DIFFS: Difficulty[] = ['easy', 'medium', 'hard'];
@@ -88,6 +90,8 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       // which goes one difficulty at a time (pNow), its fill easing to that difficulty's progress
       pDone: new Float32Array(3), pTotal: new Float32Array(3), pTiles: new Float32Array(3), pOn: false, pReading: false,
       pNow: 0, pFill: 0, pShown: new Uint8Array(3), pShownAt: 0, pTileShown: new Float32Array(3),
+      // what the mapper is doing, for the line under the field
+      mapWhat: 'finding the beat', mapP: -1,
       // sparks and rings
       px: new Float32Array(SPARKS), py: new Float32Array(SPARKS), pvx: new Float32Array(SPARKS), pvy: new Float32Array(SPARKS), pl: new Float32Array(SPARKS), pk: new Uint8Array(SPARKS), pNext: 0,
       rx: new Float32Array(RINGS), ry: new Float32Array(RINGS), ra: new Float32Array(RINGS).fill(9), rk: new Uint8Array(RINGS), rNext: 0,
@@ -180,6 +184,11 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
         // Whatever the reveal hadn't got to yet is done now.
         st.pShown.fill(1);
         st.pNow = 3;
+      },
+      mapping(what, p) {
+        const st = S.current;
+        st.mapWhat = what;
+        st.mapP = p ?? -1;
       },
       progress(p) {
         const st = S.current;
@@ -533,7 +542,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
           // (The finished ones have their checks beside it; kept short so the row doesn't wrap.)
           const building = !charting || !st.pOn ? '' : st.pReading ? 'the AI is reading the whole song'
             : st.pNow < 3 ? `the AI is charting ${DIFF_NAMES[st.pNow]}` : '';
-          const text = done ? 'Every tile on a sound' : building ? building : charting ? `${st.sn} sounds · the AI is charting` : ph === 'map' ? `${st.heard} sounds heard · finding the beat` : `${st.heard} sounds heard`;
+          const text = done ? 'Every tile on a sound' : building ? building : charting ? `${st.sn} sounds · the AI is charting` : ph === 'map' ? `${st.heard} sounds heard · ${st.mapWhat}${st.mapP >= 0 ? ` ${Math.round(st.mapP * 100)}%` : ''}` : `${st.heard} sounds heard`;
           if (status.current.textContent !== text) status.current.textContent = text;
           // The difficulties under the field while the charter builds them.
           const el = countsEl.current;

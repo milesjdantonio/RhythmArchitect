@@ -60,6 +60,8 @@ docs/api.md, "The AI charter". Real requests to build and test against: docs/sam
                   len       how long it rings, in beats (a hold can't be longer)
                   onBeat    on a beat rather than between beats
                   accent    one of the biggest hits of the song, on a bar's downbeat
+                  part      (optional) drums | bass | vocals | other: the part it was heard in,
+                            when the browser split the song (WebGPU); missing when found in the mix
     rules       { lanes: 4, difficulties: [easy, medium, hard], maxNotesPerSound: 2,
                   minHoldBeats: 1 }   read these rather than hard-coding them
 

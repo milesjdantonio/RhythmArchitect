@@ -205,6 +205,19 @@ those sounds each difficulty plays (it can only name measured sounds, so it can'
 without it, `frontend/src/mapping/charts.ts` picks them by how much they stand out, never at random and never
 adding a note that isn't there.
 
+Before that, two models run in the browser on what was heard (the mapping worker,
+`frontend/src/mapping/listen.worker.ts`; the audio still never leaves the page):
+
+- **The beat** (`beats.ts`): the Beat This! tracker (10 MB, `frontend/public/models/`) finds the beats and
+  downbeats; its grid sets the tempo, beat 0 and the meter (3 or 4) when at least half its beats fit
+  it, else the onset mapper's own estimate is used. On 14 Creative Commons tracks with known tempos it
+  got 12 right (the other two at double time) against 8 for the mapper's own estimate, which kept
+  reading fast songs at 2/3 of their tempo.
+- **The parts** (`stems.ts`): with WebGPU, Demucs splits the song into drums, bass, vocals and other,
+  and the onset mapper finds each part's sounds on its own (pitch from the part, drums never pitched).
+  Its model (about 172 MB) downloads from Hugging Face while the song is listened to and stays in the
+  browser's cache. Without WebGPU the song is mapped from the whole mix, as before.
+
 ## Layout
 
 ```

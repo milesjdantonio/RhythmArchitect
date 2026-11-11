@@ -35,10 +35,29 @@ export interface AutomapOptions {
   scale?: keyof typeof SCALES;
   /** Clamp the detected tempo into this range by doubling or halving. */
   bpmRange?: [number, number];
+  /**
+   * A beat grid from the trained beat tracker (beats.ts): used instead of the mapper's own tempo
+   * and phase estimate when its confidence is at least GRID_TRUST (its meter too).
+   */
+  grid?: { bpm: number; offset: number; meter: number; confidence: number } | null;
+  /**
+   * The song split into parts (stems.ts), each mono at the same rate and length as the mix:
+   * sounds are then found in each part on its own.
+   */
+  stems?: Partial<Record<PartName, Float32Array>> | null;
 }
+
+/** The parts a song is split into (Demucs's four stems). */
+export type PartName = 'drums' | 'bass' | 'vocals' | 'other';
+export const PART_NAMES: PartName[] = ['drums', 'bass', 'vocals', 'other'];
+
+/** The beat tracker's grid is used when at least this share of its beats sit on it. */
+export const GRID_TRUST = 0.5;
 
 export interface AutomapResult {
   bpm: number;
+  /** Beats per bar (from the beat tracker when its grid is used, else the option, 4 by default). */
+  meter: number;
   /** Seconds into the audio where beat 0 lands. */
   offset: number;
   lengthBeats: number;
@@ -241,7 +260,7 @@ function pitchAt(x: Float32Array, sr: number, sec: number): { midi: number; clar
 }
 
 export function automap(samples: Float32Array, sr: number, opts: AutomapOptions = {}): AutomapResult {
-  const meter = opts.meter ?? 4;
+  let meter = opts.meter ?? 4;
   const fps = sr / HOP;
   const { low, mid, high, all, n } = bandEnvelopes(samples, sr);
   const fL = flux(low), fM = flux(mid), fH = flux(high);
@@ -303,7 +322,7 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
   let roughBpm = (60 * fps) / lag;
   while (roughBpm < lo) roughBpm *= 2;
   while (roughBpm > hi) roughBpm /= 2;
-  const confidence = Math.min(1, (bestScore / (total / scores.length)) / 6);
+  let confidence = Math.min(1, (bestScore / (total / scores.length)) / 6);
 
   // Fine-tune tempo and phase together: the grid that puts the most onset energy on its beats.
   // (A tempo off by half a BPM drifts a whole 16th over a minute.)
@@ -324,14 +343,25 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
     }
   }
   bpm = Math.round(bpm * 100) / 100;
-  const period = (60 * fps) / bpm; // frames per beat
-  // Downbeat: of the `meter` beat positions in a bar, the one with the most low-end onsets.
-  let bar = 0, barBest = -1;
-  for (let j = 0; j < meter; j++) {
-    const s = sumAt(fL, phase + j * period, period * meter);
-    if (s > barBest) { barBest = s; bar = j; }
+  // The trained beat tracker's grid, when it's sure of it: its tempo, its downbeat and its meter.
+  const grid = opts.grid && opts.grid.confidence >= GRID_TRUST && opts.grid.bpm > 40 && opts.grid.bpm < 260 ? opts.grid : null;
+  if (grid) {
+    bpm = Math.round(grid.bpm * 100) / 100;
+    meter = grid.meter;
+    confidence = grid.confidence;
   }
-  let firstFrame = phase + bar * period;
+  const period = (60 * fps) / bpm; // frames per beat
+  let firstFrame: number;
+  if (grid) firstFrame = grid.offset * fps;
+  else {
+    // Downbeat: of the `meter` beat positions in a bar, the one with the most low-end onsets.
+    let bar = 0, barBest = -1;
+    for (let j = 0; j < meter; j++) {
+      const s = sumAt(fL, phase + j * period, period * meter);
+      if (s > barBest) { barBest = s; bar = j; }
+    }
+    firstFrame = phase + bar * period;
+  }
   // Beat 0 is the first downbeat with sound around it.
   const firstSound = nov.findIndex((v) => v > 0.05);
   while (firstFrame + period * meter < firstSound) firstFrame += period * meter;
@@ -342,32 +372,58 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
   // that are the highest within ±30 ms and stand clear of the average around them (100 ms before,
   // 70 ms after); each is then timed to its exact attack (frames are 23 ms; the attack is found
   // to within a few ms).
-  const sf = superflux(samples, sr, n);
-  {
-    const sorted = Float32Array.from(sf).sort();
-    const ref = sorted[Math.floor(sorted.length * 0.98)] || 1;
-    for (let i = 0; i < n; i++) sf[i] = all[i] > loud[i] * 0.05 ? sf[i] / ref : 0;
+  // The parts sounds are found in: the whole mix, or (when the song was split, stems.ts) each
+  // part on its own, so a vocal note under a loud drum is still heard, and each sound's band,
+  // pitch and ring come from its own part, not the mix.
+  type Part = { name?: PartName; x: Float32Array; env: ReturnType<typeof bandEnvelopes>; loud: Float32Array; weight: number };
+  const parts: Part[] = [];
+  if (opts.stems) {
+    const stems = opts.stems;
+    const energy = (x: Float32Array) => { let e = 0; for (let i = 0; i < x.length; i += 4) e += x[i] * x[i]; return e; };
+    const given = PART_NAMES.flatMap((p) => { const x = stems[p]; return x && x.length === samples.length ? [{ p, x }] : []; });
+    const es = given.map(({ x }) => energy(x));
+    const top = Math.max(1e-12, ...es);
+    given.forEach(({ p, x }, k) => {
+      const env = bandEnvelopes(x, sr);
+      // A quiet part (a bass under the mix) counts for less: its share of the loudest part's energy.
+      parts.push({ name: p, x, env, loud: movingMean(env.all, Math.round(fps * 2)), weight: Math.max(0.35, Math.sqrt(es[k] / top)) });
+    });
   }
+  if (!parts.length) parts.push({ x: samples, env: { low, mid, high, all, n }, loud, weight: 1 });
+
   const preMax = Math.max(1, Math.round(0.03 * fps)), postMax = Math.max(1, Math.round(0.03 * fps));
   const preAvg = Math.round(0.1 * fps), postAvg = Math.round(0.07 * fps);
-  const bands = [low, mid, high];
-  const peaks: { frame: number; strength: number; sec: number; band: 0 | 1 | 2 }[] = [];
-  for (let i = 1; i < n - 1; i++) {
-    const v = sf[i];
-    if (v < 0.12) continue;
-    let peak = true;
-    for (let j = Math.max(0, i - preMax); j <= Math.min(n - 1, i + postMax); j++) if (sf[j] > v || (sf[j] === v && j < i)) { peak = false; break; }
-    if (!peak) continue;
-    let avg = 0, cnt = 0;
-    for (let j = Math.max(0, i - preAvg); j <= Math.min(n - 1, i + postAvg); j++) { avg += sf[j]; cnt++; }
-    if (v < avg / cnt + 0.07) continue;
-    // The band the new sound lives in: the one whose energy rose the most (in absolute terms,
-    // so a tone leaking a little into a silent band isn't mistaken for a kick).
-    const rise = (e: Float32Array) => Math.max(0, Math.max(e[i], e[i + 1] ?? 0) - Math.min(e[i - 1], e[i - 2] ?? e[i - 1]));
-    const parts = [rise(low), rise(mid), rise(high)];
-    const band = (parts[0] >= parts[1] && parts[0] >= parts[2] ? 0 : parts[1] >= parts[2] ? 1 : 2) as 0 | 1 | 2;
-    peaks.push({ frame: i, strength: v + nov[i] * 0.1, sec: attackTime(samples, sr, i, band), band });
-  }
+  const peaks: { frame: number; strength: number; sec: number; band: 0 | 1 | 2; part: number }[] = [];
+  parts.forEach((part, pi) => {
+    const { x, env } = part;
+    const sf = superflux(x, sr, n);
+    {
+      const sorted = Float32Array.from(sf).sort();
+      const ref = sorted[Math.floor(sorted.length * 0.98)] || 1;
+      // Near-silence in this part (or, for a split part, the part barely there in the mix) is gated out.
+      for (let i = 0; i < n; i++) sf[i] = env.all[i] > part.loud[i] * 0.05 && (!part.name || env.all[i] > all[i] * 0.01) ? sf[i] / ref : 0;
+    }
+    for (let i = 1; i < n - 1; i++) {
+      const v = sf[i];
+      if (v < 0.12) continue;
+      let peak = true;
+      for (let j = Math.max(0, i - preMax); j <= Math.min(n - 1, i + postMax); j++) if (sf[j] > v || (sf[j] === v && j < i)) { peak = false; break; }
+      if (!peak) continue;
+      let avg = 0, cnt = 0;
+      for (let j = Math.max(0, i - preAvg); j <= Math.min(n - 1, i + postAvg); j++) { avg += sf[j]; cnt++; }
+      if (v < avg / cnt + 0.07) continue;
+      // The band the new sound lives in: the one whose energy rose the most (in absolute terms,
+      // so a tone leaking a little into a silent band isn't mistaken for a kick). A split part
+      // says what it is: bass is low, a voice mid; drums and the rest go by their own bands.
+      const rise = (e: Float32Array) => Math.max(0, Math.max(e[i], e[i + 1] ?? 0) - Math.min(e[i - 1], e[i - 2] ?? e[i - 1]));
+      const r = [rise(env.low), rise(env.mid), rise(env.high)];
+      let band = (r[0] >= r[1] && r[0] >= r[2] ? 0 : r[1] >= r[2] ? 1 : 2) as 0 | 1 | 2;
+      if (part.name === 'bass') band = 0;
+      else if (part.name === 'vocals') band = 1;
+      peaks.push({ frame: i, strength: (v + nov[i] * 0.1) * part.weight, sec: attackTime(x, sr, i, band), band, part: pi });
+    }
+  });
+  peaks.sort((a, b) => a.sec - b.sec);
 
   // Line the beat grid up with the attacks themselves: shift it by the median distance from
   // each attack to its nearest 16th.
@@ -385,14 +441,14 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
 
   // Each onset in beats. Quantised music sits on the grid, so an attack within 20 ms of a 16th
   // is placed on it; anything else keeps its exact time.
-  type Onset = { beat: number; sec: number; frame: number; strength: number; band: 0 | 1 | 2; midi: number; clarity: number; bright: number; ringsTo: number };
+  type Onset = { beat: number; sec: number; frame: number; strength: number; band: 0 | 1 | 2; part: number; midi: number; clarity: number; bright: number; ringsTo: number };
   const onsets: Onset[] = [];
   for (const p of peaks) {
     let beat = (p.sec - offset) / spb;
     if (beat < -0.05) continue;
     const q = Math.round(beat * 4) / 4;
     beat = Math.max(0, Math.abs(beat - q) * spb < 0.02 ? q : Math.round(beat * 1000) / 1000);
-    const o: Onset = { beat, sec: p.sec, frame: p.frame, strength: p.strength, band: p.band, midi: 60, clarity: 0, bright: 60, ringsTo: p.sec };
+    const o: Onset = { beat, sec: p.sec, frame: p.frame, strength: p.strength, band: p.band, part: p.part, midi: 60, clarity: 0, bright: 60, ringsTo: p.sec };
     const prev = onsets[onsets.length - 1];
     if (prev && (beat - prev.beat) * spb < 0.04) {
       if (o.strength > prev.strength) onsets[onsets.length - 1] = o;
@@ -406,14 +462,16 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
   // doesn't end it). Long rings become holds.
   for (let k = 0; k < onsets.length; k++) {
     const o = onsets[k];
-    const pt = pitchAt(samples, sr, o.sec);
-    o.midi = pt.midi; o.clarity = pt.clarity; o.bright = pt.bright;
-    const e = bands[o.band];
+    const part = parts[o.part];
+    const pt = pitchAt(part.x, sr, o.sec);
+    // Drums have no pitch, whatever the harmonics of a tom suggest.
+    o.midi = pt.midi; o.clarity = part.name === 'drums' ? 0 : pt.clarity; o.bright = pt.bright;
+    const e = [part.env.low, part.env.mid, part.env.high][o.band];
     // The ring ends at a real new attack in its band (its energy jumps), not at a drum that only
     // adds a little on top of it.
     let nextFrame = n;
     for (let j = k + 1; j < onsets.length; j++) {
-      if (onsets[j].band !== o.band) continue;
+      if (onsets[j].band !== o.band || onsets[j].part !== o.part) continue;
       const fj = onsets[j].frame;
       const before = Math.min(e[fj - 1] ?? 0, e[fj - 2] ?? e[fj - 1] ?? 0), after = Math.max(e[fj], e[fj + 1] ?? 0);
       if (after > before * 1.6) { nextFrame = fj; break; }
@@ -461,7 +519,7 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
       id: i, t: m.t, sec: Math.round(o.sec * 1000) / 1000, band: BANDS[o.band], pitched,
       midi: pitched ? Math.round(o.midi) : null, note: pitched ? midiToName(Math.round(o.midi)) : null,
       bright: Math.round(o.bright), strength: Math.round((m.strength ?? 0) * 100) / 100, len: m.len,
-      onBeat: m.strong, accent: !!m.accent,
+      onBeat: m.strong, accent: !!m.accent, ...(parts[o.part].name ? { part: parts[o.part].name } : {}),
     };
   });
 
@@ -525,6 +583,7 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
 
   return {
     bpm,
+    meter,
     offset: Math.round(offset * 1000) / 1000,
     lengthBeats: Math.round(lengthBeats * 100) / 100,
     charts,
@@ -533,6 +592,6 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
     onsetInfo: onsets.map((o) => ({ sec: Math.round(o.sec * 1000) / 1000, midi: o.midi, clarity: Math.round(o.clarity * 100) / 100, bright: Math.round(o.bright), band: o.band })),
     events,
     barEnergy,
-    report: { mapper: 'Onset mapper v2 (exact attacks)', confidence: Math.round(confidence * 100) / 100, sections, energy: curve, cues },
+    report: { mapper: grid ? 'Onset mapper v3 (exact attacks, Beat This! grid)' : 'Onset mapper v2 (exact attacks)', confidence: Math.round(confidence * 100) / 100, sections, energy: curve, cues },
   };
 }

@@ -4,6 +4,7 @@ import { ApiError, api } from '../../api/client';
 import type { Difficulty, Song, SongSummary, VideoMatch } from '../../api/types';
 import { stopSong, unlockAudio } from '../../audio/playback';
 import { canListen, ListenError, listenTo, mapHeard, requestTabAudio } from '../../mapping/listen';
+import { canSplit, prefetchStemModel } from '../../mapping/stemModel';
 import { ytCue, ytPause, VideoError } from '../../audio/youtube';
 import { holdQuiet } from '../../lib/quiet';
 import { chartWithAI, fallbackNote, listenProblem, songFromListening } from '../../mapping/generate';
@@ -139,6 +140,10 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       return;
     }
     setFlow({ step: 'listen', video, progress: 0 });
+    // With WebGPU the song is split into its parts before mapping (stems.ts): the splitter's model
+    // (about 172 MB, cached after the first time) downloads while the song is listened to.
+    const split = canSplit();
+    void split.then((yes) => { if (yes) prefetchStemModel().catch(() => {}); });
     try {
       const heard = await listenTo(stream, {
         videoId: video.videoId, seconds: video.seconds, signal,
@@ -146,7 +151,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
         onHear: (pos, rms, low, mid, high) => scope.current?.hear(pos, rms, low, mid, high),
       });
       setFlow({ step: 'map', video, progress: 0.5 });
-      const mapped = await mapHeard(heard.pcm, heard.sr);
+      const mapped = await mapHeard(heard.pcm, heard.sr, { split: await split, onProgress: (what, p) => scope.current?.mapping(what, p) });
       // What was measured settles into the field (every sound, the bar lines) while the AI charts it.
       {
         const r = mapped.result, spb = 60 / r.bpm;

@@ -59,7 +59,13 @@ Hard); they play it. The AI does not make music. Market and word everything that
   video (it plays in YouTube's embedded player, `src/audio/youtube.ts`, docked visibly, 200px+,
   nothing over it; shown only while it plays, inert so players can't click it).
 - The browser listens to it once through tab capture and `automap.ts` maps it
-  (`src/mapping/listen.ts`), then the backend's AI charter (Claude, `POST /api/chart`,
+  (`src/mapping/listen.ts`, in `listen.worker.ts`). Before mapping, the worker runs the Beat This!
+  beat tracker (`src/mapping/beats.ts`, model in `public/models/`; its grid is used when its
+  confidence is at least `GRID_TRUST`) and, with WebGPU, splits the song into parts with Demucs
+  (`src/mapping/stems.ts`; ~172 MB model from Hugging Face, prefetched while listening, cached;
+  `stemModel.ts`). Both run on ONNX Runtime (`src/mapping/ort.ts`); either failing leaves the
+  mapper as it was. e2e tests switch splitting off (localStorage `rythm-architect:no-stems`).
+  Then the backend's AI charter (Claude, `POST /api/chart`,
   `docs/claude-backend.txt`) picks which measured sounds become tiles; the browser enforces the
   rules on its plan (`src/mapping/charter.ts`) and falls back to the on-device charts.
 - Keep the request and plan types (`src/api/types.ts`), the mock (`mock-server/api.ts`), the

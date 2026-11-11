@@ -19,6 +19,19 @@ copies. Their beatmaps were made by this project's onset mapper (`npm run map`).
 line to the song's 104 BPM (each tile keeps its exact time) and lined up with the video
 (`frontend/mock-server/songs/tracks/one-dance.json`). Easy and Medium are thinned from it.
 
+## Models the mapper runs in the browser
+
+- **Beat This!** beat and downbeat tracker (Foscarin, Schlüter & Widmer, ISMIR 2024,
+  [CPJKU/beat_this](https://github.com/CPJKU/beat_this)), MIT. `frontend/public/models/beat-this-small0.onnx`
+  is the "small0" checkpoint as converted to ONNX by
+  [ashudesai/songbird-models](https://huggingface.co/ashudesai/songbird-models) (`small0-v2.onnx`, MIT);
+  `beat-this-mel.bin` is its mel filterbank, from [musetric/beat-this-onnx](https://huggingface.co/musetric/beat-this-onnx) (MIT).
+- **Demucs v4** (htdemucs) source separation by Meta AI ([facebookresearch/demucs](https://github.com/facebookresearch/demucs)),
+  MIT. Not in this repository: the browser downloads timcsy's ONNX export
+  ([timcsy/demucs-web-onnx](https://huggingface.co/timcsy/demucs-web-onnx), MIT) once and caches it.
+- Runtime libraries: [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) (MIT) and
+  [demucs-web](https://github.com/timcsy/demucs-web) (MIT).
+
 ## Fonts
 
 Unbounded, Space Grotesk and JetBrains Mono come from [Fontsource](https://fontsource.org/) under the

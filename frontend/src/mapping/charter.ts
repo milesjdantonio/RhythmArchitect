@@ -21,7 +21,7 @@ export const CHART_RULES: ChartRequest['rules'] = { lanes: 4, difficulties: [...
 const MIN_NOTES = 8;
 
 /** The request for the AI charter: what the browser measured in the song. */
-export function chartRequest(r: AutomapResult, song: { title: string; artist: string; videoId?: string; seconds: number }, meter = 4): ChartRequest {
+export function chartRequest(r: AutomapResult, song: { title: string; artist: string; videoId?: string; seconds: number }, meter = r.meter ?? 4): ChartRequest {
   return {
     version: 1,
     song,
