@@ -83,6 +83,13 @@ Hard); they play it. The AI does not make music. Market and word everything that
   ~172 MB, `stemModel.ts`; e2e: `rythm-architect:no-stems`), and the onset mapper's own charts
   (`charts.ts`) are used. All the models run on one ONNX Runtime (`src/mapping/ort.ts`); any of
   them failing leaves the next step to carry on.
+- The capture runs on an audio context of its own (`listenCtx` in `listen.ts`, latency hint
+  'playback'), not the game's low-latency one, so a busy machine doesn't make it drop sound. While
+  the Generate dialog is open (`holdQuiet`, `src/lib/quiet.ts`) the backdrop and the stage preview
+  hold still and the menu music's context is suspended once it has rung out; the dialog's own
+  canvases draw at most `MENU_FPS` (`menuGate`), and `ListenScope` keeps its settled stars in a
+  layer instead of redrawing each one every frame. Keep the listening pass this light: a real
+  listen showed the page's frames falling to ~13 a second and the audio clock 20% behind.
 - The recording: every chunk the audio thread hands over is kept; the video position is read on
   each chunk (they keep coming with the tab hidden) and every frame; at the end `placeChunks`
   (`src/mapping/capture.ts`) files it by stretches of steady playback (`stretchesOf`, healed:

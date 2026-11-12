@@ -58,9 +58,21 @@ export function setPerf(id: ProfileId, overrides: Partial<PerfProfile> = {}) {
  */
 export const MENU_FPS = 60;
 
-let gateTs = Number.NaN;
-let gateOk = true;
-let gateNext = Number.NaN;
+/** Draw slots for one frame cap (see frameGate). */
+interface Slots { ts: number; ok: boolean; next: number }
+function slot(s: Slots, cap: number, ts: number): boolean {
+  if (ts === s.ts) return s.ok;
+  s.ts = ts;
+  const iv = 1000 / cap;
+  // First frame, fell far behind (a stall, a hidden tab), or a new clock: start the slots here.
+  if (!(ts - s.next <= iv && s.next - ts <= iv * 2)) s.next = ts;
+  // A frame early by up to 1.5 ms still counts (display timestamps jitter).
+  if (ts < s.next - 1.5) return (s.ok = false);
+  s.next += iv;
+  return (s.ok = true);
+}
+
+const pageSlots: Slots = { ts: Number.NaN, ok: true, next: Number.NaN };
 /**
  * Whether to draw on this display frame (when `fpsCap` is set). Every loop passes its
  * requestAnimationFrame timestamp; loops in the same frame get the same one, so they all draw on
@@ -70,14 +82,13 @@ let gateNext = Number.NaN;
  */
 export function frameGate(ts: number): boolean {
   const cap = active.fpsCap;
-  if (!cap) return true;
-  if (ts === gateTs) return gateOk;
-  gateTs = ts;
-  const iv = 1000 / cap;
-  // First frame, fell far behind (a stall, a hidden tab), or a new clock: start the slots here.
-  if (!(ts - gateNext <= iv && gateNext - ts <= iv * 2)) gateNext = ts;
-  // A frame early by up to 1.5 ms still counts (display timestamps jitter).
-  if (ts < gateNext - 1.5) return (gateOk = false);
-  gateNext += iv;
-  return (gateOk = true);
+  return !cap || slot(pageSlots, cap, ts);
 }
+
+const menuSlots: Slots = { ts: Number.NaN, ok: true, next: Number.NaN };
+/**
+ * frameGate at MENU_FPS, for the menus' own canvases on the page (the Generate dialog's field and
+ * the light behind it), whatever the page's profile: the page itself has no cap (gameplay draws at
+ * the screen's rate), and the listening pass needs the graphics chip for the video and the capture.
+ */
+export const menuGate = (ts: number) => slot(menuSlots, MENU_FPS, ts);

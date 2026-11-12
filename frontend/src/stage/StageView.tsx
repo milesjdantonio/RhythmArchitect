@@ -3,6 +3,7 @@ import type { Difficulty, Song } from '../api/types';
 import { audioLevels, songTime } from '../audio/playback';
 import { TRAVEL } from '../game/engine';
 import { bus } from '../lib/bus';
+import { isQuiet, onQuiet } from '../lib/quiet';
 import { isCalm } from '../lib/settings';
 import { RiveAnim } from '../rive/RiveAnim';
 import { StageProxy } from './proxy';
@@ -49,6 +50,9 @@ export function StageView({ song, difficulty, previewBeat0 }: Props) {
     };
     let raf = 0;
     let visible = true;
+    // Not while a dialog wants quiet (the Generate dialog listening and mapping: the video, the
+    // capture and the mapper need the graphics chip and the processor; the stage is behind it).
+    const awake = () => !isCalm() && visible && !isQuiet();
     // A stage in a worker draws on its own frames: it's told when to stop (and start again).
     const proxy = s instanceof StageProxy ? s : null;
     let asleep = false;
@@ -59,22 +63,24 @@ export function StageView({ song, difficulty, previewBeat0 }: Props) {
       s.setLevels(audioLevels());
       s.frame(t);
       sleep(false);
-      if (!isCalm() && visible) raf = requestAnimationFrame(loop);
-      // Calm: this frame stays (the worker draws it, then holds).
+      if (awake()) raf = requestAnimationFrame(loop);
+      // Calm (or quiet): this frame stays (the worker draws it, then holds).
       else if (proxy) setTimeout(() => { if (!raf) sleep(true); }, 100);
     };
     raf = requestAnimationFrame(loop);
     // Off screen (scrolled away on a narrow window): stop drawing until it's back.
     const io = new IntersectionObserver(([e]) => {
       visible = e.isIntersecting;
-      if (visible && !raf) raf = requestAnimationFrame(loop);
+      if (awake() && !raf) raf = requestAnimationFrame(loop);
       if (!visible) sleep(true);
     });
     io.observe(host.current!);
+    // The dialog closed: back to drawing.
+    const offQuiet = onQuiet(() => { if (awake() && !raf) raf = requestAnimationFrame(loop); });
     const offBeat = bus.on('beat', ({ downbeat }) => s.onBeat(downbeat));
     const offCue = bus.on('cue', ({ kind, strength }) => s.cue(kind, strength));
     const offSection = bus.on('section', () => s.section());
-    return () => { cancelAnimationFrame(raf); io.disconnect(); offBeat(); offCue(); offSection(); s.destroy(); stage.current = null; };
+    return () => { cancelAnimationFrame(raf); io.disconnect(); offQuiet(); offBeat(); offCue(); offSection(); s.destroy(); stage.current = null; };
   }, []);
 
   // Load the selected song's chart into the ghost.

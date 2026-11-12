@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { attachMain, attachSky, workerSupported, type Backdrop } from './host';
+import { isQuiet, useQuiet } from '../lib/quiet';
 import { isCalm, useSettings } from '../lib/settings';
 import '../styles/background.css';
 
@@ -15,6 +16,10 @@ export function SynthBackground() {
   const vignette = useRef<HTMLDivElement>(null);
   const backdrop = useRef<Backdrop | null>(null);
   const { calm } = useSettings();
+  // Behind the Generate dialog the sky holds still, as when calm: the dialog has its own light,
+  // and the listening pass needs the graphics chip for the video and the capture (lib/quiet.ts).
+  const quiet = useQuiet();
+  const still = () => isCalm() || isQuiet();
   const gpu = workerSupported();
 
   useEffect(() => {
@@ -26,7 +31,7 @@ export function SynthBackground() {
       // One canvas: the bloom and the vignette are drawn into it too.
       const sky = make();
       el.prepend(sky);
-      const b = attachSky(sky, isCalm());
+      const b = attachSky(sky, still());
       backdrop.current = b;
       return () => { b.destroy(); backdrop.current = null; sky.remove(); };
     }
@@ -34,12 +39,12 @@ export function SynthBackground() {
     el.prepend(base, sand);
     pulse.current!.after(ink);
     const els = { base, sand, ink, pulse: pulse.current!, vignette: vignette.current! };
-    const b = attachMain(els, isCalm);
+    const b = attachMain(els, still);
     backdrop.current = b;
     return () => { b.destroy(); backdrop.current = null; base.remove(); sand.remove(); ink.remove(); };
   }, [gpu]);
 
-  useEffect(() => { backdrop.current?.setCalm(calm); }, [calm]);
+  useEffect(() => { backdrop.current?.setCalm(calm || quiet); }, [calm, quiet]);
 
   return (
     <div className={`synth-bg${gpu ? ' is-gpu' : ''}`} aria-hidden="true" ref={root}>

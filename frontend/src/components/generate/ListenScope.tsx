@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, type RefObject } from 'react';
 import type { ChartProgress, Difficulty } from '../../api/types';
+import { menuGate } from '../../lib/perf';
 import { isCalm } from '../../lib/settings';
 import { Icon } from '../Icon';
 import type { AuraHandle } from './ListenAura';
@@ -80,6 +81,8 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       peak: [1e-4, 1e-4, 1e-4], avg: [0, 0, 0], cur: [0, 0, 0], lastNote: [0, 0, 0],
       // live notes
       fx: new Float32Array(FOUND), fb: new Uint8Array(FOUND), fs: new Float32Array(FOUND), ft: new Float32Array(FOUND), fn: 0, heard: 0,
+      // the stars that have settled, drawn once into a layer kept off screen (up to note `baked`)
+      layer: null as HTMLCanvasElement | null, baked: 0,
       // measured sounds and bars
       sx: new Float32Array(SOUNDS), sb: new Uint8Array(SOUNDS), ss: new Float32Array(SOUNDS), sn: 0, soundsAt: 0,
       bars: new Float32Array(1024), barN: 0,
@@ -222,10 +225,25 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       const bandFill = hueBand.map((hh) => `hsl(${hh} 100% 66%)`);
       const bandCore = hueBand.map((hh) => `hsl(${hh} 100% 86%)`);
       const laneFill = [0, 1, 2, 3].map((l) => `hsl(${hueLane(l)} 100% 72%)`);
-      const draw = () => {
+      // New colours: the settled stars are drawn into the layer again (a size it doesn't have).
+      if (S.current.layer) S.current.layer.width = 0;
+      /** One star (note `j`), into `cx`: its pop (`fresh` 1 to 0), the beam's flare (`lit`), at alpha `a`. */
+      const star = (cx: CanvasRenderingContext2D, j: number, fresh: number, lit: number, a: number) => {
+        const st = S.current;
+        const x = st.fx[j] * st.w, k = st.fb[j], s = st.fs[j];
+        const y = starY(k, s, st.h);
+        const r = 0.9 + s * 1.4 + fresh * 3 + lit * 1.6;
+        cx.globalAlpha = a * (0.12 + fresh * 0.25 + lit * 0.3);
+        cx.fillStyle = bandFill[k];
+        cx.beginPath(); cx.arc(x, y, r * 2.4, 0, 6.283); cx.fill();
+        cx.globalAlpha = a * (0.55 + 0.45 * Math.max(fresh, lit));
+        cx.fillStyle = fresh > 0.3 || lit > 0.3 ? '#fff' : bandCore[k];
+        cx.beginPath(); cx.arc(x, y, r * 0.55, 0, 6.283); cx.fill();
+      };
+      const draw = (ts: number) => {
         raf = requestAnimationFrame(draw);
         const c = canvas.current;
-        if (!c) return;
+        if (!c || !menuGate(ts)) return;
         const st = S.current;
         const now = performance.now();
         const dt = Math.min(0.05, (now - last) / 1000);
@@ -279,23 +297,39 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
           }
         }
 
-        // The stars: notes heard live (fade out as the measured sounds take over).
+        // The stars: notes heard live (fade out as the measured sounds take over). A star whose pop
+        // is over is drawn once into a layer that's kept, and each frame draws that layer and only
+        // the stars still popping: a dense song's thousand-odd stars cost what a few do. (Drawn
+        // one by one every frame, they slowed a real listen to a dozen frames a second, the
+        // graphics chip too busy for the page; the browser's audio clock fell behind with it.)
         const liveA = charting ? 1 - settle : 1;
-        if (liveA > 0.01) {
-          const n = Math.min(st.fn, FOUND);
-          for (let j = 0; j < n; j++) {
-            const x = st.fx[j] * w, k = st.fb[j], s = st.fs[j];
-            const y = starY(k, s, h);
-            const age = (now - st.ft[j]) / 1000;
-            const fresh = Math.max(0, 1 - age / 0.7);
-            const lit = beam > -900 ? Math.max(0, 1 - Math.abs(x - beam) / 34) : 0;
-            const r = 0.9 + s * 1.4 + fresh * 3 + lit * 1.6;
-            g.globalAlpha = liveA * (0.12 + fresh * 0.25 + lit * 0.3);
-            g.fillStyle = bandFill[k];
-            g.beginPath(); g.arc(x, y, r * 2.4, 0, 6.283); g.fill();
-            g.globalAlpha = liveA * (0.55 + 0.45 * Math.max(fresh, lit));
-            g.fillStyle = fresh > 0.3 || lit > 0.3 ? '#fff' : bandCore[k];
-            g.beginPath(); g.arc(x, y, r * 0.55, 0, 6.283); g.fill();
+        if (liveA > 0.01 && st.fn > 0) {
+          // A new size (or the first star): the layer is made again, every star still kept in it.
+          if (!st.layer || st.layer.width !== c.width || st.layer.height !== c.height) {
+            st.layer ??= document.createElement('canvas');
+            st.layer.width = c.width; st.layer.height = c.height;
+            st.baked = Math.max(0, st.fn - FOUND);
+          }
+          const lg = st.layer.getContext('2d')!;
+          lg.setTransform(dpr, 0, 0, dpr, 0, 0);
+          lg.globalCompositeOperation = 'lighter';
+          // Settled (0.7 s old, in the order they were heard): into the layer, as they now look.
+          while (st.baked < st.fn && now - st.ft[st.baked % FOUND] >= 700) star(lg, st.baked++ % FOUND, 0, 0, 1);
+          g.globalAlpha = liveA;
+          g.drawImage(st.layer, 0, 0, w, h);
+          // Still popping.
+          for (let q = Math.max(st.baked, st.fn - FOUND); q < st.fn; q++) {
+            const j = q % FOUND;
+            star(g, j, Math.max(0, 1 - (now - st.ft[j]) / 700), 0, liveA);
+          }
+          // Mapping: the stars flare as the beam passes (only those near it are drawn again, the
+          // flare over their settled look).
+          if (beam > -900) {
+            const n = Math.min(st.fn, FOUND);
+            for (let j = 0; j < n; j++) {
+              const lit = Math.max(0, 1 - Math.abs(st.fx[j] * w - beam) / 34);
+              if (lit > 0.02) star(g, j, 0, lit, liveA * lit * 0.6);
+            }
           }
         }
 

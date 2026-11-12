@@ -81,6 +81,9 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       // trained mapper said 119), the beat tracker's grid stays.
       const sameBeat = (a: number, b: number) => [1, 2, 0.5].some((k) => Math.abs(a / b / k - 1) < 0.04);
       let regridded: typeof result | undefined;
+      // Its tempo when its grid isn't used, for the dev tools: whether the two trackers agree is
+      // what a half- or double-tempo fix would have to go on (none is guessed at yet).
+      let unused: string | undefined;
       const out = await trainedCharts(ort!, pcm, sr, {
         base: trained!.base, title: trained!.title, artist: trained!.artist,
         bpm: result.bpm, offset: result.offset, events: result.events,
@@ -88,7 +91,12 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
         onStage: (stage, p) => post({ stage, p }),
         onProgress: (p) => post({ chart: p }),
         regrid: (g) => {
-          if (result.gridUsed && (sameBeat(result.bpm, g.bpm) || result.onBeatGrid)) return null;
+          if (result.gridUsed && (sameBeat(result.bpm, g.bpm) || result.onBeatGrid)) {
+            const k = g.bpm / result.bpm;
+            const rel = Math.abs(k - 1) < 0.04 ? 'the same' : Math.abs(k - 2) < 0.08 ? 'double' : Math.abs(k - 0.5) < 0.02 ? 'half' : `×${k.toFixed(2)}`;
+            unused = `its beat tracker said ${g.bpm} BPM, ${rel} (not used: ${sameBeat(result.bpm, g.bpm) ? 'the same beat' : "the beat tracker's grid is straight"})`;
+            return null;
+          }
           const why = result.gridUsed ? `the beat tracker's ${result.bpm} BPM disagreed and drifted off one grid` : 'the beat tracker found no steady beat';
           const again = automap(pcm, sr, { grid: { ...g, confidence: 1, fit: 1 }, stems });
           again.report.beat = `the trained mapper's beat tracker: ${g.bpm} BPM, ${g.meter}/4 (used: ${why}) · ${result.report.beat ?? 'no beat tracker'}`;
@@ -96,7 +104,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
           return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid };
         },
       });
-      post({ trained: regridded ? { ...out, result: regridded } : out });
+      post({ trained: regridded ? { ...out, result: regridded } : unused ? { ...out, mapper: `${out.mapper}; ${unused}` } : out });
     } catch (err) {
       console.warn('[mapper] the trained mapper failed', err);
       post({ trainedFailed: err instanceof Error ? err.message : String(err) });

@@ -124,6 +124,9 @@ let nextTime = 0;
 let wanted = false;
 let playing = false;
 let stopTimer = 0;
+let sleepTimer = 0;
+/** The longest anything rings once let go: the pad's release (5 s) under the reverb's tail. */
+const RING_OUT_S = 6;
 const holds = new Set<string>();
 
 function build(): Kit {
@@ -236,6 +239,8 @@ function update() {
       Tone.setContext(c);
       try { kit = build(); } finally { Tone.setContext(game); }
     }
+    clearTimeout(sleepTimer);
+    sleepTimer = 0;
     if (stopTimer) {
       // Back while it was still fading out: it carries on where it was (notes already scheduled
       // are still to come; anything that fell behind is skipped by tick).
@@ -268,6 +273,14 @@ function update() {
       kit.sub.releaseAll(t);
       kit.bell.releaseAll(t);
       kit.lead.triggerRelease(t);
+      // Once all that has rung out (the pad's release, the reverb's tail), its context stops: its
+      // chorus, vibrato, echo, reverb and filter sweep would otherwise run on silence for as long
+      // as the music is held, a whole second audio thread's work beside the game's, while the
+      // listening pass needs the machine (update() wakes it again).
+      sleepTimer = window.setTimeout(() => {
+        sleepTimer = 0;
+        if (!playing && ctx) (ctx.rawContext as AudioContext).suspend().catch(() => {});
+      }, (RING_OUT_S + 0.5) * 1000);
     }, 1600);
   }
 }

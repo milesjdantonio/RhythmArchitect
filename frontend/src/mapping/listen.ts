@@ -8,7 +8,6 @@
 // Lining up: a captured sample arrives a little after it was played (Chrome's capture delay). A
 // short tick played into the tab before the song measures that delay, so tiles land on the sound.
 
-import * as Tone from 'tone';
 import { YT_STATE, ytCue, ytOnError, ytPause, ytPlayFrom, ytRawTime, ytState, ytTime } from '../audio/youtube';
 import { unlockAudio } from '../audio/playback';
 import type { AutomapResult } from './automap';
@@ -35,6 +34,19 @@ export function canListen(): boolean {
 /** Capture delay to assume when the tick can't be heard (typical for Chrome tab capture). */
 const DEFAULT_DELAY = 0.03;
 
+// The listening pass has an audio context of its own, not the game's. The game's is made for
+// low latency (it renders a few milliseconds at a time); one made for playback renders far bigger
+// blocks, so a busy moment on the machine doesn't make it drop sound, and none of the game's
+// effects (compressor, reverb, analyser) run on its thread. (On the game's context, a real listen
+// lost a quarter of its sound: the audio clock fell behind the video, ×1.2, for minutes.) Left
+// running between listens: with nothing playing on it, its big blocks cost next to nothing (and
+// the e2e tests' fake player plays through it).
+let listenContext: AudioContext | null = null;
+function listenCtx(): AudioContext {
+  if (!listenContext || listenContext.state === 'closed') listenContext = new AudioContext({ latencyHint: 'playback' });
+  return listenContext;
+}
+
 // The calibration tick goes out through this node (dev builds let tests capture it too).
 let tickBus: GainNode | null = null;
 function tickOut(ctx: AudioContext) {
@@ -46,8 +58,8 @@ function tickOut(ctx: AudioContext) {
 }
 if (import.meta.env?.DEV && typeof window !== 'undefined') {
   (window as unknown as { __listen: unknown }).__listen = {
-    ctx: () => Tone.getContext().rawContext as AudioContext,
-    connectTick: (node: AudioNode) => tickOut(Tone.getContext().rawContext as AudioContext).connect(node),
+    ctx: listenCtx,
+    connectTick: (node: AudioNode) => tickOut(listenCtx()).connect(node),
   };
 }
 
@@ -75,7 +87,8 @@ export async function requestTabAudio(): Promise<MediaStream> {
     throw new ListenError("Chrome couldn't share the tab's sound.", 'unsupported');
   }
   await unlockAudio();
-  tickOut(Tone.getContext().rawContext as AudioContext);
+  await listenCtx().resume().catch(() => {});
+  tickOut(listenCtx());
   const audio = stream.getAudioTracks();
   stream.getVideoTracks().forEach((t) => t.stop());
   if (!audio.length) {
@@ -127,10 +140,11 @@ export interface ListenOptions {
 
 /** Plays the video once and records what the tab sounds like, filed by video position. */
 export async function listenTo(stream: MediaStream, opts: ListenOptions): Promise<Heard> {
-  const ctx = Tone.getContext().rawContext as AudioContext;
+  const ctx = listenCtx();
   const track = stream.getAudioTracks()[0];
   const cleanup: (() => void)[] = [() => stream.getTracks().forEach((t) => t.stop())];
   try {
+    if (ctx.state !== 'running') await ctx.resume().catch(() => {});
     const duration = (await ytCue(opts.videoId)) || opts.seconds || 0;
     if (!tapLoaded.has(ctx)) {
       const url = URL.createObjectURL(new Blob([TAP], { type: 'text/javascript' }));
@@ -139,8 +153,7 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
       tapLoaded.add(ctx);
     }
     const src = ctx.createMediaStreamSource(stream);
-    // Tone's context wraps the browser's, so the node comes from Tone (a native one won't connect).
-    const tap = Tone.getContext().createAudioWorkletNode('rythm-tap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2, channelCountMode: 'explicit' });
+    const tap = new AudioWorkletNode(ctx, 'rythm-tap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2, channelCountMode: 'explicit' });
     const mute = ctx.createGain();
     mute.gain.value = 0;
     src.connect(tap);

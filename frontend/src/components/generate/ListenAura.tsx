@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
+import { menuGate } from '../../lib/perf';
 import { isCalm } from '../../lib/settings';
 import type { ScopePhase } from './ListenScope';
 
@@ -68,10 +69,10 @@ export const ListenAura = forwardRef<AuraHandle, { phase: ScopePhase; hues?: [nu
       let last = performance.now();
       const hueBand = [hues[0], (hues[0] + hues[1]) / 2, hues[1]];
       const core = hueBand.map((hh) => `hsl(${hh} 100% 78%)`);
-      const draw = () => {
+      const draw = (ts: number) => {
         raf = requestAnimationFrame(draw);
         const c = canvas.current;
-        if (!c) return;
+        if (!c || !menuGate(ts)) return;
         const s = S.current;
         const now = performance.now();
         const dt = Math.min(0.05, (now - last) / 1000);
