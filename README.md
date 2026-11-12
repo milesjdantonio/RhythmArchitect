@@ -473,7 +473,7 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `EmptyQueueException` | Miles D'Antonio | Wrote it (GenAI-assisted). |
 | `SongWriter` | Miles D'Antonio | Wrote it (GenAI-assisted). |
 | `ModelDemo` (driver) | Miles D'Antonio | Wrote it (GenAI-assisted). |
-| `Score`, `Main` | Darsh Sharma | To be written (Next Steps 1-2). |
+| `Score`, `Main` | Darsh Sharma | Wrote both classes (GenAI-assisted). Implemented Score to track points, hits, misses, combos, and accuracy using HitResult. Implemented Main to handle player inputs, judge note timing, remove notes from the queue, track missed notes, and return upcoming notes.. |
 
 ### The backend (`backend/`, Java, Spring Boot)
 
