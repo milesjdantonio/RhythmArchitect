@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Chart } from '../../src/api/types';
+import { DIFFICULTIES, type Chart } from '../../src/api/types';
 import { Game, gradeFor, laneForCode, multiplierFor } from '../../src/game/engine';
 
 // 120 bpm: one beat = 0.5 s.
@@ -57,12 +57,12 @@ describe('game engine', () => {
     expect(safe.finished).toBe(true);
   });
 
-  it('easy windows are wider than hard', () => {
-    const e = new Game(chart, 120, 'easy');
-    const h = new Game(chart, 120, 'hard');
-    expect(e.windows.good).toBeGreaterThan(h.windows.good);
-    expect(e.press(0, 0.16)[0]).toMatchObject({ judgement: 'good' });
-    expect(h.press(0, 0.16)).toEqual([]);
+  it('each difficulty is a little stricter than the one before; easy windows are wider than ultra', () => {
+    const games = DIFFICULTIES.map((d) => new Game(chart, 120, d));
+    for (let i = 1; i < games.length; i++) expect(games[i].windows.good).toBeLessThan(games[i - 1].windows.good);
+    const e = games[0], u = games[games.length - 1];
+    expect(e.press(0, 0.15)[0]).toMatchObject({ judgement: 'good' });
+    expect(u.press(0, 0.15)).toEqual([]);
   });
 
   it('grades, multipliers and keys', () => {

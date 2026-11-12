@@ -1,7 +1,7 @@
 # Rythm Architect: guidance for Claude
 
 The product: a player asks for a real song; the AI maps it into a 4-lane beatmap (Easy, Medium,
-Hard); they play it. The AI does not make music. Market and word everything that way.
+Hard, Ultra); they play it. The AI does not make music. Market and word everything that way.
 
 ## Where things are
 
@@ -55,7 +55,12 @@ Hard); they play it. The AI does not make music. Market and word everything that
   16ths, not to one side); where a song's beat drifts off one straight grid they keep their own
   times (snapping there put tiles up to 35 ms off). "On the beat" checks allow 20 ms for that. No sound on key
   presses: the song is the sound; synth songs play every chart note themselves.
-- Every difficulty has 4 lanes, keys D F J K. Difficulty is density, holds, chords and speed. Note
+- Every difficulty has 4 lanes, keys D F J K. Difficulty is density, holds, chords and speed. Four
+  steps, each about half again the last: Easy (one at a time), Medium (closer), Hard (chords of two,
+  taps under holds), Ultra (the whole chart). The same ladder everywhere: `thin.ts` `KEEP` (trained
+  mapper), `charts.ts` `RULES` (onset mapper), `osu.ts`/`Osu.java` (fan charts), `engine.ts`
+  (windows, drain). Easy is what Medium was before Ultra, Ultra what Hard was; songs saved with
+  three charts are upgraded on load (`src/api/upgrade.ts`; the backend refreshes its built-ins). Note
   speed is fixed, not a setting: `NOTE_SPEED` (0.85) in `src/game/engine.ts`, the same fall time on
   every song (`fallTime`).
 - Dev tools live on the game screen (` key): autoplay, the note queue, clock, judgements, tuning,
@@ -80,8 +85,8 @@ Hard); they play it. The AI does not make music. Market and word everything that
   ~120 MB model from Hugging Face pinned to one commit, prefetched while listening, cached;
   `ensomiModel.ts`), run in the same worker after the onset mapper. It charts at its lowest star
   rating (2). A star rating is a difficulty, not a density: on a fast, intense song 2★ eases the
-  hardest stretches (a 200 BPM song: 7 tiles a second in its intro, 2-4 after). So Hard is judged
-  10 s at a time against about two tiles a beat (`hardTargets`); while under 85% is met it charts
+  hardest stretches (a 200 BPM song: 7 tiles a second in its intro, 2-4 after). So Ultra (the whole
+  chart) is judged 10 s at a time against about two tiles a beat (`ultraTargets`); while under 85% is met it charts
   again a star busier (to 4★, at most three charts, from the same analysis) and each stretch takes
   the chart nearest its target (`splice`). Every difficulty keeps a subset of that (`src/mapping/thin.ts`, `KEEP`),
   and its tiles move onto the onset mapper's measured sounds (`soundShift`: they come ~29 ms early).

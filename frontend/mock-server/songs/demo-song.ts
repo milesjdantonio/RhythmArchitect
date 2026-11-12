@@ -44,12 +44,13 @@ const FULL = {
 
 /** Hard: Ultra with one tile where it has a chord (taps under holds stay). */
 const noChords = (bar: string) => bar.split(' ').map((s) => s.split('+')[0]).join(' ');
-/** Medium: Easy, with Hard's tiles on the beat (even slots) wherever Easy has none and holds nothing. */
+/** Medium: Easy, with every other one of Hard's taps that Easy lacks (none while Easy holds a note). */
 function between(easy: string, hard: string): string {
   const e = easy.split(' '), h = noChords(hard).split(' ');
   const held = new Set<number>();
   e.forEach((s, i) => { const m = /h(\d+)/.exec(s); if (m) for (let k = 1; k < Number(m[1]); k++) held.add(i + k); });
-  return e.map((s, i) => (s === '.' && i % 2 === 0 && !held.has(i) && !/h/.test(h[i]) ? h[i] : s)).join(' ');
+  let extra = 0;
+  return e.map((s, i) => (s === '.' && h[i] !== '.' && !held.has(i) && !/h/.test(h[i]) && extra++ % 2 === 0 ? h[i] : s)).join(' ');
 }
 const CHARTS: Record<Difficulty, { lanes: number; bars: string[] }> = {
   easy: STEADY,

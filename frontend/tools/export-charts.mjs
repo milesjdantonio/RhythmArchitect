@@ -23,7 +23,7 @@ for (const s of songs) {
     `bpm: ${num(s.bpm)}`,
     `duration: ${num((s.lengthBeats * 60) / s.bpm)}`,
   ];
-  for (const d of ['easy', 'medium', 'hard']) {
+  for (const d of ['easy', 'medium', 'hard', 'ultra']) {
     const notes = s.charts?.[d]?.notes ?? [];
     const tiles = notes.map((n) => {
       const letter = /^[A-G]/.exec(n.pitch ?? '')?.[0];
@@ -33,5 +33,5 @@ for (const s of songs) {
     lines.push(`${d}: ${tiles.join(' ')}`);
   }
   writeFileSync(join(out, `${name}.chart`), `${lines.join('\n')}\n`);
-  console.log(`${name}.chart: ${['easy', 'medium', 'hard'].map((d) => `${d} ${s.charts?.[d]?.notes?.length ?? 0}`).join(', ')}`);
+  console.log(`${name}.chart: ${['easy', 'medium', 'hard', 'ultra'].map((d) => `${d} ${s.charts?.[d]?.notes?.length ?? 0}`).join(', ')}`);
 }

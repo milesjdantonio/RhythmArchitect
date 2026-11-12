@@ -101,6 +101,7 @@
 .grade-pip.has.diff-easy { border-color: var(--easy); color: var(--easy); box-shadow: 0 0 8px -2px var(--easy); }
 .grade-pip.has.diff-medium { border-color: var(--medium); color: var(--medium); box-shadow: 0 0 8px -2px var(--medium); }
 .grade-pip.has.diff-hard { border-color: var(--hard); color: var(--hard); box-shadow: 0 0 8px -2px var(--hard); }
+.grade-pip.has.diff-ultra { border-color: var(--ultra); color: var(--ultra); box-shadow: 0 0 8px -2px var(--ultra); }
 /* Covers: album art, or a living cover tinted to the song. */
 .cover { display: block; flex: none; border-radius: 10px; overflow: hidden; object-fit: cover; box-shadow: 0 0 0 1px var(--hair-strong), 0 6px 18px -8px rgb(0 0 0 / 0.8); }
 .cover-live > canvas { filter: hue-rotate(var(--cover-turn, 0deg)) saturate(1.15); }
@@ -263,7 +264,7 @@
 .now-playing.has-video .diff-picker { border-top: 0; border: 1px solid var(--hair); border-radius: var(--r-md); overflow: hidden; }
 .now-playing.has-video .diff-option { padding-top: 8px; padding-bottom: 8px; }
 .now-playing.has-video .diff-badge { width: 30px; height: 30px; }
-.now-playing.has-video .diff-picker { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.now-playing.has-video .diff-picker { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .now-playing.has-video .diff-text { overflow: hidden; }
 .now-playing.has-video .diff-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Until the video plays: the song's colours, faint scan lines, and how to start it. */
@@ -299,8 +300,8 @@
 .preview-btn.is-live svg { animation: live 0.6s ease-in-out infinite alternate; }
 @keyframes live { to { transform: scaleY(1.35); } }
 
-/* Difficulty: three segments of light. */
-.diff-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid var(--hair); }
+/* Difficulty: four segments of light. */
+.diff-picker { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border-top: 1px solid var(--hair); }
 .diff-option {
   position: relative; display: flex; align-items: center; gap: 8px; text-align: left; color: var(--ink);
   padding: 10px 12px 8px 6px; cursor: pointer; background: transparent; border: 0;
@@ -314,17 +315,19 @@
 .diff-text { display: grid; line-height: 1.25; color: var(--ink); min-width: 0; }
 .diff-name { font-family: var(--font-display); font-weight: 300; font-size: 13px; letter-spacing: var(--track); text-transform: uppercase; }
 .diff-option.is-selected .diff-name { color: currentColor; }
-.diff-blurb, .diff-best { font-size: 11px; color: var(--ink-mute); white-space: nowrap; }
+.diff-blurb, .diff-best { font-size: 11px; color: var(--ink-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .diff-best { color: var(--ink-soft); }
 .diff-bars { display: flex; align-items: end; justify-content: center; gap: 3px; width: 100%; height: 100%; padding: 9px; }
 .diff-bars i { width: 5px; border-radius: 2px; background: rgb(255 255 255 / 0.12); }
-.diff-bars i:nth-child(1) { height: 35%; }
-.diff-bars i:nth-child(2) { height: 60%; }
-.diff-bars i:nth-child(3) { height: 85%; }
-.diff-easy .diff-bars i:nth-child(-n+1), .diff-medium .diff-bars i:nth-child(-n+2), .diff-hard .diff-bars i { background: currentColor; box-shadow: 0 0 6px currentColor; }
+.diff-bars i:nth-child(1) { height: 30%; }
+.diff-bars i:nth-child(2) { height: 50%; }
+.diff-bars i:nth-child(3) { height: 70%; }
+.diff-bars i:nth-child(4) { height: 90%; }
+.diff-easy .diff-bars i:nth-child(-n+1), .diff-medium .diff-bars i:nth-child(-n+2), .diff-hard .diff-bars i:nth-child(-n+3), .diff-ultra .diff-bars i { background: currentColor; box-shadow: 0 0 6px currentColor; }
 .diff-easy { color: var(--easy); }
 .diff-medium { color: var(--medium); }
 .diff-hard { color: var(--hard); }
+.diff-ultra { color: var(--ultra); }
 
 /* Waiting screen: before a song is picked. */
 .attract { position: relative; display: grid; place-items: center; min-height: 0; overflow: hidden; border-radius: 6px; border: 1px solid var(--hair-strong); background: rgb(2 3 10 / 0.35); }
@@ -366,7 +369,11 @@
   .stage-screen { grid-template-rows: 52vh auto; }
   .attract-screen { height: 60vh; }
   .now-playing { grid-template-columns: 1fr; grid-template-areas: "id" "actions" "picker"; padding: var(--space-3); }
-  .diff-badge { width: 30px; height: 30px; }
+  /* Four across a phone: the names and counts only. */
+  .diff-badge { display: none; }
+  .diff-option { justify-content: center; padding: 10px 2px 8px; }
+  .diff-text { justify-items: center; text-align: center; }
+  .diff-name { font-size: 11px; letter-spacing: 0.06em; }
   .diff-best { display: none; }
   .now-actions { display: grid; grid-template-columns: auto 1fr; }
 }

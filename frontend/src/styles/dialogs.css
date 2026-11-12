@@ -8,8 +8,8 @@
 /* The text sits on its own dark panel; the aura plays around it, never under the words. */
 .composing.is-listening .composing-card { gap: 10px; padding: 18px 22px 14px; border: 1px solid var(--hair-strong); border-radius: var(--r-lg); background: rgb(5 7 18 / 0.9); box-shadow: 0 30px 90px rgb(0 0 0 / 0.65), 0 0 60px hsl(var(--hA) 100% 60% / 0.12); }
 /* Listening and mapping fit any screen: the video, the song field and the type scale with the
-   viewport (YouTube's player never under 200 × 200); short, wide screens put the video beside the
-   rest; the card scrolls only as a last resort. */
+   viewport (YouTube's player never under 200 × 200); short, wide screens put the song field beside
+   the video, which keeps its text centred under it; the card scrolls only as a last resort. */
 .composing.is-listening { padding: clamp(8px, 2vh, 24px); }
 .composing.is-listening .composing-card { container-type: inline-size; width: min(100%, clamp(560px, 46vw, 780px)); max-height: 100%; overflow-y: auto; overscroll-behavior: contain;
   grid-template-columns: minmax(0, 1fr); gap: clamp(4px, 1.1vh, 12px); padding: clamp(10px, 2vh, 22px) clamp(12px, 2vw, 26px) clamp(8px, 1.5vh, 16px); }
@@ -19,10 +19,11 @@
 .composing.is-listening .composing-video .video-slot-box { height: clamp(200px, 28vh, 320px); width: min(100cqw, calc(clamp(200px, 28vh, 320px) * 16 / 9)); min-width: 200px; }
 .composing.is-listening .scope-canvas { height: clamp(72px, 19vh, 230px); }
 @media (max-height: 620px) and (min-width: 700px) {
-  .composing.is-listening .composing-card { width: min(100%, 1000px); grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(14px, 2.4vw, 28px); align-items: center; }
+  .composing.is-listening .composing-card { width: min(100%, 1000px); grid-template-columns: auto minmax(0, 1fr); column-gap: clamp(14px, 2.4vw, 28px); align-content: center; }
   .composing.is-listening .listen-media { display: contents; }
-  .composing.is-listening .composing-video { grid-column: 1; grid-row: 1 / span 7; align-self: center; }
-  .composing.is-listening .composing-card > :not(.listen-media), .composing.is-listening .scope { grid-column: 2; }
+  /* The video and its text in one centred column; the song field beside them. */
+  .composing.is-listening .composing-video, .composing.is-listening .composing-card > :not(.listen-media) { grid-column: 1; }
+  .composing.is-listening .scope { grid-column: 2; grid-row: 1 / span 8; align-self: center; }
   .composing.is-listening .composing-video .video-slot-box { height: 200px; width: min(42vw, 356px); }
   .composing.is-listening .scope-canvas { height: clamp(64px, 20vh, 150px); }
 }

@@ -53,7 +53,8 @@ class ApiTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.results[*].title").value(contains("Ink and Fury", "Neon Blueprint", "One Dance (feat. WizKid & Kyla)", "The Restless Stacks")))
             .andExpect(jsonPath("$.results[0].charts").doesNotExist())
-            .andExpect(jsonPath("$.results[0].tiles.hard").isNumber());
+            .andExpect(jsonPath("$.results[0].tiles.hard").isNumber())
+            .andExpect(jsonPath("$.results[0].tiles.ultra").isNumber());
     }
 
     @Test
@@ -75,11 +76,11 @@ class ApiTests {
         mvc.perform(get("/api/favorites").param("q", "fury"))
             .andExpect(jsonPath("$.results[0].id").value(id));
 
-        String run = "{\"difficulty\":\"hard\",\"score\":%d,\"accuracy\":0.9,\"maxCombo\":40,\"grade\":\"A\"}";
+        String run = "{\"difficulty\":\"ultra\",\"score\":%d,\"accuracy\":0.9,\"maxCombo\":40,\"grade\":\"A\"}";
         mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(run.formatted(5000)))
-            .andExpect(jsonPath("$.best.hard.score").value(5000));
+            .andExpect(jsonPath("$.best.ultra.score").value(5000));
         mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(run.formatted(100)))
-            .andExpect(jsonPath("$.best.hard.score").value(5000))
+            .andExpect(jsonPath("$.best.ultra.score").value(5000))
             .andExpect(jsonPath("$.plays").value(2));
         mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content("{\"difficulty\":\"expert\",\"score\":1}"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad score"));
@@ -97,7 +98,7 @@ class ApiTests {
              "lengthBeats":16,"hues":[10,90],
              "source":{"kind":"youtube","videoId":"dQw4w9WgXcQ","offset":0.5,"chart":"listened"},
              "report":{"mapper":"test","confidence":0.9,"sections":[{"label":"Intro","beat":0}],"energy":[0.5]},
-             "charts":{"easy":%s,"medium":%s,"hard":%s}}""".formatted(chart.formatted("easy"), chart.formatted("medium"), chart.formatted("hard"));
+             "charts":{"easy":%s,"medium":%s,"hard":%s,"ultra":%s}}""".formatted(chart.formatted("easy"), chart.formatted("medium"), chart.formatted("hard"), chart.formatted("ultra"));
         String body = mvc.perform(post("/api/songs").contentType(MediaType.APPLICATION_JSON).content(song))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.id").value(startsWith("yt-dqw4w9wgxcq-")))
@@ -107,7 +108,7 @@ class ApiTests {
 
         mvc.perform(patch("/api/songs/" + id).contentType(MediaType.APPLICATION_JSON).content("{\"offset\":0.6255}"))
             .andExpect(jsonPath("$.source.offset").value(0.626));
-        mvc.perform(get("/api/songs/" + id)).andExpect(jsonPath("$.charts.hard.notes", hasSize(2)));
+        mvc.perform(get("/api/songs/" + id)).andExpect(jsonPath("$.charts.ultra.notes", hasSize(2)));
         mvc.perform(delete("/api/songs/" + id)).andExpect(status().isNoContent());
         mvc.perform(get("/api/songs/" + id)).andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("Song not found"));
     }

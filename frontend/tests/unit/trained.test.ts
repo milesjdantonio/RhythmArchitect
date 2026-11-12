@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChartNote, SoundEvent } from '../../src/api/types';
 import { capChord, thinChart, type ThinOptions } from '../../src/mapping/thin';
-import { coverage, easierCharts, hardTargets, nextStar, osuGrid, perWindow, soundShift, splice, toChart, MAX_STAR, STAR } from '../../src/mapping/ensomi';
+import { coverage, easierCharts, ultraTargets, nextStar, osuGrid, perWindow, soundShift, splice, toChart, MAX_STAR, STAR } from '../../src/mapping/ensomi';
 
 const BPM = 120, SPB = 0.5;
 
@@ -152,13 +152,13 @@ describe('Hard a stretch of the song at a time (busier where 2★ is thin)', () 
     Array.from({ length: Math.round((to - from) / step) }, (_, i) => ({ t: from + i * step, lane: (lane + i) % 4, pitch: 'C5', len: 0.25 }));
 
   it('aims for about two tiles a beat where there are sounds, nothing where there are none', () => {
-    const t = hardTargets(events, 200, 60);
+    const t = ultraTargets(events, 200, 60);
     expect(t).toHaveLength(6);
     expect(t[3]).toBe(0); // the break
     expect(t[0]).toBe(Math.round(((2.2 * 200) / 60) * 10)); // 73 in 10 s
     // A slow song asks for fewer; a very fast one at most 8 a second.
-    expect(hardTargets(events, 80, 60)[0]).toBeLessThan(t[0]);
-    expect(hardTargets(events, 300, 60)[0]).toBe(80);
+    expect(ultraTargets(events, 80, 60)[0]).toBeLessThan(t[0]);
+    expect(ultraTargets(events, 300, 60)[0]).toBe(80);
   });
 
   it('a busy start does not make up for a thin rest of the song', () => {

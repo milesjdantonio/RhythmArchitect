@@ -226,10 +226,15 @@ public final class Osu {
 
     private static final String[] LANE_PITCH = { "C4", "E4", "G4", "C5" };
 
-    /** Easy and Medium spacing (frontend/src/mapping/charts.ts RULES). */
+    /**
+     * Spacing for all but Ultra (frontend/src/mapping/charts.ts RULES): minGap, holdMin, taps under
+     * holds (1) or not (0), and the gap's factor over 150 BPM and over 125. Easy is what Medium was
+     * before Ultra; Ultra (the fan chart itself) what Hard was.
+     */
     private static final Map<String, double[]> RULES = Map.of(
-        "easy", new double[] { 1, 2 }, // minGap, holdMin
-        "medium", new double[] { 0.5, 1.5 });
+        "easy", new double[] { 0.5, 1.5, 0, 2, 1.5 },
+        "medium", new double[] { 0.33, 1.5, 0, 1.5, 1.25 },
+        "hard", new double[] { 0.24, 1.5, 1, 1.5, 1.25 });
 
     private static double strength(double t, int meter, boolean hold, int chord) {
         java.util.function.DoublePredicate on = g -> Math.abs(t / g - Math.round(t / g)) < 0.04;
@@ -238,14 +243,16 @@ public final class Osu {
     }
 
     /**
-     * A fan chart shaped to one of our difficulties: Easy and Medium keep the tiles that sit most on
-     * the beat, spaced as the rules say, one at a time, with holds only where they're long.
+     * A fan chart shaped to one of our difficulties: all but Ultra keep the tiles that sit most on
+     * the beat, spaced as the rules say (Easy and Medium one at a time, holds only where they're
+     * long; Hard taps under holds).
      */
     public static List<Note> shapeChart(List<Note> notes, String difficulty, double bpm, int meter) {
-        if (difficulty.equals("hard")) return notes;
+        if (difficulty.equals("ultra")) return notes;
         double[] rule = RULES.get(difficulty);
-        double f = bpm > 150 ? 2 : bpm > 125 ? 1.5 : 1;
+        double f = bpm > 150 ? rule[3] : bpm > 125 ? rule[4] : 1;
         double minGap = rule[0] * f, holdMin = rule[1];
+        boolean underHolds = rule[2] > 0;
         Map<Double, Integer> chordSize = new HashMap<>();
         for (Note n : notes) chordSize.merge(n.t(), 1, Integer::sum);
         record Ranked(Note n, int i, double s) {
@@ -263,9 +270,9 @@ public final class Osu {
             boolean fits = true;
             for (Note k : kept) {
                 double kEnd = k.t() + (k.hold() ? k.len() : 0), nEnd = shaped.t() + (shaped.hold() ? shaped.len() : 0);
-                // Nothing while a hold is down, and the minimum gap between tiles.
-                if ((shaped.t() >= k.t() && shaped.t() < kEnd + minGap * 0.5) || (k.t() >= shaped.t() && k.t() < nEnd + minGap * 0.5)
-                    || Math.abs(k.t() - shaped.t()) < minGap - 1e-6) {
+                // Nothing while a hold is down (unless the rules allow it), and the minimum gap between tiles.
+                boolean underHold = (shaped.t() >= k.t() && shaped.t() < kEnd + minGap * 0.5) || (k.t() >= shaped.t() && k.t() < nEnd + minGap * 0.5);
+                if ((!underHolds && underHold) || Math.abs(k.t() - shaped.t()) < minGap - 1e-6) {
                     fits = false;
                     break;
                 }
@@ -328,8 +335,9 @@ public final class Osu {
 
     /**
      * A playable song (NewSong JSON) from one beatmap set's difficulties: the hardest one up to about
-     * 7 tiles a second is Hard, the easiest is Easy, one between is Medium. With fewer than three,
-     * the missing ones are shaped from the hardest.
+     * 7 tiles a second is Ultra, the one halfway up to it is Easy, and Medium and Hard are the ones a
+     * third and two thirds of the way from Easy to Ultra (each shaped to its rules). With fewer,
+     * they're shaped from the nearest harder one.
      */
     public static ObjectNode fanSong(List<OsuMap> maps, String title, String artist, String videoId, Integer seconds) {
         record Usable(OsuMap m, List<FanNote> notes, double density) {
@@ -344,9 +352,10 @@ public final class Osu {
         int hardIdx = 0;
         for (int i = 0; i < usable.size(); i++) if (usable.get(i).density() <= 7) hardIdx = i;
         Usable hard = usable.get(hardIdx);
-        Usable easy = usable.getFirst();
-        List<Usable> mids = usable.subList(Math.min(1, hardIdx), hardIdx);
-        Usable medium = mids.isEmpty() ? hard : mids.get(mids.size() / 2);
+        // Easy is the one Medium was before Ultra (halfway up); the others are spaced from it to Ultra.
+        final int top = hardIdx, easyIdx = hardIdx >= 2 ? 1 + (hardIdx - 1) / 2 : hardIdx;
+        java.util.function.DoubleFunction<Usable> step = f -> usable.get((int) Math.round(easyIdx + (top - easyIdx) * f));
+        Map<String, Usable> pick = Map.of("easy", usable.get(easyIdx), "medium", step.apply(1.0 / 3), "hard", step.apply(2.0 / 3), "ultra", hard);
         Grid grid = beatGrid(hard.m(), hard.notes());
         double spbMs = 60000 / grid.bpm();
         DoubleUnaryOperator toBeat = ms -> (ms - grid.beat0Ms()) / spbMs;
@@ -355,11 +364,11 @@ public final class Osu {
             n.endMs() != null ? r4((n.endMs() - n.ms()) / spbMs) : 0.25, n.endMs() != null)).toList();
 
         Map<String, List<Note>> charts = new java.util.LinkedHashMap<>();
-        charts.put("easy", shapeChart(toChart.apply(easy.notes()), "easy", grid.bpm(), grid.meter()));
-        charts.put("medium", shapeChart(toChart.apply(medium.notes()), "medium", grid.bpm(), grid.meter()));
-        charts.put("hard", shapeChart(toChart.apply(hard.notes()), "hard", grid.bpm(), grid.meter()));
+        for (String d : new String[] { "easy", "medium", "hard", "ultra" }) {
+            charts.put(d, shapeChart(toChart.apply(pick.get(d).notes()), d, grid.bpm(), grid.meter()));
+        }
 
-        List<Note> all = charts.get("hard");
+        List<Note> all = charts.get("ultra");
         double lastBeat = all.stream().mapToDouble(n -> n.t() + (n.hold() ? n.len() : 0)).max().orElse(0);
         double videoBeats = seconds != null ? (seconds - grid.beat0Ms() / 1000) / (spbMs / 1000) : 0;
         double lengthBeats = r4(Math.max(lastBeat + 2, Math.min(videoBeats, lastBeat + 32)));

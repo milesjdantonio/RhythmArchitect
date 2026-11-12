@@ -84,6 +84,7 @@ public class SongStore {
         try {
             if (Files.exists(file)) {
                 songs = parse(Files.readString(file));
+                if (refreshBuiltIns()) save();
             } else {
                 try (InputStream in = new ClassPathResource("seed/songs.json").getInputStream()) {
                     songs = parse(new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
@@ -98,6 +99,32 @@ public class SongStore {
             songs = new ArrayList<>();
         }
         return songs;
+    }
+
+    /**
+     * Built-in songs saved before Ultra (three charts) get the seed's four; their best scores move
+     * with their charts (the old Medium is Easy, the old Hard is Ultra). True when any changed.
+     */
+    private boolean refreshBuiltIns() throws IOException {
+        if (songs.stream().noneMatch(s -> s.path("builtIn").asBoolean(false) && !s.path("charts").has("ultra"))) return false;
+        List<ObjectNode> seed;
+        try (InputStream in = new ClassPathResource("seed/songs.json").getInputStream()) {
+            seed = parse(new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+        }
+        boolean changed = false;
+        for (ObjectNode s : songs) {
+            if (!s.path("builtIn").asBoolean(false) || s.path("charts").has("ultra")) continue;
+            for (ObjectNode fresh : seed) {
+                if (!fresh.path("id").asString("").equals(s.path("id").asString())) continue;
+                s.set("charts", fresh.get("charts"));
+                ObjectNode best = json.createObjectNode();
+                if (s.path("best").has("medium")) best.set("easy", s.path("best").get("medium"));
+                if (s.path("best").has("hard")) best.set("ultra", s.path("best").get("hard"));
+                s.set("best", best);
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     private List<ObjectNode> parse(String text) {

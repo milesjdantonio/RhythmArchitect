@@ -35,6 +35,7 @@
   --easy: var(--ice);
   --medium: var(--gold);
   --hard: var(--rose);
+  --ultra: var(--lavender);
 
   --font-display: 'Unbounded', system-ui, sans-serif;
   --font-body: 'Space Grotesk', system-ui, sans-serif;

@@ -39,6 +39,15 @@ class SongWriterTest
         assertEquals(2, song.getChart(Difficulty.EASY).getSize());
         assertEquals(4, song.getChart(Difficulty.HARD).getSize());
         assertNull(song.getChart(Difficulty.MEDIUM));
+        assertNull(song.getChart(Difficulty.ULTRA));
+    }
+
+    @Test
+    void readsAnUltraChart()
+    {
+        Song song = writer.writeSong(CHART + "\nultra: 0:0 0:3 0.5:1 1:2");
+        assertEquals(List.of(Difficulty.EASY, Difficulty.HARD, Difficulty.ULTRA), song.getAvailableDifficulties());
+        assertEquals(4, song.getChart(Difficulty.ULTRA).getSize());
     }
 
     @Test
@@ -125,7 +134,14 @@ class SongWriterTest
         Path dir = Files.isDirectory(fromBackend) ? fromBackend : Path.of("src", "java", "charts");
         Song oneDance = writer.readSong(dir.resolve("one-dance.chart"));
         assertEquals("Drake", oneDance.getArtist());
-        assertEquals(List.of(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD), oneDance.getAvailableDifficulties());
+        assertEquals(List.of(Difficulty.EASY, Difficulty.MEDIUM, Difficulty.HARD, Difficulty.ULTRA), oneDance.getAvailableDifficulties());
+        // Each difficulty a step up: at least as many notes as the one before.
+        int before = 0;
+        for(Difficulty d: Difficulty.values())
+        {
+            assertTrue(oneDance.getChart(d).getSize() >= before);
+            before = oneDance.getChart(d).getSize();
+        }
         Queue<Note> easy = oneDance.getChart(Difficulty.EASY);
         assertTrue(easy.getSize() > 100);
         double last = -1;

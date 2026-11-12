@@ -4,12 +4,14 @@
 
 Type a song's title and artist, for example *Mr. Brightside* by *The Killers*. Rythm Architect
 searches every song its AI has already mapped; if yours isn't there, generate its beatmap. The AI
-finds the track, finds every note in it, and builds a beatmap on four lanes with three
-difficulties. Every tile is a note in the song, at the moment you hear it:
+finds the track, finds every note in it, and builds a beatmap on four lanes with four
+difficulties, each a step up from the last. Every tile is a note in the song, at the moment you
+hear it:
 
-- **Easy**: the notes that stand out most, spaced out.
-- **Medium**: more of them, with holds where a sound rings.
-- **Hard**: every note, chords on the biggest hits, taps under held notes.
+- **Easy**: the notes that stand out most, one at a time, with holds where a sound rings.
+- **Medium**: more of them, closer together.
+- **Hard**: most of the notes, chords of two, taps under held notes.
+- **Ultra**: every note, chords on the biggest hits.
 
 Then you play it in a world of light that moves with the music, in the spirit of Tetris Effect.
 The AI doesn't make music. It maps the music you already love.
@@ -227,7 +229,7 @@ beatmap** maps a new one, and it plays from YouTube:
    that follow the music (`ListenScope.tsx`, `ListenAura.tsx`). While it maps, a beam sweeps the
    song; while the AI charts it, the measured sounds settle in, bar lines draw down, four lanes open
    and threads of light reach from sounds to lanes; then every tile leaps into its lane, the screen
-   bursts, and the Easy, Medium and Hard tile counts count up. If sharing is turned down or stops part-way, the dialog says so and offers to try again.
+   bursts, and the Easy, Medium, Hard and Ultra tile counts count up. If sharing is turned down or stops part-way, the dialog says so and offers to try again.
    Typing a song that's already mapped shows it, without offering to generate it again.
 3. **Fallback: a fan chart.** Browsers that can't share a tab's sound at all (phones, Safari,
    Firefox): the mock looks up a fan-made osu! chart of the song (osu!mania 4K first, then other key
@@ -259,7 +261,7 @@ The two real tracks were composed by Claude for SchmollCrossword (MIT); see [NOT
 `frontend/src/mapping/automap.ts` finds every onset in the audio and times each one to its attack within a
 few milliseconds (attacks within 20 ms of a 16th are placed on it; the rest keep their exact time).
 How long each sound rings decides holds; its pitch decides the lane; the biggest downbeats become
-chords on Hard. For songs mapped by listening, a trained mapper places the tiles (below); if it
+chords on Ultra. For songs mapped by listening, a trained mapper places the tiles (below); if it
 can't, `frontend/src/mapping/charts.ts` picks them from the measured sounds by how much they stand
 out, never at random and never adding a note that isn't there.
 
@@ -280,12 +282,15 @@ Before that, two models run in the browser on what was heard (the mapping worker
 - **The tiles** (`ensomi.ts`): Ensomi R2, a model trained on human-made osu!mania 4K charts, charts
   the song from the audio (about 20 s on WebGPU for a 3-minute song, about 90 s without). Its model
   (about 120 MB) downloads from Hugging Face while the song is listened to and stays in the
-  browser's cache. Its lowest star rating is usually about this game's Hard, so it charts at that
-  rating; where Hard would be thin (fast, intense songs, whose hardest stretches 2★ eases), it
-  charts again busier and each 10 s of the song takes the chart nearest about two tiles a beat. Then
-  every difficulty keeps a subset of its tiles (`thin.ts`): the strongest sounds, spaced out, each
-  stretch of the song keeping its share (Easy about 1 tile a second, Medium about 2); Hard keeps nearly
-  all of them (chords of two at most: 4-7 a second, more on fast songs).
+  browser's cache. Its lowest star rating is usually about this game's Ultra (the whole chart), so
+  it charts at that rating; where Ultra would be thin (fast, intense songs, whose hardest stretches
+  2★ eases), it charts again busier and each 10 s of the song takes the chart nearest about two
+  tiles a beat. Then every difficulty keeps a subset of its tiles (`thin.ts` `KEEP`): the strongest
+  sounds, spaced out, each stretch of the song keeping its share, each step about half again the
+  one before (Easy about 2 rows a second, Medium 3, Hard 4.6 with chords of two); Ultra keeps nearly
+  all of them (chords of two at most: 5-9 tiles a second, more on fast songs). Songs saved before
+  Ultra (three charts) are upgraded when they load (`api/upgrade.ts`): the old Medium is Easy, the
+  old Hard is Ultra, and their best scores move with them.
   Its tiles come about 29 ms early (measured on a groove with known hit times), so they move onto
   the sounds the onset mapper measured.
 - **If the trained mapper fails**: with WebGPU, Demucs (`stems.ts`) splits the song into drums,
@@ -468,7 +473,7 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `Node` | Sarah Schallon; Miles D'Antonio | Sarah wrote it; Miles fixed its constructors so it compiles and added Javadoc (GenAI-assisted). |
 | `Queue` | Sarah Schallon; Miles D'Antonio | Sarah wrote the first draft and its fix (linked nodes, `enqueue`, `dequeue`, `clear`, `peek`); Miles made it compile (constructor, `isEmpty`, `clear`), added `getSize`, `enqueue(T)`, the empty-queue checks, the null-node rule and Javadoc (GenAI-assisted). |
 | `Note` | Sarah Schallon; Miles D'Antonio | Sarah wrote it (fields, getters, setters, `equals`, `toString`); Miles made it compile (constructor, a setter's type, `equals`/`hashCode`) and added the spec's defaults for bad input and its `toString` (GenAI-assisted). |
-| `NoteType`, `MusicNoteType`, `Difficulty`, `HitResult` | Sarah Schallon | Wrote them (Miles put them in package `main`, public). |
+| `NoteType`, `MusicNoteType`, `Difficulty`, `HitResult` | Sarah Schallon; Miles D'Antonio | Sarah wrote them (Miles put them in package `main`, public, and added `Difficulty.ULTRA`, GenAI-assisted). |
 | `Song` | Sarah Schallon; Miles D'Antonio | Sarah started it (fields, constructor, the method signatures); Miles implemented one chart per difficulty (`getChart`, `setChart`, `getAvailableDifficulties`) and the spec's validation (GenAI-assisted). |
 | `EmptyQueueException` | Miles D'Antonio | Wrote it (GenAI-assisted). |
 | `SongWriter` | Miles D'Antonio | Wrote it (GenAI-assisted). |

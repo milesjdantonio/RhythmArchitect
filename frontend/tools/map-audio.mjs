@@ -57,7 +57,7 @@ try {
       };
       writeFileSync(join(root, 'mock-server', 'songs', 'tracks', `${t.id}.json`), JSON.stringify(out));
       const c = (d) => `${res.charts[d].notes.length}`;
-      console.log(`${t.id}: ${res.bpm} BPM, beat 0 at ${res.offset}s, ${res.duration.toFixed(1)}s, ${res.onsets} onsets, confidence ${res.report.confidence}; easy ${c('easy')} / medium ${c('medium')} / hard ${c('hard')} tiles; sections ${res.report.sections.map((s) => s.label).join(' → ')}`);
+      console.log(`${t.id}: ${res.bpm} BPM, beat 0 at ${res.offset}s, ${res.duration.toFixed(1)}s, ${res.onsets} onsets, confidence ${res.report.confidence}; easy ${c('easy')} / medium ${c('medium')} / hard ${c('hard')} / ultra ${c('ultra')} tiles; sections ${res.report.sections.map((s) => s.label).join(' → ')}`);
     }
   }, { maxSeconds: 120 });
 } finally {

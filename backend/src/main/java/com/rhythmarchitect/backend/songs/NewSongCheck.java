@@ -25,7 +25,7 @@ public final class NewSongCheck {
             return "Only songs that play from YouTube can be added this way";
         }
         if (src.has("offset") && !finite(src.path("offset"))) return "Bad offset";
-        for (String d : new String[] { "easy", "medium", "hard" }) {
+        for (String d : SongLists.DIFFICULTIES) {
             JsonNode c = b.path("charts").path(d);
             if (c.path("lanes").asInt(0) != 4 || !c.path("notes").isArray()) return "Missing the " + d + " chart";
             for (JsonNode n : c.path("notes")) {
@@ -35,7 +35,7 @@ public final class NewSongCheck {
                 }
             }
         }
-        if (b.path("charts").path("hard").path("notes").isEmpty()) return "The map has no tiles";
+        if (b.path("charts").path("ultra").path("notes").isEmpty()) return "The map has no tiles";
         JsonNode report = b.path("report");
         if (!report.path("sections").isArray() || !report.path("energy").isArray()) return "Missing the map report";
         return null;

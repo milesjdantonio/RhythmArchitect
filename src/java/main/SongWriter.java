@@ -24,6 +24,7 @@ import java.util.Map;
  * easy: 0:1 2:2 4:0:2 ...    (notes: beat:lane, beat:lane:holdBeats, or beat:lane:holdBeats:letter)
  * medium: ...
  * hard: ...
+ * ultra: ...                (the whole chart)
  * </pre>
  *
  * Beats count from beat 0; lanes are 0-3 (keys D F J K); a hold length of 0 is a tap; the letter
@@ -112,6 +113,7 @@ public class SongWriter
                 case "easy" -> lines.put(Difficulty.EASY, value);
                 case "medium" -> lines.put(Difficulty.MEDIUM, value);
                 case "hard" -> lines.put(Difficulty.HARD, value);
+                case "ultra" -> lines.put(Difficulty.ULTRA, value);
                 default -> throw new IllegalArgumentException("Unknown line: " + key);
             }
         }

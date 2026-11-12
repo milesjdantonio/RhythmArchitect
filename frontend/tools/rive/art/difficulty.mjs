@@ -1,5 +1,5 @@
-// difficulty.riv: the Easy / Medium / Hard picker badges. Each artboard is a rounded tile with
-// three signal bars, 1, 2 or 3 of them lit in the level's colour.
+// difficulty.riv: the Easy / Medium / Hard / Ultra picker badges. Each artboard is a rounded tile
+// with four signal bars, 1 to 4 of them lit in the level's colour.
 // State machine "Difficulty" on each: bool `selected` (frame lights up, lit bars pump),
 // bool `hover` (lifts the badge).
 
@@ -10,6 +10,7 @@ const LEVELS = [
   { name: 'Easy', lit: 1, color: COLORS.cyan },
   { name: 'Medium', lit: 2, color: COLORS.sun },
   { name: 'Hard', lit: 3, color: COLORS.pink },
+  { name: 'Ultra', lit: 4, color: COLORS.violet },
 ];
 
 function badge(f, { name, lit, color }) {
@@ -22,16 +23,16 @@ function badge(f, { name, lit, color }) {
   const neon = neonStroke(ab, frame, color, 2.5, { glow: 10, coreAlpha: 0.5 });
   const dimEdge = ab.stroke(frame, '#3a2466', 2);
 
-  const bars = [0, 1, 2].map((i) => {
-    const h = 16 + i * 14;
-    const node = ab.node(lift, { name: `bar${i}`, x: -20 + i * 20, y: 26 });
+  const bars = [0, 1, 2, 3].map((i) => {
+    const h = 14 + i * 11;
+    const node = ab.node(lift, { name: `bar${i}`, x: -24 + i * 16, y: 26 });
     const s = ab.shape(node);
-    ab.rect(s, { x: -6, y: -h, w: 12, h, r: 3 });
+    ab.rect(s, { x: -5, y: -h, w: 10, h, r: 3 });
     const on = i < lit;
     const fill = ab.fill(s, on ? color : COLORS.dim);
     if (on) {
       const g = ab.shape(node);
-      ab.rect(g, { x: -6, y: -h, w: 12, h, r: 3 });
+      ab.rect(g, { x: -5, y: -h, w: 10, h, r: 3 });
       const gf = ab.fill(g, color, { alpha: 0 });
       ab.feather(gf, 10);
       return { node, fill, glow: gf, on };

@@ -141,7 +141,8 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
     const out = songs.map((s) => {
       if (s.builtIn) {
         const fresh = latest.get(s.id)!;
-        const keep = { title: s.title, best: s.best, plays: s.plays, favorite: s.favorite };
+        // (Saved before Ultra: its best scores move with their charts, as upgrade.ts does.)
+        const keep = { title: s.title, best: s.charts.ultra ? s.best : upgradeSong(s).best, plays: s.plays, favorite: s.favorite };
         if (JSON.stringify({ ...s, ...keep }) === JSON.stringify({ ...fresh, ...keep })) return s;
         changed = true;
         return { ...fresh, ...keep };

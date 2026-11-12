@@ -67,12 +67,19 @@ class MappingTests {
         assertEquals(120.0, song.path("bpm").asDouble());
         assertEquals(1.0, song.path("source").path("offset").asDouble());
         assertEquals("fan", song.path("source").path("chart").asString());
-        JsonNode hard = song.path("charts").path("hard").path("notes");
-        assertEquals(62, hard.size());
-        assertEquals(0.0, hard.get(0).path("t").asDouble());
-        assertEquals(2.0, hard.get(8).path("len").asDouble());
+        JsonNode ultra = song.path("charts").path("ultra").path("notes");
+        assertEquals(62, ultra.size());
+        assertEquals(0.0, ultra.get(0).path("t").asDouble());
+        assertEquals(2.0, ultra.get(8).path("len").asDouble());
+        // Each difficulty keeps at least as many as the one before; Easy fewer than Ultra.
+        int prev = 0;
+        for (String d : new String[] { "easy", "medium", "hard", "ultra" }) {
+            int n = song.path("charts").path(d).path("notes").size();
+            assertTrue(n >= prev && n > 10, d + " keeps " + n + " tiles (the one before: " + prev + ")");
+            prev = n;
+        }
         int easy = song.path("charts").path("easy").path("notes").size();
-        assertTrue(easy > 10 && easy < 62, "Easy keeps fewer tiles: " + easy);
+        assertTrue(easy < 62, "Easy keeps fewer tiles: " + easy);
         assertEquals(48, song.path("report").path("energy").size());
         assertEquals("Chorus", song.path("report").path("sections").get(1).path("label").asString());
         assertTrue(com.rhythmarchitect.backend.songs.NewSongCheck.problem(song) == null, "a fan song passes the new-song checks");

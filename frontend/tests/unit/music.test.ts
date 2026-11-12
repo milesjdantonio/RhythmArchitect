@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DIFFICULTIES, type Chart } from '../../src/api/types';
+import { DIFFICULTIES, type Chart, type Difficulty } from '../../src/api/types';
 import { demoSong } from '../../mock-server/songs/demo-song';
 import { chartFor, type MelodyNote } from '../../src/mapping/charts';
 import { SCALES } from '../../src/mapping/theory';
@@ -39,8 +39,10 @@ describe('charts', () => {
       expect(chart.notes.filter((n) => n.t > 8 && n.t < 16)).toHaveLength(0);
       expect(chartFor(melody, d, SCALES.minor, 57, 120)).toEqual(chart);
     }
-    // Hard plays every note, including the one between 16ths.
-    expect(new Set(chartFor(melody, 'hard', SCALES.minor, 57, 120).notes.map((n) => n.t)).size).toBe(melody.length);
+    // Ultra plays every note, including the one between 16ths; each difficulty plays at least as many as the one before.
+    expect(new Set(chartFor(melody, 'ultra', SCALES.minor, 57, 120).notes.map((n) => n.t)).size).toBe(melody.length);
+    const counts = DIFFICULTIES.map((d) => chartFor(melody, d, SCALES.minor, 57, 120).notes.length);
+    for (let i = 1; i < counts.length; i++) expect(counts[i]).toBeGreaterThanOrEqual(counts[i - 1]);
   });
 });
 
@@ -48,9 +50,14 @@ describe('demo song', () => {
   it('parses into valid charts with holds and chords', () => {
     const song = demoSong();
     for (const d of DIFFICULTIES) checkChart(song.charts[d]);
-    expect(song.charts.hard.notes.some((n) => n.hold)).toBe(true);
+    expect(song.charts.ultra.notes.some((n) => n.hold)).toBe(true);
     expect(song.charts.easy.notes.some((n) => n.hold)).toBe(true);
-    expect(song.charts.hard.lanes).toBe(4);
+    // Chords only on Ultra; each difficulty at least as busy as the one before.
+    const chords = (d: Difficulty) => song.charts[d].notes.length - new Set(song.charts[d].notes.map((n) => n.t)).size;
+    expect(chords('ultra')).toBeGreaterThan(0);
+    expect(chords('hard')).toBe(0);
+    for (let i = 1; i < DIFFICULTIES.length; i++) expect(song.charts[DIFFICULTIES[i]].notes.length).toBeGreaterThanOrEqual(song.charts[DIFFICULTIES[i - 1]].notes.length);
+    expect(song.charts.ultra.lanes).toBe(4);
     expect(song.charts.easy.lanes).toBe(4);
   });
 });

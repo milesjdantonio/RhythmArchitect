@@ -38,33 +38,37 @@ describe('fan charts (osu!)', () => {
     expect(beatGrid(hard, notes)).toMatchObject({ bpm: 120, beat0Ms: 1000, meter: 4 });
   });
 
-  it('builds a YouTube song: Easy and Medium spaced out from the fan tiles, nothing moved or added', () => {
+  it('builds a YouTube song: Ultra is the fan chart, the others spaced out from fan tiles, nothing moved or added', () => {
     const song = fanSong([easy, hard], { title: 'Fixture Song', artist: 'Test Artist', videoId: 'abcdefghijk', seconds: 45 });
     expect(song.source).toMatchObject({ kind: 'youtube', videoId: 'abcdefghijk', chart: 'fan', offset: 1 });
     expect(song.source.credit).toContain('fixturemapper');
     expect(song.bpm).toBe(120);
     const hardTimes = new Set(fanNotes(hard).map((n) => (n.ms - 1000) / 500));
     const easyTimes = new Set(fanNotes(easy).map((n) => (n.ms - 1000) / 500));
-    for (const n of song.charts.hard.notes) expect(hardTimes.has(n.t)).toBe(true);
-    for (const n of song.charts.easy.notes) expect(easyTimes.has(n.t)).toBe(true);
+    // With two fan difficulties, every one of ours comes from the harder (Easy is what Medium was).
+    for (const d of DIFFICULTIES) for (const n of song.charts[d].notes) expect(hardTimes.has(n.t)).toBe(true);
+    expect(song.charts.ultra.notes.length).toBe(fanNotes(hard).length);
+    expect(easyTimes.size).toBeGreaterThan(0);
     for (const d of DIFFICULTIES) {
       const c = song.charts[d];
       expect(c.lanes).toBe(4);
       expect(c.notes.length).toBeGreaterThan(10);
     }
-    expect(song.charts.easy.notes.length).toBeLessThan(song.charts.medium.notes.length);
+    expect(song.charts.easy.notes.length).toBeLessThanOrEqual(song.charts.medium.notes.length);
     expect(song.charts.medium.notes.length).toBeLessThanOrEqual(song.charts.hard.notes.length);
-    // Easy: a beat apart, no chords.
+    expect(song.charts.hard.notes.length).toBeLessThanOrEqual(song.charts.ultra.notes.length);
+    // Easy: half a beat apart, no chords.
     const e = song.charts.easy.notes;
-    for (let i = 1; i < e.length; i++) expect(e[i].t - e[i - 1].t).toBeGreaterThanOrEqual(1 - 1e-6);
+    for (let i = 1; i < e.length; i++) expect(e[i].t - e[i - 1].t).toBeGreaterThanOrEqual(0.5 - 1e-6);
     expect(song.report.sections.map((s) => s.label)).toEqual(expect.arrayContaining(['Intro', 'Chorus', 'Break']));
     expect(song.report.sections.find((s) => s.label === 'Chorus')!.beat).toBe(32);
   });
 
-  it('with one difficulty, shapes Easy and Medium out of it', () => {
+  it('with one difficulty, shapes Easy, Medium and Hard out of it', () => {
     const song = fanSong([hard], { title: 'x', artist: 'y', videoId: 'abcdefghijk' });
-    expect(song.charts.easy.notes.length).toBeLessThan(song.charts.medium.notes.length);
-    expect(song.charts.medium.notes.length).toBeLessThan(song.charts.hard.notes.length);
+    expect(song.charts.easy.notes.length).toBeLessThanOrEqual(song.charts.medium.notes.length);
+    expect(song.charts.medium.notes.length).toBeLessThanOrEqual(song.charts.hard.notes.length);
+    expect(song.charts.easy.notes.length).toBeLessThan(song.charts.ultra.notes.length);
     // Medium never puts a tile under a hold.
     const m = song.charts.medium.notes;
     for (const h of m.filter((n) => n.hold)) {

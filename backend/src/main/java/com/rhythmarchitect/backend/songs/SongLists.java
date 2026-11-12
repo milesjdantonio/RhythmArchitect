@@ -16,7 +16,8 @@ public final class SongLists {
     }
 
     private static final JsonNodeFactory NODES = JsonNodeFactory.instance;
-    private static final String[] DIFFICULTIES = { "easy", "medium", "hard" };
+    /** Each a step harder than the last; Ultra is the whole chart (frontend/src/api/types.ts). */
+    static final String[] DIFFICULTIES = { "easy", "medium", "hard", "ultra" };
 
     static String title(JsonNode s) {
         return s.path("title").asString("");
@@ -43,7 +44,8 @@ public final class SongLists {
         source.put("kind", s.path("source").path("kind").asString("synth"));
         if (s.path("source").path("standIn").asBoolean(false)) source.put("standIn", true);
         ObjectNode tiles = o.putObject("tiles");
-        for (String d : DIFFICULTIES) tiles.put(d, s.path("charts").path(d).path("notes").size());
+        // Only the charts it has: a song saved before Ultra has three (the client fills in the rest).
+        for (String d : DIFFICULTIES) if (s.path("charts").has(d)) tiles.put(d, s.path("charts").path(d).path("notes").size());
         o.set("best", s.has("best") ? s.get("best") : NODES.objectNode());
         o.put("plays", s.path("plays").asInt(0));
         o.put("favorite", s.path("favorite").asBoolean(false));

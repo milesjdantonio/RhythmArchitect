@@ -25,7 +25,7 @@ Base URL: `VITE_API_BASE_URL` (empty means same origin). All bodies are JSON. Er
 | `GET /api/library` | `{ results: SongSummary[] }`: every mapped song, A to Z by title (then artist), case and accents ignored, numbers in order. The music bank. |
 
 `SongSummary` is a song without its charts: `id, title, artist, bpm, lengthBeats, hues, source
-{ kind, standIn? }, tiles { easy, medium, hard }, best, plays, favorite, cover?`.
+{ kind, standIn? }, tiles { easy, medium, hard, ultra }, best, plays, favorite, cover?`.
 
 ## Mapping a song (it plays from YouTube)
 
@@ -66,7 +66,9 @@ When it can't listen (no tab audio, sharing declined, a phone), it asks for a fa
 - `levels` (optional): the loudness curve of a YouTube song (see above). The app can't analyse a
   YouTube song while it plays, so the visuals read this instead (fan charts get one from their tiles). `{ kind: 'synth' }` means the app plays the map's
   melody itself; `standIn: true` marks a synth stand-in for a track that couldn't be streamed.
-- `charts.easy|medium|hard`: `{ lanes: 4, notes: [{ t, lane, pitch, len, hold? }] }`, with times
+- `charts.easy|medium|hard|ultra`: `{ lanes: 4, notes: [{ t, lane, pitch, len, hold? }] }`, each
+  difficulty a step harder than the last (Ultra is the whole chart; a song saved before Ultra may
+  have only `easy|medium|hard`, which the client upgrades: frontend/src/api/upgrade.ts), with times
   and lengths in beats. Two notes may share a `t` (a chord). A hold blocks its lane until it ends.
   **Every note must be a sound in the track, at the moment it is heard**: no filler tiles, nothing
   placed at random. `t` may be fractional beyond 16ths (exact attack times for unquantised audio).
@@ -81,7 +83,7 @@ When it can't listen (no tab audio, sharing declined, a phone), it asks for a fa
   none, the app derives them from the section labels (a drop at each Chorus/Drop, a build 4 beats
   before it, a break at each Break/Bridge/Outro).
 - `patch` and `backing`: the synth and the backing groove for synth songs, which play every note
-  of all three charts themselves (`songMelody` in frontend/src/audio/playback.ts).
+  of all four charts themselves (`songMelody` in frontend/src/audio/playback.ts).
 
 The app also analyses the playing audio live (bass, mids, highs), so every song moves the
 backdrop and the stage even with no sections or cues at all.
@@ -95,7 +97,8 @@ Example map (trimmed):
   "charts": {
     "easy":   { "lanes": 4, "notes": [{ "t": 0, "lane": 1, "pitch": "C5", "len": 1 }] },
     "medium": { "lanes": 4, "notes": [{ "t": 0, "lane": 1, "pitch": "C5", "len": 2, "hold": true }] },
-    "hard":   { "lanes": 4, "notes": [{ "t": 0, "lane": 1, "pitch": "C5", "len": 0.5 }, { "t": 0, "lane": 3, "pitch": "A4", "len": 0.5 }] }
+    "hard":   { "lanes": 4, "notes": [{ "t": 0, "lane": 1, "pitch": "C5", "len": 0.5 }, { "t": 0.5, "lane": 3, "pitch": "A4", "len": 0.5 }] },
+    "ultra":  { "lanes": 4, "notes": [{ "t": 0, "lane": 1, "pitch": "C5", "len": 0.5 }, { "t": 0, "lane": 3, "pitch": "A4", "len": 0.5 }] }
   },
   "report": {
     "mapper": "AI mapper v2", "confidence": 0.93,

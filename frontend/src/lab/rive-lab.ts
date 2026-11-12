@@ -17,7 +17,7 @@ const ALL = ['intro', 'attract', 'cover', 'logo', 'wordmark', 'composing', 'hit'
 const q = new URLSearchParams(location.search).get('file');
 const files = q ? q.split(',') : ALL;
 // "file:Artboard" picks an artboard; otherwise each artboard listed in ARTBOARDS gets a panel.
-const ARTBOARDS: Record<string, string[]> = { result: ['Clear', 'Failed'], difficulty: ['Easy', 'Medium', 'Hard'] };
+const ARTBOARDS: Record<string, string[]> = { result: ['Clear', 'Failed'], difficulty: ['Easy', 'Medium', 'Hard', 'Ultra'] };
 // State machine to start, by file or file:artboard (the runtime only starts machines named up front).
 const MACHINES: Record<string, string> = {
   intro: 'Intro', attract: 'Attract', cover: 'Cover', logo: 'Logo', wordmark: 'Wordmark', composing: 'Composing', hit: 'Hit', hold: 'Hold', combo: 'Combo',

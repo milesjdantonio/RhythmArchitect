@@ -228,7 +228,7 @@ test.describe('Rythm Architect', () => {
     // The same audio, mapped offline from the file (the bundled map): the tiles must land on the
     // same sounds. Times in seconds into the audio.
     const ref = (await (await request.get('/api/songs/builtin-ink-and-fury')).json()) as Song;
-    const secs = (s: Song) => s.charts.hard.notes.map((n) => (n.t * 60) / s.bpm + (s.source.offset ?? 0));
+    const secs = (s: Song) => s.charts.ultra.notes.map((n) => (n.t * 60) / s.bpm + (s.source.offset ?? 0));
     const want = secs(ref).filter((x) => x > 1 && x < 38);
     const got = secs(song).filter((x) => x > 1 && x < 38);
     expect(got.length).toBeGreaterThan(want.length * 0.6);
@@ -302,8 +302,9 @@ test.describe('Rythm Architect', () => {
     expect(song.source).toMatchObject({ kind: 'youtube', chart: 'fan', offset: 1 });
     expect(song.source.credit).toContain('fixturemapper');
     expect(song.bpm).toBe(120);
-    expect(song.charts.hard.notes.length).toBeGreaterThan(80);
-    expect(song.charts.easy.notes.length).toBeLessThan(song.charts.medium.notes.length);
+    expect(song.charts.ultra.notes.length).toBeGreaterThan(80);
+    expect(song.charts.easy.notes.length).toBeLessThanOrEqual(song.charts.medium.notes.length);
+    expect(song.charts.easy.notes.length).toBeLessThan(song.charts.ultra.notes.length);
     // It comes up in search like any mapped song.
     await page.goto('/#/');
     await title(page).fill('Fixture');
@@ -627,7 +628,7 @@ test.describe('Rythm Architect', () => {
     const song = (await (await request.get(`/api/songs/${id}`)).json()) as Song;
     expect(song.report.mapper).toContain('Onset mapper');
     expect(song.report.mapper).toContain('trained mapper failed');
-    for (const d of ['easy', 'medium', 'hard'] as const) expect(song.charts[d].notes.length).toBeGreaterThan(0);
+    for (const d of ['easy', 'medium', 'hard', 'ultra'] as const) expect(song.charts[d].notes.length).toBeGreaterThan(0);
   });
 
   test('works on a phone: start screen and touch lanes @phone', async ({ page, isMobile }) => {

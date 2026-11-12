@@ -25,7 +25,7 @@ import tools.jackson.databind.node.ObjectNode;
 @RequestMapping("/api")
 public class SongController {
 
-    private static final String[] DIFFICULTIES = { "easy", "medium", "hard" };
+    private static final String[] DIFFICULTIES = SongLists.DIFFICULTIES;
 
     private final SongStore store;
 
