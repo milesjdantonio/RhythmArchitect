@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { DIFFICULTIES, type BestScore, type Difficulty } from '../../api/types';
 import { RiveAnim } from '../../rive/RiveAnim';
 
-const LABEL: Record<Difficulty, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
-const BLURB: Record<Difficulty, string> = { easy: 'Single taps · slower', medium: 'Holds · steady', hard: 'Chords · fast' };
-const BARS: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3 };
+const LABEL: Record<Difficulty, string> = { easy: 'Easy', medium: 'Medium', hard: 'Hard', ultra: 'Ultra' };
+const BLURB: Record<Difficulty, string> = { easy: 'Single taps · steady', medium: 'More taps · quicker', hard: 'Chords · taps under holds', ultra: 'Every note · fastest' };
+const BARS: Record<Difficulty, number> = { easy: 1, medium: 2, hard: 3, ultra: 4 };
 
 interface Props {
   value: Difficulty;
@@ -15,13 +15,13 @@ interface Props {
   compact?: boolean;
 }
 
-/** Radio group of three Rive badges (fallback: CSS signal bars). Arrow keys move the choice. */
+/** Radio group of four Rive badges (fallback: CSS signal bars). Arrow keys move the choice. */
 export function DifficultyPicker({ value, onChange, counts, best, compact }: Props) {
   const [hover, setHover] = useState<Difficulty | null>(null);
   const onKey = (e: React.KeyboardEvent) => {
     const i = DIFFICULTIES.indexOf(value);
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); onChange(DIFFICULTIES[(i + 1) % 3]); }
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); onChange(DIFFICULTIES[(i + 2) % 3]); }
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') { e.preventDefault(); onChange(DIFFICULTIES[(i + 1) % DIFFICULTIES.length]); }
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); onChange(DIFFICULTIES[(i + DIFFICULTIES.length - 1) % DIFFICULTIES.length]); }
   };
   return (
     <div className={`diff-picker ${compact ? 'is-compact' : ''}`} role="radiogroup" aria-label="Difficulty" onKeyDown={onKey}>
@@ -47,7 +47,7 @@ export function DifficultyPicker({ value, onChange, counts, best, compact }: Pro
               stateMachine="Difficulty"
               inputs={{ selected, hover: hover === d }}
               className="diff-badge"
-              fallback={<span className="diff-bars" data-lit={BARS[d]}><i /><i /><i /></span>}
+              fallback={<span className="diff-bars" data-lit={BARS[d]}><i /><i /><i /><i /></span>}
             />
             <span className="diff-text">
               <span className="diff-name">{LABEL[d]}</span>

@@ -2,17 +2,19 @@
 // trained on human-made osu!mania 4K charts. It reads the heard audio and places the tiles itself.
 // Runs in the mapping worker (listen.worker.ts); the audio stays in the browser.
 //
-// Its lowest star rating (2) is usually about as busy as this game's Hard, so it charts the song
-// at that rating (again, busier, when Hard would have under about two tiles a beat: nextStar), and
-// every difficulty keeps a subset of its tiles (thin.ts): Hard most of
-// them (chords of two at most), Medium and Easy fewer. Its tiles come
+// Its lowest star rating (2) is usually about as busy as this game's Ultra (the whole chart), so it
+// charts the song at that rating (again, busier, when Ultra would have under about two tiles a
+// beat: nextStar), and every difficulty keeps a subset of its tiles (thin.ts KEEP): Ultra nearly
+// all of them (chords of two at most), Hard, Medium and Easy fewer. Its tiles come
 // in milliseconds, a little early; they go onto the sounds the onset mapper measured and onto its
 // beat grid (soundShift, toChart).
 
-import type { Chart, ChartNote, ChartProgress, Difficulty, SoundEvent } from '../api/types';
+import { DIFFICULTIES, type Chart, type ChartNote, type ChartProgress, type Difficulty, type SoundEvent } from '../api/types';
 import type { Ort } from './ort';
 import { cachedSource } from './ensomiModel';
-import { thinChart } from './thin';
+import { KEEP, thinChart } from './thin';
+
+export { KEEP };
 // The runtime finds these beside its own module, which a bundler moves; so they're handed to it.
 import coreUrl from '../../node_modules/@ensomi/runtime/pkg/ensomi_generate_wasm_bg.wasm?url';
 import table24 from '../../node_modules/@ensomi/runtime/resampler/resample-24000.bin?url';
@@ -21,15 +23,7 @@ import info24 from '../../node_modules/@ensomi/runtime/resampler/resample-24000.
 
 /** The star rating the model charts at (R2 takes 2 up to 6). */
 export const STAR = 2;
-const DIFFS: Difficulty[] = ['easy', 'medium', 'hard'];
-/** How each difficulty is kept from the model's chart (thin.ts: rows a second, spacing, share, chord size). */
-export const KEEP = {
-  easy: { rate: 1.15, minGap: 0.5, share: 0.4, maxChord: 1, holdsAlone: true },
-  medium: { rate: 2.1, minGap: 0.24, share: 0.65, maxChord: 1, holdsAlone: true },
-  // Hard keeps the model's chart nearly whole (chords of two at most, nothing closer than a 16th at
-  // 250 BPM): capped at 3.8 a second it felt sparse and disconnected on a 200 BPM shred song.
-  hard: { rate: 1000, minGap: 0.06, share: 1, maxChord: 2, holdsAlone: false },
-} as const;
+const DIFFS = DIFFICULTIES;
 /** The same song makes the same charts. */
 const SEED = 7;
 /** How early the model's tiles usually come, in seconds (see soundShift). */
@@ -91,22 +85,22 @@ export type TrainedStage = 'load' | 'listen' | 'chart' | 'again';
 
 // A star rating is a difficulty, not a density. On a fast, intense song 2★ spreads its tiles thin,
 // and unevenly: it eases the hardest stretches (a 200 BPM shred song: about 7 tiles a second in
-// its intro, 2-4 in the loud, busy verses after it, which played sparse and disconnected). So Hard
+// its intro, 2-4 in the loud, busy verses after it, which played sparse and disconnected). So Ultra
 // is judged a stretch of the song at a time (WINDOW): each should have about two tiles a beat, more
-// or fewer as it has more or fewer sounds than the song's usual stretch (hardTargets). While too
+// or fewer as it has more or fewer sounds than the song's usual stretch (ultraTargets). While too
 // little of that is met (COVER), the song is charted again a star busier, from what the model
 // already heard (its audio stages aren't run again), and each stretch takes its tiles from the
 // chart that fits it best (splice). Every tile is still one of the model's, on a sound it heard.
 
-/** Hard aims for this many tiles a beat (a stream of 8ths, a little more)... */
-const HARD_PER_BEAT = 2.2;
+/** Ultra aims for this many tiles a beat (a stream of 8ths, a little more)... */
+const ULTRA_PER_BEAT = 2.2;
 /** ...and never more than this many a second. */
-const HARD_MAX_RATE = 8;
-/** The stretches of the song Hard is judged by, in seconds. */
+const ULTRA_MAX_RATE = 8;
+/** The stretches of the song Ultra is judged by, in seconds. */
 const WINDOW = 10;
-/** Charting again busier stops once Hard meets this share of its targets. */
+/** Charting again busier stops once Ultra meets this share of its targets. */
 const COVER = 0.85;
-/** The highest star rating charted for a busier Hard (on a fast song 4★ has about twice 2★'s tiles). */
+/** The highest star rating charted for a busier Ultra (on a fast song 4★ has about twice 2★'s tiles). */
 export const MAX_STAR = 4;
 /** At most this many charts per song (each takes ~15 s on a graphics chip for 5 minutes of song). */
 const MAX_TRIES = 3;
@@ -114,13 +108,13 @@ const MAX_TRIES = 3;
 type Grid = Pick<TrainedOptions, 'bpm' | 'offset'>;
 
 /**
- * Hard's tiles to aim for in each WINDOW of the song: HARD_PER_BEAT at `bpm` (at most
- * HARD_MAX_RATE a second), times how many sounds the stretch has against the song's median
+ * Ultra's tiles to aim for in each WINDOW of the song: ULTRA_PER_BEAT at `bpm` (at most
+ * ULTRA_MAX_RATE a second), times how many sounds the stretch has against the song's median
  * stretch (0.6 to 1.25 of it); nothing asked of a stretch with hardly any (under a quarter).
  */
-export function hardTargets(events: Pick<SoundEvent, 'sec'>[], bpm: number, seconds: number): number[] {
+export function ultraTargets(events: Pick<SoundEvent, 'sec'>[], bpm: number, seconds: number): number[] {
   const n = Math.max(1, Math.ceil(seconds / WINDOW));
-  const rate = Math.min((HARD_PER_BEAT * bpm) / 60, HARD_MAX_RATE);
+  const rate = Math.min((ULTRA_PER_BEAT * bpm) / 60, ULTRA_MAX_RATE);
   const sounds = new Array<number>(n).fill(0);
   for (const e of events) {
     const w = Math.floor(e.sec / WINDOW);
@@ -159,8 +153,8 @@ export function coverage(counts: number[], targets: number[]): number {
 const misfit = (n: number, t: number) => (n >= t ? Math.log(n / t) : 1.5 * Math.log(t / Math.max(n, 0.5)));
 
 /**
- * One chart from several of the same song: each WINDOW takes its tiles from the chart whose Hard
- * there is nearest its target (the first chart where nothing is asked). Hard's counts per stretch
+ * One chart from several of the same song: each WINDOW takes its tiles from the chart whose Ultra
+ * there is nearest its target (the first chart where nothing is asked). Ultra's counts per stretch
  * are in `counts`. A tile that would start under a hold from the stretch before is left out.
  */
 export function splice(charts: { notes: ChartNote[]; counts: number[] }[], targets: number[], g: Grid): ChartNote[] {
@@ -183,7 +177,7 @@ export function splice(charts: { notes: ChartNote[]; counts: number[] }[], targe
   return out;
 }
 
-/** The next star rating to chart at, or null when done (Hard meets COVER, or MAX_STAR or MAX_TRIES is reached). */
+/** The next star rating to chart at, or null when done (Ultra meets COVER, or MAX_STAR or MAX_TRIES is reached). */
 export function nextStar(stars: number[], cover: number): number | null {
   if (cover >= COVER || stars.length >= MAX_TRIES) return null;
   const next = Math.floor(Math.max(...stars)) + 1;
@@ -241,26 +235,26 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     let on: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'> = o;
     const own = o.regrid ? osuGrid(first.osu, songMs / 1000) : null;
     if (own && o.regrid) on = o.regrid({ ...own, offset: Math.round((own.offset + shift) * 1000) / 1000 }) ?? o;
-    // Hard a stretch at a time (see hardTargets): charted again busier while too little is met.
-    const targets = hardTargets(on.events, on.bpm, songMs / 1000);
-    const hardOf = (notes: ChartNote[]) => perWindow(easierCharts(notes, on).hard.notes, on, targets.length);
-    const firstNotes = toChart(first.chart.objects, 'hard', on, shift).notes;
-    const tries = [{ star: STAR, notes: firstNotes, counts: hardOf(firstNotes) }];
+    // Ultra a stretch at a time (see ultraTargets): charted again busier while too little is met.
+    const targets = ultraTargets(on.events, on.bpm, songMs / 1000);
+    const ultraOf = (notes: ChartNote[]) => perWindow(easierCharts(notes, on).ultra.notes, on, targets.length);
+    const firstNotes = toChart(first.chart.objects, 'ultra', on, shift).notes;
+    const tries = [{ star: STAR, notes: firstNotes, counts: ultraOf(firstNotes) }];
     let notes = firstNotes;
     const covers = [coverage(tries[0].counts, targets)];
     for (let star = nextStar([STAR], covers[0]); star != null; star = nextStar(tries.map((t) => t.star), covers[covers.length - 1])) {
-      const more = toChart((await chartAt(star, 'again')).chart.objects, 'hard', on, shift).notes;
-      tries.push({ star, notes: more, counts: hardOf(more) });
+      const more = toChart((await chartAt(star, 'again')).chart.objects, 'ultra', on, shift).notes;
+      tries.push({ star, notes: more, counts: ultraOf(more) });
       notes = splice(tries, targets, on);
-      covers.push(coverage(hardOf(notes), targets));
+      covers.push(coverage(ultraOf(notes), targets));
     }
     const charts = easierCharts(notes, on);
     for (const d of DIFFS) o.onProgress?.({ difficulty: d, done: 1, total: 1, tiles: charts[d].notes.length });
     const v = models.capabilities.model_version;
     const pct = (x: number) => `${Math.round(x * 100)}%`;
     const stars = tries.length > 1
-      ? `${tries.map((t) => `${t.star}★`).join(' + ')} by stretch of the song (Hard met ${pct(covers[0])} of its ${targets.reduce((a, b) => a + b, 0)}-tile target at ${STAR}★; ${tries.slice(1).map((t, i) => `with ${t.star}★ ${pct(covers[i + 1])}`).join(', ')})`
-      : `${STAR}★ (Hard met ${pct(covers[0])} of its target)`;
+      ? `${tries.map((t) => `${t.star}★`).join(' + ')} by stretch of the song (Ultra met ${pct(covers[0])} of its ${targets.reduce((a, b) => a + b, 0)}-tile target at ${STAR}★; ${tries.slice(1).map((t, i) => `with ${t.star}★ ${pct(covers[i + 1])}`).join(', ')})`
+      : `${STAR}★ (Ultra met ${pct(covers[0])} of its target)`;
     return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${stars}; each difficulty a subset; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds)` };
   } finally {
     await models.dispose().catch(() => {});
@@ -323,7 +317,7 @@ export function soundShift(objects: { start_ms: number }[], events: { sec: numbe
 export function easierCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'>): Record<Difficulty, Chart> {
   const spb = 60 / o.bpm;
   const chart = (d: Difficulty): Chart => ({ difficulty: d, lanes: 4, notes: thinChart(model, { ...KEEP[d], spb, offset: o.offset, events: o.events, onGrid: o.onGrid }) });
-  return { easy: chart('easy'), medium: chart('medium'), hard: chart('hard') };
+  return { easy: chart('easy'), medium: chart('medium'), hard: chart('hard'), ultra: chart('ultra') };
 }
 
 /**

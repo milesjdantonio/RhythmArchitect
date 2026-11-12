@@ -4,8 +4,9 @@
 // The product: a player asks for a real song; the backend finds the track and an AI maps it into
 // a beatmap with one chart per difficulty. The AI does not make music.
 
-export type Difficulty = 'easy' | 'medium' | 'hard';
-export const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard'];
+/** Each a step harder than the last; Ultra is the whole chart (see mapping/thin.ts KEEP). */
+export type Difficulty = 'easy' | 'medium' | 'hard' | 'ultra';
+export const DIFFICULTIES: Difficulty[] = ['easy', 'medium', 'hard', 'ultra'];
 
 /** One tile. Times and lengths are in beats from the start of the song. */
 export interface ChartNote {

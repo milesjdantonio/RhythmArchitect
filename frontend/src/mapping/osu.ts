@@ -9,7 +9,7 @@
 //
 // Pure functions over the .osu text: they run in the mock server, the real backend or a test.
 
-import type { Chart, ChartNote, Difficulty, MapReport, NewSong } from '../api/types';
+import { DIFFICULTIES, type Chart, type ChartNote, type Difficulty, type MapReport, type NewSong } from '../api/types';
 import { RULES } from './charts';
 
 export interface OsuTiming {
@@ -205,14 +205,15 @@ function strength(t: number, meter: number, hold: boolean, chord: number) {
 }
 
 /**
- * A fan chart (in beats) shaped to one of our difficulties: Easy and Medium keep the tiles that
- * sit most on the beat, spaced as RULES says, one at a time, with holds only where they're long.
+ * A fan chart (in beats) shaped to one of our difficulties: all but Ultra keep the tiles that sit
+ * most on the beat, spaced as RULES says (Easy and Medium one at a time, holds only where they're
+ * long; Hard taps under holds).
  * Nothing is moved or added: every tile is still one the fan placed on a sound.
  */
 export function shapeChart(notes: ChartNote[], difficulty: Difficulty, bpm: number, meter: number): Chart {
   const rule = RULES[difficulty];
-  if (difficulty === 'hard') return { difficulty, lanes: 4, notes };
-  const f = bpm > 150 ? 2 : bpm > 125 ? 1.5 : 1;
+  if (difficulty === 'ultra') return { difficulty, lanes: 4, notes };
+  const f = bpm > 150 ? rule.fast[0] : bpm > 125 ? rule.fast[1] : 1;
   const minGap = rule.minGap * f;
   const chordSize = new Map<number, number>();
   for (const n of notes) chordSize.set(n.t, (chordSize.get(n.t) ?? 0) + 1);
@@ -222,9 +223,9 @@ export function shapeChart(notes: ChartNote[], difficulty: Difficulty, bpm: numb
   const kept: ChartNote[] = [];
   const fits = (n: ChartNote) => kept.every((k) => {
     const kEnd = k.t + (k.hold ? k.len : 0), nEnd = n.t + (n.hold ? n.len : 0);
-    // Nothing while a hold is down, and the minimum gap between tiles.
-    if (n.t >= k.t && n.t < kEnd + minGap * 0.5) return false;
-    if (k.t >= n.t && k.t < nEnd + minGap * 0.5) return false;
+    // Nothing while a hold is down (unless the rules allow it), and the minimum gap between tiles.
+    if (!rule.playDuringHold && n.t >= k.t && n.t < kEnd + minGap * 0.5) return false;
+    if (!rule.playDuringHold && k.t >= n.t && k.t < nEnd + minGap * 0.5) return false;
     return Math.abs(k.t - n.t) >= minGap - 1e-6;
   });
   for (const { n } of ranked) {
@@ -281,8 +282,9 @@ export interface FanSongOptions {
 
 /**
  * A playable song from one beatmap set's difficulties (already parsed): the hardest one up to
- * about 7 tiles a second is Hard, the easiest is Easy, one between is Medium. With fewer than
- * three, the missing ones are shaped from the hardest.
+ * about 7 tiles a second is Ultra, the one halfway up to it is Easy, and Medium and Hard are the
+ * ones a third and two thirds of the way from Easy to Ultra (each shaped to its rules: shapeChart).
+ * With fewer, they're shaped from the nearest harder one.
  */
 export function fanSong(maps: OsuMap[], opts: FanSongOptions): NewSong {
   const usable = maps.map((m) => ({ m, notes: fanNotes(m) })).filter((x) => x.notes.length >= 16);
@@ -290,9 +292,10 @@ export function fanSong(maps: OsuMap[], opts: FanSongOptions): NewSong {
   usable.sort((a, b) => density(a.notes) - density(b.notes));
   const hardIdx = Math.max(0, usable.reduce((k, x, i) => (density(x.notes) <= 7 ? i : k), 0));
   const hard = usable[hardIdx];
-  const easy = usable[0] === hard ? hard : usable[0];
-  const mids = usable.slice(1, hardIdx);
-  const medium = mids.length ? mids[Math.floor(mids.length / 2)] : hard;
+  // Easy is the one Medium was before Ultra (halfway up); the others are spaced from it to Ultra.
+  const easyIdx = hardIdx >= 2 ? 1 + Math.floor((hardIdx - 1) / 2) : hardIdx;
+  const step = (f: number) => usable[Math.round(easyIdx + (hardIdx - easyIdx) * f)];
+  const pick: Record<Difficulty, typeof hard> = { easy: usable[easyIdx], medium: step(1 / 3), hard: step(2 / 3), ultra: hard };
   const { bpm, beat0Ms, meter } = beatGrid(hard.m, hard.notes);
   const spbMs = 60000 / bpm;
   const toBeat = (ms: number) => (ms - beat0Ms) / spbMs;
@@ -302,12 +305,8 @@ export function fanSong(maps: OsuMap[], opts: FanSongOptions): NewSong {
     const len = n.endMs ? r4((n.endMs - n.ms) / spbMs) : 0.25;
     return { t, lane: n.lane, pitch: LANE_PITCH[n.lane], len, ...(n.endMs ? { hold: true } : {}) };
   });
-  const charts: Record<Difficulty, Chart> = {
-    easy: shapeChart(toChart(easy.notes), 'easy', bpm, meter),
-    medium: shapeChart(toChart(medium.notes), 'medium', bpm, meter),
-    hard: shapeChart(toChart(hard.notes), 'hard', bpm, meter),
-  };
-  const all = charts.hard.notes;
+  const charts = Object.fromEntries(DIFFICULTIES.map((d) => [d, shapeChart(toChart(pick[d].notes), d, bpm, meter)])) as Record<Difficulty, Chart>;
+  const all = charts.ultra.notes;
   const lastBeat = Math.max(...all.map((n) => n.t + (n.hold ? n.len : 0)));
   const videoBeats = opts.seconds ? (opts.seconds - beat0Ms / 1000) / (spbMs / 1000) : 0;
   const lengthBeats = r4(Math.max(lastBeat + 2, Math.min(videoBeats, lastBeat + 32)));

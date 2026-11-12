@@ -92,7 +92,7 @@ export function StageView({ song, difficulty, previewBeat0 }: Props) {
     s.setTiming(spb, TRAVEL[difficulty] * 1.25);
     const notes: StageNote[] = song.charts[difficulty].notes.map((n) => ({ lane: n.lane, time: n.t * spb, end: (n.t + (n.hold ? n.len : 0)) * spb, hold: !!n.hold }));
     s.setGhostChart(notes);
-    s.setFever(difficulty === 'hard');
+    s.setFever(difficulty === 'ultra');
     clockStart.current = performance.now() + 1200; // a short run-up before the first tile lands
   }, [song?.id, song?.hues[0], difficulty, failed]);
 

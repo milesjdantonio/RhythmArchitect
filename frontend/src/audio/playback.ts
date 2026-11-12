@@ -247,7 +247,7 @@ function songLevels(song: Song): DecodedLevels {
     const spb = 60 / song.bpm, off = song.source.offset ?? 0;
     l = song.levels
       ? decodeLevels(song.levels)
-      : levelsFromNotes(song.charts.hard.notes.map((n) => ({ s: n.t * spb + off, lane: n.lane, len: n.hold ? n.len * spb : 0 })), song.lengthBeats * spb + off + 2);
+      : levelsFromNotes(song.charts.ultra.notes.map((n) => ({ s: n.t * spb + off, lane: n.lane, len: n.hold ? n.len * spb : 0 })), song.lengthBeats * spb + off + 2);
     levelCache.set(key, l);
   }
   return l;
@@ -345,12 +345,12 @@ export async function prepareSong(song: Song): Promise<void> {
 }
 
 /**
- * Every note a synth song plays: all tiles of all three charts, once each. The game and the
+ * Every note a synth song plays: all tiles of all four charts, once each. The game and the
  * preview both play this, so whatever difficulty you pick, each tile is a note you hear.
  */
 export function songMelody(song: Song): { t: number; pitch: string; len: number }[] {
   const byKey = new Map<string, { t: number; pitch: string; len: number }>();
-  for (const d of ['hard', 'medium', 'easy'] as const) {
+  for (const d of ['ultra', 'hard', 'medium', 'easy'] as const) {
     for (const n of song.charts[d].notes) {
       const key = `${n.t}:${n.pitch}`;
       const prev = byKey.get(key);

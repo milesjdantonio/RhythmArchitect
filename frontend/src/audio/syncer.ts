@@ -21,7 +21,7 @@ const checks = new Map<string, Check>();
 const learned = new Map<string, number>();
 let version = 0;
 
-const keyFor = (song: Song) => `${song.source.url ?? ''}:${song.source.offset ?? 0}:${song.charts.hard.notes.length}`;
+const keyFor = (song: Song) => `${song.source.url ?? ''}:${song.source.offset ?? 0}:${song.charts.ultra.notes.length}`;
 
 /** What the syncer needs from a decoded track (an AudioBuffer or Tone's wrapper of one). */
 export interface TrackAudio { sampleRate: number; numberOfChannels: number; getChannelData(c: number): Float32Array }

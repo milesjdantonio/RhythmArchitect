@@ -7,15 +7,16 @@ export type Judgement = 'perfect' | 'great' | 'good' | 'miss';
 
 /** Hit windows in seconds (either side of the note). Easier modes are more forgiving. */
 const BASE_WINDOWS = { perfect: 0.045, great: 0.09, good: 0.14 };
-const LENIENCY: Record<Difficulty, number> = { easy: 1.3, medium: 1.12, hard: 1 };
+// Each difficulty a step up (Easy is what Medium was before Ultra, Ultra what Hard was).
+const LENIENCY: Record<Difficulty, number> = { easy: 1.12, medium: 1.08, hard: 1.04, ultra: 1 };
 const POINTS = { perfect: 300, great: 200, good: 100, miss: 0 };
 const ACC = { perfect: 1, great: 0.7, good: 0.4, miss: 0 };
-const DRAIN: Record<Difficulty, number> = { easy: 0.05, medium: 0.075, hard: 0.1 };
+const DRAIN: Record<Difficulty, number> = { easy: 0.075, medium: 0.083, hard: 0.091, ultra: 0.1 };
 /** A hold released this close to its end still counts as completed. */
 const HOLD_GRACE = 0.14;
 
 /** Seconds a tile takes to fall from the top to the hit line at speed 1. */
-export const TRAVEL: Record<Difficulty, number> = { easy: 1.75, medium: 1.4, hard: 1.1 };
+export const TRAVEL: Record<Difficulty, number> = { easy: 1.4, medium: 1.3, hard: 1.2, ultra: 1.1 };
 /**
  * Note speed, fixed for every player and every song: tiles fall at 0.85× (a touch slower than
  * TRAVEL). The same fall time on every song keeps reading and reaction time the same; the song's

@@ -24,6 +24,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { FanChartRequest, NewSong, ScoreSubmit, Song, SongPatch, SongSummary } from '../src/api/types';
 import { sortAtoZ } from '../src/library/bank';
 import { DIFFICULTIES } from '../src/api/types';
+import { upgradeSong } from '../src/api/upgrade';
 import { builtInSongs } from './songs/builtins';
 import { fanSong } from '../src/mapping/osu';
 import { findFanChart, findVideo, SourceError } from './sources';
@@ -63,7 +64,7 @@ export function summary(s: Song): SongSummary {
   return {
     id: s.id, title: s.title, artist: s.artist, bpm: s.bpm, lengthBeats: s.lengthBeats, hues: s.hues,
     source: { kind: s.source.kind, ...(s.source.standIn ? { standIn: true } : {}) },
-    tiles: { easy: s.charts.easy.notes.length, medium: s.charts.medium.notes.length, hard: s.charts.hard.notes.length },
+    tiles: Object.fromEntries(DIFFICULTIES.map((d) => [d, s.charts[d].notes.length])) as SongSummary['tiles'],
     best: s.best, plays: s.plays, favorite: !!s.favorite, ...(s.cover ? { cover: s.cover } : {}),
   };
 }
@@ -97,7 +98,7 @@ export function checkNewSong(b: NewSong): string | null {
       if (!Number.isFinite(n.t) || !Number.isInteger(n.lane) || n.lane < 0 || n.lane > 3 || !Number.isFinite(n.len)) return `A bad tile in the ${d} chart`;
     }
   }
-  if (!b.charts.hard.notes.length) return 'The map has no tiles';
+  if (!b.charts.ultra.notes.length) return 'The map has no tiles';
   if (!b.report || !Array.isArray(b.report.sections) || !Array.isArray(b.report.energy)) return 'Missing the map report';
   return null;
 }
@@ -128,7 +129,8 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
   // Keeps stored songs playable as the format moves on: built-in songs always get their latest
   // charts and audio (scores, plays, favourite and title kept) and missing ones are added back;
   // songs from before the "map a real song" format get an artist, a source and a report; charts
-  // from before every difficulty had four lanes are spread onto four.
+  // from before every difficulty had four lanes are spread onto four; songs from before Ultra (three
+  // charts) get today's four (src/api/upgrade.ts).
   function migrate(stored: Song[]): Song[] {
     let changed = false;
     const latest = new Map(builtIns().map((b) => [b.id, b]));
@@ -144,6 +146,8 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
         changed = true;
         return { ...fresh, ...keep };
       }
+      const upgraded = upgradeSong(s);
+      if (upgraded !== s) { changed = true; s = upgraded; }
       if (!s.best || s.plays == null) {
         changed = true;
         s = { ...s, best: s.best ?? {}, plays: s.plays ?? 0 };

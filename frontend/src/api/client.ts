@@ -2,6 +2,7 @@
 // backend; when it is empty the app talks to the mock in mock-server/ on the same origin.
 
 import type { FanChartRequest, NewSong, ScoreSubmit, SearchResults, Song, SongList, SongPatch, SongSummary, VideoMatch } from './types';
+import { upgradeSong, upgradeSummary } from './upgrade';
 
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -27,14 +28,16 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 /** A result list, or none (a reply that isn't one, e.g. while the server restarts, mustn't break the page). */
-const listOf = (r: SearchResults | undefined): SongSummary[] => (Array.isArray(r?.results) ? r.results : []);
+const listOf = (r: SearchResults | undefined): SongSummary[] => (Array.isArray(r?.results) ? r.results.map(upgradeSummary) : []);
+/** A song on today's four charts (one saved before Ultra had three: upgrade.ts). */
+const song = (p: Promise<Song>) => p.then(upgradeSong);
 
 export const api = {
-  listSongs: () => request<SongList>('/songs').then((r) => r.songs),
-  getSong: (id: string) => request<Song>(`/songs/${encodeURIComponent(id)}`),
-  updateSong: (id: string, patch: SongPatch) => request<Song>(`/songs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) }),
+  listSongs: () => request<SongList>('/songs').then((r) => r.songs.map(upgradeSong)),
+  getSong: (id: string) => song(request<Song>(`/songs/${encodeURIComponent(id)}`)),
+  updateSong: (id: string, patch: SongPatch) => song(request<Song>(`/songs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) })),
   deleteSong: (id: string) => request<void>(`/songs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  submitScore: (id: string, score: ScoreSubmit) => request<Song>(`/songs/${encodeURIComponent(id)}/scores`, { method: 'POST', body: JSON.stringify(score) }),
+  submitScore: (id: string, score: ScoreSubmit) => song(request<Song>(`/songs/${encodeURIComponent(id)}/scores`, { method: 'POST', body: JSON.stringify(score) })),
   search: (title: string, artist: string, signal?: AbortSignal): Promise<SongSummary[]> =>
     request<SearchResults>(`/search?${new URLSearchParams({ title, artist })}`, { signal }).then(listOf),
   /** Every mapped song, A to Z by title: the music bank. */
@@ -44,6 +47,6 @@ export const api = {
     request<SearchResults>(`/favorites?${new URLSearchParams({ q })}`, { signal }).then(listOf),
   findVideo: (title: string, artist: string, signal?: AbortSignal) =>
     request<VideoMatch>(`/youtube?${new URLSearchParams({ title, artist })}`, { signal }),
-  fanChart: (req: FanChartRequest, signal?: AbortSignal) => request<Song>('/fan-chart', { method: 'POST', body: JSON.stringify(req), signal }),
-  createSong: (song: NewSong) => request<Song>('/songs', { method: 'POST', body: JSON.stringify(song) }),
+  fanChart: (req: FanChartRequest, signal?: AbortSignal) => song(request<Song>('/fan-chart', { method: 'POST', body: JSON.stringify(req), signal })),
+  createSong: (s: NewSong) => song(request<Song>('/songs', { method: 'POST', body: JSON.stringify(s) })),
 };

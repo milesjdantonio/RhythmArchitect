@@ -8,6 +8,7 @@
 // Their charts come from tools/map-audio.mjs; re-run it after changing the mapper.
 
 import type { Difficulty, NewSong, Song } from '../../src/api/types';
+import { upgradeSong } from '../../src/api/upgrade';
 import { demoSong } from './demo-song';
 import inkAndFury from './tracks/ink-and-fury.json';
 import restlessStacks from './tracks/the-restless-stacks.json';
@@ -47,11 +48,12 @@ function fromSong(s: NewSong, id: string, createdAt: string): Song {
   return { ...s, id, createdAt, best: {}, plays: 0, favorite: false, builtIn: true };
 }
 
+/** The built-in songs, each on today's four charts (one saved with three is upgraded: upgrade.ts). */
 export function builtInSongs(): Song[] {
-  return [
+  return ([
     demoSong(),
     fromTrack(inkAndFury, '2026-10-30T12:02:00.000Z'),
     fromTrack(restlessStacks as MappedTrack, '2026-10-30T12:01:00.000Z'),
     fromSong(oneDance as unknown as NewSong, 'builtin-one-dance', '2026-11-10T12:00:00.000Z'),
-  ];
+  ] as Song[]).map(upgradeSong);
 }

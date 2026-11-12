@@ -19,18 +19,8 @@ const CHORD_TONES = [['A4', 'C5', 'E5'], ['F4', 'A4', 'C5'], ['C5', 'E5', 'G5'],
 
 // Charts, same layout. A slot holds '.', a lane ("2"), a hold ("2h4" = held for 4 slots) or a
 // chord of several joined by '+' ("0+3", "0h4+3h4").
-const CHARTS: Record<Difficulty, { lanes: number; bars: string[] }> = {
-  easy: {
-    lanes: 4,
-    bars: [
-      '0 . 1 . 3 . . .', '1h3 . . . 0 . . .', '0 . 2 . 3 . . .', '3 . 2 . 0h4 . . .',
-      '0 . 1 . 2 . . .', '3 . 2 . 1 . 0 .', '1 . 2 . 3 . . .', '2h6 . . . . . . .',
-      '3 . 2 . 2 . 0 .', '2 . 0 . 2 . 3 .', '3 . 1 . 1 . 0 .', '0h3 . . . 3h3 . . .',
-      '3 . 1 . 3 . 1 .', '0 . 1 . 3 . 1 .', '0 . 3 . 0 . 3 .', '3 . 2 . 1 . 0 .',
-      '0 . 1 . 3h4 . . .', '2h7 . . . . . . .',
-    ],
-  },
-  medium: {
+// Easy (and Medium's start), hand-mapped.
+const STEADY = {
     lanes: 4,
     bars: [
       '0 . 1 . 3 . 2 1', '1h3 . . . 0 . 1 2', '0 . 1 . 2 . 3 .', '3 . 2 1 0h4 . . .',
@@ -39,8 +29,9 @@ const CHARTS: Record<Difficulty, { lanes: number; bars: string[] }> = {
       '3 2 0 2 3 2 0 .', '0 1 2 . 3 . 1 0', '0 1 3 . 0 . 3 .', '3 . 2 . 1 . 0 .',
       '0 . 1 . 3h4 . . .', '2h7 . . . . . . .',
     ],
-  },
-  hard: {
+};
+// Ultra, hand-mapped: every note, chords on the big hits.
+const FULL = {
     lanes: 4,
     bars: [
       '0+2 . 1 . 3 . 2 1', '2h4 . 3 . 0 . 1 2', '0 . 1 . 2 . 3 .', '3 . 2 1 0h4+2h4 . . .',
@@ -49,7 +40,22 @@ const CHARTS: Record<Difficulty, { lanes: number; bars: string[] }> = {
       '3+0 2 1 2 3 2 1 0', '0 1 2 3 3 2 1 0', '0 1 3 1 0 1 2 3', '3+1 . 2 . 1 . 0 .',
       '0 . 1 . 3h4+1h4 . . .', '2h7+0h7 . . . . . . .',
     ],
-  },
+};
+
+/** Hard: Ultra with one tile where it has a chord (taps under holds stay). */
+const noChords = (bar: string) => bar.split(' ').map((s) => s.split('+')[0]).join(' ');
+/** Medium: Easy, with Hard's tiles on the beat (even slots) wherever Easy has none and holds nothing. */
+function between(easy: string, hard: string): string {
+  const e = easy.split(' '), h = noChords(hard).split(' ');
+  const held = new Set<number>();
+  e.forEach((s, i) => { const m = /h(\d+)/.exec(s); if (m) for (let k = 1; k < Number(m[1]); k++) held.add(i + k); });
+  return e.map((s, i) => (s === '.' && i % 2 === 0 && !held.has(i) && !/h/.test(h[i]) ? h[i] : s)).join(' ');
+}
+const CHARTS: Record<Difficulty, { lanes: number; bars: string[] }> = {
+  easy: STEADY,
+  medium: { lanes: 4, bars: STEADY.bars.map((b, i) => between(b, FULL.bars[i])) },
+  hard: { lanes: 4, bars: FULL.bars.map(noChords) },
+  ultra: FULL,
 };
 
 const MINOR = SCALES.minor;
@@ -114,7 +120,7 @@ export function demoSong(): Song {
     },
     patch: { name: 'Neon Lead', oscillator: 'fatsawtooth', attack: 0.005, decay: 0.25, sustain: 0.5, release: 0.4, cutoff: 2800, space: 0.35 },
     backing: { bass: ['A2', 'F2', 'C3', 'G2'], drums: 'k.h.s.h.k.h.s.hh' },
-    charts: { easy: buildChart('easy'), medium: buildChart('medium'), hard: buildChart('hard') },
+    charts: { easy: buildChart('easy'), medium: buildChart('medium'), hard: buildChart('hard'), ultra: buildChart('ultra') },
     best: {},
     plays: 0,
     favorite: true,

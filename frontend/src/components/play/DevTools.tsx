@@ -196,7 +196,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
           {song.report.beat && <div><dt>Beat</dt><dd>{song.report.beat}</dd></div>}
           {song.report.listen && <div><dt>Listen</dt><dd>{song.report.listen}</dd></div>}
           <div><dt>Confidence</dt><dd>{Math.round(song.report.confidence * 100)}%</dd></div>
-          <div><dt>Tiles</dt><dd>{song.charts.easy.notes.length} / {song.charts.medium.notes.length} / {song.charts.hard.notes.length}</dd></div>
+          <div><dt>Tiles</dt><dd>{song.charts.easy.notes.length} / {song.charts.medium.notes.length} / {song.charts.hard.notes.length} / {song.charts.ultra.notes.length}</dd></div>
           <div><dt>Cues</dt><dd>{cues.length}</dd></div>
         </dl>
         <p className="dev-note mono">{song.report.sections.map((s) => `${s.label} @${s.beat}`).join(' · ')}</p>

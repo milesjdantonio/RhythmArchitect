@@ -8,7 +8,22 @@
 // seconds of the song keep their share of the harder chart's tiles (so quiet parts stay quieter
 // than choruses).
 
-import type { ChartNote, SoundEvent } from '../api/types';
+import type { ChartNote, Difficulty, SoundEvent } from '../api/types';
+
+/**
+ * How each difficulty keeps tiles of the full chart (Ultra): rows a second to aim for, spacing,
+ * share, chord size. Each step is about half again the one before it (on a busy song: Easy about
+ * 2 rows a second, Medium 3, Hard 4.6, Ultra all of them, 7-9 tiles a second on fast songs), and
+ * each adds one thing: Medium more taps, Hard chords of two and taps under holds, Ultra the whole
+ * chart. Easy is what Medium was before Ultra; Ultra what Hard was.
+ */
+export const KEEP: Record<Difficulty, Pick<ThinOptions, 'rate' | 'minGap' | 'share' | 'maxChord' | 'holdsAlone'>> = {
+  easy: { rate: 2.1, minGap: 0.24, share: 0.65, maxChord: 1, holdsAlone: true },
+  medium: { rate: 3.1, minGap: 0.16, share: 0.76, maxChord: 1, holdsAlone: true },
+  hard: { rate: 4.6, minGap: 0.1, share: 0.88, maxChord: 2, holdsAlone: false },
+  // Nearly the whole chart (chords of two at most, nothing closer than a 16th at 250 BPM).
+  ultra: { rate: 1000, minGap: 0.06, share: 1, maxChord: 2, holdsAlone: false },
+};
 
 export interface ThinOptions {
   /** Seconds per beat and where beat 0 is, to turn beats into seconds. */

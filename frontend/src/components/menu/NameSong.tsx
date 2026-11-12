@@ -197,8 +197,8 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       if (signal?.aborted) return;
       // Show the map landing on the sound it came from, then open it.
       const spb = 60 / song.bpm, at = song.source.offset ?? 0;
-      scope.current?.tiles(song.charts.hard.notes.map((n) => ({ time: at + n.t * spb, lane: n.lane })),
-        { easy: song.charts.easy.notes.length, medium: song.charts.medium.notes.length, hard: song.charts.hard.notes.length });
+      scope.current?.tiles(song.charts.ultra.notes.map((n) => ({ time: at + n.t * spb, lane: n.lane })),
+        { easy: song.charts.easy.notes.length, medium: song.charts.medium.notes.length, hard: song.charts.hard.notes.length, ultra: song.charts.ultra.notes.length });
       await finish(song, 3200);
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;

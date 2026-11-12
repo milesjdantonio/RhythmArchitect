@@ -1,9 +1,10 @@
 // Turns a song's notes into one chart per difficulty. Every tile is a note of the song at the
 // exact time it sounds: nothing is added, nudged, or picked at random. Difficulty only decides
-// which of the song's notes you play, and how:
-//   Easy   — the notes that stand out most, at least a beat apart; holds where a sound rings 2+ beats.
-//   Medium — more of them, half a beat apart; holds from 1.5 beats.
-//   Hard   — every note; taps under held notes; the biggest hits as two-lane chords.
+// which of the song's notes you play, and how (each a step up from the last):
+//   Easy   — the notes that stand out most, half a beat apart; holds from 1.5 beats.
+//   Medium — more of them, a third of a beat apart.
+//   Hard   — nearly every note, a 16th apart; taps under held notes.
+//   Ultra  — every note; the biggest hits as two-lane chords; fast songs not spaced out.
 // Lanes follow the pitch (higher notes further right, within a two-bar window), so the hand
 // moves with the melody. Fully deterministic: the same notes always give the same charts.
 
@@ -21,7 +22,7 @@ export interface MelodyNote {
   strong: boolean;
   /** MIDI pitch. */
   midi?: number;
-  /** A big hit with everything at once. Hard plays it as a two-lane chord. */
+  /** A big hit with everything at once. Ultra plays it as a two-lane chord. */
   accent?: boolean;
   /** 0..1, how much the note stands out from the music around it. */
   strength?: number;
@@ -38,20 +39,24 @@ interface Rules {
   /** Other tiles may fall while a hold is down. */
   playDuringHold: boolean;
   chords: boolean;
+  /** Fast songs space the tiles out more: the gap times this over 150 BPM, and the second over 125. */
+  fast: [number, number];
 }
 
+// Easy is what Medium was before Ultra, Ultra what Hard was; Medium and Hard are the steps between.
 export const RULES: Record<Difficulty, Rules> = {
-  easy: { lanes: 4, minGap: 1, keep: 0.6, holdMin: 2, playDuringHold: false, chords: false },
-  medium: { lanes: 4, minGap: 0.5, keep: 0.85, holdMin: 1.5, playDuringHold: false, chords: false },
-  hard: { lanes: 4, minGap: 0.24, keep: 1, holdMin: 1.5, playDuringHold: true, chords: true },
+  easy: { lanes: 4, minGap: 0.5, keep: 0.85, holdMin: 1.5, playDuringHold: false, chords: false, fast: [2, 1.5] },
+  medium: { lanes: 4, minGap: 0.33, keep: 0.9, holdMin: 1.5, playDuringHold: false, chords: false, fast: [1.5, 1.25] },
+  hard: { lanes: 4, minGap: 0.24, keep: 0.95, holdMin: 1.5, playDuringHold: true, chords: false, fast: [1.5, 1.25] },
+  ultra: { lanes: 4, minGap: 0.24, keep: 1, holdMin: 1.5, playDuringHold: true, chords: true, fast: [1, 1] },
 };
 
 const near = (t: number, g: number) => Math.abs(t / g - Math.round(t / g)) < 0.03;
 
-/** Fast songs space Easy and Medium out more, so tiles per second stay friendly. */
-function tempoRule(rule: Rules, difficulty: Difficulty, bpm?: number): Rules {
-  if (!bpm || difficulty === 'hard') return rule;
-  const f = bpm > 150 ? 2 : bpm > 125 ? 1.5 : 1;
+/** Fast songs space all but Ultra out more, so tiles per second stay friendly (Rules.fast). */
+function tempoRule(rule: Rules, _difficulty: Difficulty, bpm?: number): Rules {
+  if (!bpm) return rule;
+  const f = bpm > 150 ? rule.fast[0] : bpm > 125 ? rule.fast[1] : 1;
   return { ...rule, minGap: rule.minGap * f };
 }
 
@@ -138,7 +143,7 @@ export function chartFor(melody: MelodyNote[], difficulty: Difficulty, scale: nu
       if (lane === lastLane) lane = lane === 0 ? 1 : lane - 1;
     }
     // Long runs on one key get split across neighbours.
-    if (lane === lastLane && ++sameRun >= (difficulty === 'hard' ? 3 : 2)) {
+    if (lane === lastLane && ++sameRun >= (difficulty === 'hard' || difficulty === 'ultra' ? 3 : 2)) {
       lane = lane <= 1 ? lane + 1 : lane - 1;
       sameRun = 0;
     } else if (lane !== lastLane) sameRun = 0;
@@ -152,7 +157,7 @@ export function chartFor(melody: MelodyNote[], difficulty: Difficulty, scale: nu
     if (n.hold) holdEnd[lane] = n.t + n.len + 0.25;
     lastLane = lane;
 
-    // Hard: the biggest hits (everything at once in the music) become two-lane chords.
+    // Ultra: the biggest hits (everything at once in the music) become two-lane chords.
     if (rule.chords && n.accent) {
       const options = [...Array(L).keys()].filter((l) => Math.abs(l - lane) >= 2 && holdEnd[l] <= n.t)
         .sort((a, b) => Math.abs(b - lane) - Math.abs(a - lane) || a - b);
@@ -174,5 +179,6 @@ export function buildCharts(melody: MelodyNote[], scale: number[], baseMidi: num
     easy: chartFor(melody, 'easy', scale, baseMidi, bpm),
     medium: chartFor(melody, 'medium', scale, baseMidi, bpm),
     hard: chartFor(melody, 'hard', scale, baseMidi, bpm),
+    ultra: chartFor(melody, 'ultra', scale, baseMidi, bpm),
   };
 }

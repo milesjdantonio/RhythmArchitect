@@ -21,8 +21,9 @@ export interface ScopeHandle {
   mapping: (what: string, p?: number) => void;
 }
 
-const DIFFS: Difficulty[] = ['easy', 'medium', 'hard'];
-const DIFF_NAMES = ['Easy', 'Medium', 'Hard'];
+const DIFFS: Difficulty[] = ['easy', 'medium', 'hard', 'ultra'];
+const DIFF_NAMES = ['Easy', 'Medium', 'Hard', 'Ultra'];
+const ND = DIFFS.length;
 
 export type ScopePhase = 'listen' | 'map' | 'chart' | 'done';
 
@@ -57,7 +58,7 @@ const LANE_KEYS = ['D', 'F', 'J', 'K'];
  *           charted, and all three meters with it; then Easy, Medium and Hard, made from that
  *           chart, get their checks and tile counts one after another (the lanes flash for each).
  *   done    Every tile leaps from its sound down into its lane, left to right, and lands with a
- *           flash; then the tile counts of Easy, Medium and Hard count up.
+ *           flash; then the tile counts of Easy, Medium, Hard and Ultra count up.
  *
  * It also drives the full-screen aura behind the dialog (ListenAura). Everything is pooled: no
  * allocation per frame.
@@ -93,8 +94,8 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       laneFlash: new Float32Array(LANES), counts: null as Record<Difficulty, number> | null, burstDone: false,
       // each difficulty once made (done / total, its tiles); and the reveal, one difficulty at a
       // time (pNow)
-      pDone: new Float32Array(3), pTotal: new Float32Array(3), pTiles: new Float32Array(3), pOn: false,
-      pNow: 0, pFill: 0, pShown: new Uint8Array(3), pShownAt: 0, pTileShown: new Float32Array(3),
+      pDone: new Float32Array(ND), pTotal: new Float32Array(ND), pTiles: new Float32Array(ND), pOn: false,
+      pNow: 0, pFill: 0, pShown: new Uint8Array(ND), pShownAt: 0, pTileShown: new Float32Array(ND),
       // the trained mapper: its stage (0 none, 1 getting ready, 2 listening, 3 charting), how much
       // of the song it has charted, and the lanes' fill easing to that
       tStage: 0, tP: 0, tFill: 0,
@@ -440,7 +441,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
 
           // The difficulties made from the trained mapper's chart, ticked off one after another
           // (~0.45 s apart): the lanes flash for each.
-          if (st.pOn && !done && st.pNow < 3) {
+          if (st.pOn && !done && st.pNow < ND) {
             const i = st.pNow;
             const finished = st.pTotal[i] > 0 && st.pDone[i] >= st.pTotal[i];
             st.pFill = finished ? 1 : 0;
@@ -454,8 +455,9 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
                 st.laneFlash[l] = 1;
                 spark(w * (0.2 + Math.random() * 0.6), laneY(l, h), 4, 0.8, l % 3);
               }
-              ring(w * 0.5, laneY(1.5, h), i);
-              aura?.current?.pulse(i, 1);
+              // (Coloured like the three sound bands: Ultra as the brightest.)
+              ring(w * 0.5, laneY(1.5, h), Math.min(2, i));
+              aura?.current?.pulse(Math.min(2, i), 1);
             } else fillTo(w * st.pFill);
           }
 
@@ -593,14 +595,14 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
           const trainedNow = st.tStage > 0 && !st.pOn;
           const building = trainedNow
             ? st.tStage === 1 ? 'the AI is getting ready' : st.tStage === 2 ? 'the AI is listening to the song' : st.tStage === 3 ? `the AI is charting the song ${Math.round(st.tP * 100)}%` : `the AI is charting Hard busier ${Math.round(st.tP * 100)}%`
-            : !charting || !st.pOn ? '' : st.pNow < 3 ? `${DIFF_NAMES[st.pNow]} from its chart` : '';
+            : !charting || !st.pOn ? '' : st.pNow < ND ? `${DIFF_NAMES[st.pNow]} from its chart` : '';
           const text = done ? 'Every tile on a sound' : building ? building : charting ? `${st.sn} sounds · the AI is charting` : ph === 'map' ? `${st.heard} sounds heard · ${st.mapWhat}${st.mapP >= 0 ? ` ${Math.round(st.mapP * 100)}%` : ''}` : `${st.heard} sounds heard`;
           if (status.current.textContent !== text) status.current.textContent = text;
           // The difficulties under the field while the trained mapper makes them.
           const el = countsEl.current;
           if (el && (charting || trainedNow) && (st.pOn || trainedNow) && !done) {
             if (el.dataset.mode !== 'chart') { el.dataset.mode = 'chart'; el.dataset.on = 'true'; }
-            for (let i = 0; i < 3; i++) {
+            for (let i = 0; i < ND; i++) {
               const item = el.children[i] as HTMLElement | undefined;
               if (!item) continue;
               // The trained mapper makes all three at once: all three are lit together.
