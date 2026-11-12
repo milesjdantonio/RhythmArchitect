@@ -82,25 +82,45 @@ public class SongController {
         return ResponseEntity.noContent().build();
     }
 
-    /** Counts a play and keeps the best score for the difficulty. Autoplay runs are never sent. */
+    /**
+     * Counts a play and keeps the best score for the difficulty. Autoplay runs are never sent. A run
+     * the game recorded (`run`) is counted again through the game's model classes (RunReplay:
+     * main.Score with the multiplier and holds on top) and that is what's kept, marked
+     * "rules": "score"; a best from before (the game's old points) gives way to any such run.
+     */
     @PostMapping("/songs/{id}/scores")
     public ObjectNode score(@PathVariable String id, @RequestBody JsonNode body) {
         String difficulty = body.path("difficulty").asString("");
         if (!java.util.List.of(DIFFICULTIES).contains(difficulty) || !NewSongCheck.finite(body.path("score"))) {
             throw ApiException.badRequest("Bad score");
         }
+        RunReplay.Result counted = null;
+        if (body.has("run")) {
+            counted = RunReplay.of(body.path("run").asString(null));
+            if (counted == null) throw ApiException.badRequest("Bad run");
+        }
+        RunReplay.Result replay = counted;
         return store.write(all -> {
             ObjectNode song = store.find(all, id).orElseThrow(SongController::missing);
             song.put("plays", song.path("plays").asInt(0) + 1);
             ObjectNode best = song.path("best") instanceof ObjectNode b ? b : song.putObject("best");
             JsonNode prev = best.path(difficulty);
-            long score = Math.round(body.path("score").asDouble());
-            if (prev.isMissingNode() || prev.isNull() || score > prev.path("score").asDouble()) {
+            RunReplay.Result replayed = replay;
+            long score = replayed != null ? replayed.score() : Math.round(body.path("score").asDouble());
+            boolean old = !prev.isMissingNode() && !prev.isNull() && !"score".equals(prev.path("rules").asString(""));
+            if (prev.isMissingNode() || prev.isNull() || (replayed != null && old) || score > prev.path("score").asDouble()) {
                 ObjectNode run = best.putObject(difficulty);
                 run.put("score", score);
-                run.set("accuracy", body.path("accuracy"));
-                run.set("maxCombo", body.path("maxCombo"));
-                run.set("grade", body.path("grade"));
+                if (replayed != null) {
+                    run.put("accuracy", replayed.accuracy());
+                    run.put("maxCombo", replayed.maxCombo());
+                    run.put("grade", RunReplay.gradeFor(replayed.accuracy(), "F".equals(body.path("grade").asString(""))));
+                    run.put("rules", "score");
+                } else {
+                    run.set("accuracy", body.path("accuracy"));
+                    run.set("maxCombo", body.path("maxCombo"));
+                    run.set("grade", body.path("grade"));
+                }
                 run.put("at", Instant.now().toString());
             }
             return song.deepCopy();

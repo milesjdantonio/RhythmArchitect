@@ -14,7 +14,7 @@ Base URL: `VITE_API_BASE_URL` (empty means same origin). All bodies are JSON. Er
 | `GET /api/songs/:id` | | `Song` |
 | `PATCH /api/songs/:id` | `{ title?, favorite? }` | `Song` |
 | `DELETE /api/songs/:id` | | `204` (the dev tools' "Delete map") |
-| `POST /api/songs/:id/scores` | `{ difficulty, score, accuracy, maxCombo, grade }` | `Song` (plays + 1; `best[difficulty]` kept if higher). Autoplay runs are never sent. |
+| `POST /api/songs/:id/scores` | `{ difficulty, score, accuracy, maxCombo, grade, run? }` | `Song` (plays + 1; `best[difficulty]` kept if higher). Autoplay runs are never sent. `run` is the run in order (`P` `G` `E` `L` a hit as `main.HitResult`, `M` a miss, `H<ms>;` a held note held its length, `B` one let go): the server counts it again through `main.GameScore` (`Score` with the combo multiplier and the hold bonus) and keeps that score, accuracy, max combo and grade, marked `rules: "score"`; a best without it (the old points) gives way to any such run. A `run` that isn't one: 400 "Bad run". |
 
 ## Search and favourites
 
