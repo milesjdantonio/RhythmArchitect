@@ -1,6 +1,7 @@
 package main;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Locale;
@@ -17,6 +18,8 @@ import java.util.Locale;
  * java -cp out main.ModelDemo                                        (One Dance, Easy)
  * java -cp out main.ModelDemo src/java/charts/ink-and-fury.chart hard
  * </pre>
+ *
+ * Or VS Code's Run button above main (it starts in backend/; the chart is still found).
  */
 public class ModelDemo
 {
@@ -30,7 +33,7 @@ public class ModelDemo
      */
     public static void main(String[] args)
     {
-        Path file = Path.of(args.length > 0 ? args[0] : DEFAULT_CHART);
+        Path file = locate(Path.of(args.length > 0 ? args[0] : DEFAULT_CHART));
         Difficulty difficulty = null;
         if(args.length > 1)
         {
@@ -135,5 +138,32 @@ public class ModelDemo
                 System.out.println("  " + e.getMessage());
             }
         }
+    }
+
+    /**
+     * Finds a chart named relative to the repo root wherever the demo was started: VS Code's Run
+     * button starts it in backend/ (the Maven project it is built in), not the repo root. A relative
+     * path that isn't there is looked for under each folder above the working directory.
+     *
+     * @param file the chart path as given
+     * @return the first place it exists, or the path as given if it is nowhere
+     */
+    static Path locate(Path file)
+    {
+        if(file.isAbsolute() || Files.exists(file))
+        {
+            return file;
+        }
+        Path dir = Path.of("").toAbsolutePath().getParent();
+        while(dir != null)
+        {
+            Path candidate = dir.resolve(file);
+            if(Files.exists(candidate))
+            {
+                return candidate;
+            }
+            dir = dir.getParent();
+        }
+        return file;
     }
 }
