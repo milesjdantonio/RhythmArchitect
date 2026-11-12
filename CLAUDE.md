@@ -61,9 +61,13 @@ Hard); they play it. The AI does not make music. Market and word everything that
 - Scoring is `main.Score`'s rules (Perfect 100, Good 75, Early/Late 50, accuracy, combo) with the
   game's combo multiplier (×1-×4) and held-note bonus on top: `main.GameScore` (Score.java itself is
   Darsh's: add on top, don't edit it). The browser counts with the same rules
-  (`src/game/score.ts`) and records the run; the server replays it through GameScore
+  (`src/game/score.ts`) and records the run; the server checks it against the difficulty's
+  `Queue<Note>` (`RunReplay.fits`; the mock: `runFits`) and replays it through GameScore
   (`RunReplay`) before keeping a best. Change both together; `score.test.ts`, `GameScoreTest` and
   ApiTests share one run that must give the same numbers.
+- The server takes every song into the model (`backend/.../songs/SongModel.java`: the bank's JSON
+  → `SongWriter.writeSong(..., tiles)` → `main.Song`); new songs and fan charts it can't take in are
+  refused (`NewSongCheck`). The bank itself stays JSON.
 - Dev tools live on the game screen (` key): autoplay, the note queue, clock, judgements, tuning,
   effects, map data. Keep them working when gameplay changes.
 

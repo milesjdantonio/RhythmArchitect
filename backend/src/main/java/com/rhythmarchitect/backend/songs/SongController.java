@@ -3,6 +3,8 @@ package com.rhythmarchitect.backend.songs;
 import java.time.Instant;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -17,6 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.rhythmarchitect.backend.web.ApiException;
 
+import main.Difficulty;
+import main.Note;
+import main.Queue;
+import main.SongWriter;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -25,7 +32,7 @@ import tools.jackson.databind.node.ObjectNode;
 @RequestMapping("/api")
 public class SongController {
 
-    private static final String[] DIFFICULTIES = { "easy", "medium", "hard" };
+    private static final Logger log = LoggerFactory.getLogger(SongController.class);
 
     private final SongStore store;
 
@@ -84,28 +91,30 @@ public class SongController {
 
     /**
      * Counts a play and keeps the best score for the difficulty. Autoplay runs are never sent. A run
-     * the game recorded (`run`) is counted again through the game's model classes (RunReplay:
-     * main.Score with the multiplier and holds on top) and that is what's kept, marked
+     * the game recorded (`run`) is checked against the song's chart and counted again through the
+     * game's model classes (RunReplay: the difficulty's Queue of Notes from SongModel, then
+     * main.GameScore, Score with the multiplier and holds on top), and that is what's kept, marked
      * "rules": "score"; a best from before (the game's old points) gives way to any such run.
      */
     @PostMapping("/songs/{id}/scores")
     public ObjectNode score(@PathVariable String id, @RequestBody JsonNode body) {
         String difficulty = body.path("difficulty").asString("");
-        if (!java.util.List.of(DIFFICULTIES).contains(difficulty) || !NewSongCheck.finite(body.path("score"))) {
+        Difficulty level = SongModel.difficulty(difficulty);
+        if (level == null || !NewSongCheck.finite(body.path("score"))) {
             throw ApiException.badRequest("Bad score");
         }
-        RunReplay.Result counted = null;
-        if (body.has("run")) {
-            counted = RunReplay.of(body.path("run").asString(null));
-            if (counted == null) throw ApiException.badRequest("Bad run");
-        }
-        RunReplay.Result replay = counted;
+        boolean recorded = body.has("run");
+        String runText = recorded ? body.path("run").asString(null) : null;
         return store.write(all -> {
             ObjectNode song = store.find(all, id).orElseThrow(SongController::missing);
+            RunReplay.Result replayed = null;
+            if (recorded) {
+                replayed = RunReplay.of(runText, chartOf(song, level));
+                if (replayed == null) throw ApiException.badRequest("Bad run");
+            }
             song.put("plays", song.path("plays").asInt(0) + 1);
             ObjectNode best = song.path("best") instanceof ObjectNode b ? b : song.putObject("best");
             JsonNode prev = best.path(difficulty);
-            RunReplay.Result replayed = replay;
             long score = replayed != null ? replayed.score() : Math.round(body.path("score").asDouble());
             boolean old = !prev.isMissingNode() && !prev.isNull() && !"score".equals(prev.path("rules").asString(""));
             if (prev.isMissingNode() || prev.isNull() || (replayed != null && old) || score > prev.path("score").asDouble()) {
@@ -125,6 +134,21 @@ public class SongController {
             }
             return song.deepCopy();
         });
+    }
+
+    /**
+     * The chart the run was played on: the song as the model has it, its Queue of Notes for the
+     * difficulty (empty when it has none). Null when the model can't take a stored song (one from
+     * an older format): its runs are counted unchecked, as before.
+     */
+    private static Queue<Note> chartOf(ObjectNode song, Difficulty level) {
+        try {
+            Queue<Note> chart = SongWriter.chartFor(SongModel.of(song), level);
+            return chart != null ? chart : new Queue<>();
+        } catch (IllegalArgumentException e) {
+            log.warn("Song {} doesn't fit the model ({}); its run is counted unchecked", song.path("id").asString(""), e.getMessage());
+            return null;
+        }
     }
 
     @GetMapping("/search")

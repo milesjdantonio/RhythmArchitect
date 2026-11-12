@@ -14,7 +14,7 @@ Base URL: `VITE_API_BASE_URL` (empty means same origin). All bodies are JSON. Er
 | `GET /api/songs/:id` | | `Song` |
 | `PATCH /api/songs/:id` | `{ title?, favorite? }` | `Song` |
 | `DELETE /api/songs/:id` | | `204` (the dev tools' "Delete map") |
-| `POST /api/songs/:id/scores` | `{ difficulty, score, accuracy, maxCombo, grade, run? }` | `Song` (plays + 1; `best[difficulty]` kept if higher). Autoplay runs are never sent. `run` is the run in order (`P` `G` `E` `L` a hit as `main.HitResult`, `M` a miss, `H<ms>;` a held note held its length, `B` one let go): the server counts it again through `main.GameScore` (`Score` with the combo multiplier and the hold bonus) and keeps that score, accuracy, max combo and grade, marked `rules: "score"`; a best without it (the old points) gives way to any such run. A `run` that isn't one: 400 "Bad run". |
+| `POST /api/songs/:id/scores` | `{ difficulty, score, accuracy, maxCombo, grade, run? }` | `Song` (plays + 1; `best[difficulty]` kept if higher). Autoplay runs are never sent. `run` is the run in order (`P` `G` `E` `L` a hit as `main.HitResult`, `M` a miss, `H<ms>;` a held note held its length, `B` one let go): the server checks it against the song's chart for that difficulty (the game's model: a `Queue` of `Note`s, so no more tiles judged than the chart has, no more holds ended than it has, no hold held longer than its holds, within 2 ms) and counts it again through `main.GameScore` (`Score` with the combo multiplier and the hold bonus), and keeps that score, accuracy, max combo and grade, marked `rules: "score"`; a best without it (the old points) gives way to any such run. A `run` that isn't one, or that the chart couldn't have given: 400 "Bad run" (no play counted). |
 
 ## Search and favourites
 
@@ -32,8 +32,8 @@ Base URL: `VITE_API_BASE_URL` (empty means same origin). All bodies are JSON. Er
 | Route | Body | Returns |
 |---|---|---|
 | `GET /api/youtube?title=&artist=` | | `VideoMatch`: the video that plays the song. `title` may be a YouTube link (no API key needed; checked with oEmbed). Searching by name needs `YOUTUBE_API_KEY` on the server (else `503` with a message saying so). `422` when the video can't be embedded. |
-| `POST /api/songs` | `NewSong` (a song the browser mapped by listening; `source.kind` must be `youtube`) | `201 Song` |
-| `POST /api/fan-chart` | `{ title, artist, videoId, seconds? }` | `201 Song`: a fan-made osu! chart of the song, lined up with the video, saved. `404` if there's none. |
+| `POST /api/songs` | `NewSong` (a song the browser mapped by listening; `source.kind` must be `youtube`) | `201 Song`. Every tile at beat 0 or later and every hold with a length ("A bad tile in the … chart"), and the song must go into the game's model (`main.SongWriter` writes it as a `main.Song`; 400 "The game can't play this map: …" if not). |
+| `POST /api/fan-chart` | `{ title, artist, videoId, seconds? }` | `201 Song`: a fan-made osu! chart of the song, lined up with the video, saved. `404` if there's none, or if it doesn't pass the same checks as `POST /api/songs`. |
 | `PATCH /api/songs/:id` | `{ offset }` | `Song` with `source.offset` changed (the dev tools' Song sync). |
 
 Nothing is ever composed or invented. The browser does the listening, because only it can hear

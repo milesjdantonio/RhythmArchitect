@@ -2,9 +2,15 @@ package com.rhythmarchitect.backend.songs;
 
 import com.rhythmarchitect.backend.match.Text;
 
+import main.Difficulty;
+
 import tools.jackson.databind.JsonNode;
 
-/** What's wrong with a song the browser mapped (POST /api/songs), or null if it can be saved. */
+/**
+ * What's wrong with a song the browser mapped (POST /api/songs) or a fan chart, or null if it can be
+ * saved: its fields, then the song as the game's model takes it in (SongModel: a main.Song with a
+ * Queue of Notes per difficulty, written by main.SongWriter).
+ */
 public final class NewSongCheck {
 
     private NewSongCheck() {
@@ -25,17 +31,24 @@ public final class NewSongCheck {
             return "Only songs that play from YouTube can be added this way";
         }
         if (src.has("offset") && !finite(src.path("offset"))) return "Bad offset";
-        for (String d : new String[] { "easy", "medium", "hard" }) {
+        for (Difficulty level : Difficulty.values()) {
+            String d = SongModel.name(level);
             JsonNode c = b.path("charts").path(d);
             if (c.path("lanes").asInt(0) != 4 || !c.path("notes").isArray()) return "Missing the " + d + " chart";
             for (JsonNode n : c.path("notes")) {
                 JsonNode lane = n.path("lane");
-                if (!finite(n.path("t")) || !lane.isIntegralNumber() || lane.asInt() < 0 || lane.asInt() > 3 || !finite(n.path("len"))) {
+                if (!finite(n.path("t")) || n.path("t").asDouble() < 0 || !lane.isIntegralNumber() || lane.asInt() < 0 || lane.asInt() > 3
+                    || !finite(n.path("len")) || (n.path("hold").asBoolean(false) && n.path("len").asDouble() <= 0)) {
                     return "A bad tile in the " + d + " chart";
                 }
             }
         }
         if (b.path("charts").path("hard").path("notes").isEmpty()) return "The map has no tiles";
+        try {
+            SongModel.of(b);
+        } catch (IllegalArgumentException e) {
+            return "The game can't play this map: " + e.getMessage();
+        }
         JsonNode report = b.path("report");
         if (!report.path("sections").isArray() || !report.path("energy").isArray()) return "Missing the map report";
         return null;

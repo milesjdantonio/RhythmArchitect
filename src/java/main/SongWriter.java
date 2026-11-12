@@ -29,6 +29,9 @@ import java.util.Map;
  * Beats count from beat 0; lanes are 0-3 (keys D F J K); a hold length of 0 is a tap; the letter
  * (A-G) is the note's pitch, A when left out. Each Note gets its time and length in seconds.
  * Bad charts are rejected with an IllegalArgumentException that says what is wrong.
+ *
+ * A chart that is already in pieces (the game server's songs, kept as the app sends them) comes in
+ * the same way as {@link Tile}s: {@link #writeSong(String, String, double, double, Map)}.
  */
 public class SongWriter
 {
@@ -40,8 +43,15 @@ public class SongWriter
     /** How long a tap lasts, in beats (a sixteenth note). */
     private static final double TAP_BEATS = 0.25;
 
-    /** One note of a chart line, before it becomes a Note. */
-    private record Tile(double beat, int lane, double holdBeats, NoteType letter) { }
+    /**
+     * One note of a chart, before it becomes a Note.
+     *
+     * @param beat      when it reaches the hit line, in beats from beat 0 (0 or more)
+     * @param lane      its lane, 0-3
+     * @param holdBeats how long it is held, in beats (0 for a tap)
+     * @param letter    its pitch, A-G (null: A)
+     */
+    public record Tile(double beat, int lane, double holdBeats, NoteType letter) { }
 
     /**
      * Initializes the SongWriter.
@@ -115,6 +125,31 @@ public class SongWriter
                 default -> throw new IllegalArgumentException("Unknown line: " + key);
             }
         }
+        Map<Difficulty, List<Tile>> charts = new EnumMap<Difficulty, List<Tile>>(Difficulty.class);
+        for(Map.Entry<Difficulty, String> e: lines.entrySet())
+        {
+            charts.put(e.getKey(), tiles(e.getKey(), e.getValue()));
+        }
+        return writeSong(title, artist, bpm, duration, charts);
+    }
+
+    /**
+     * Writes the Song of a chart that is already in pieces.
+     *
+     * @param title    the song's title
+     * @param artist   who it's by
+     * @param bpm      its tempo in beats per minute (more than 0)
+     * @param duration its length in seconds (0: up to the last note)
+     * @param charts   each difficulty's notes, in any order (an empty or missing one has no chart)
+     * @return the song, with a note queue for each difficulty that has notes
+     * @throws IllegalArgumentException for a missing or blank title or artist, a BPM that isn't a
+     *                                  number above 0, a duration below 0, a note before beat 0,
+     *                                  outside lanes 0-3 or with a negative hold, or no notes at
+     *                                  all
+     */
+    public Song writeSong(String title, String artist, double bpm, double duration,
+        Map<Difficulty, List<Tile>> charts)
+    {
         if(title == null || title.isBlank())
         {
             throw new IllegalArgumentException("The chart needs a title.");
@@ -123,19 +158,33 @@ public class SongWriter
         {
             throw new IllegalArgumentException("The chart needs an artist.");
         }
-        if(!(bpm > 0))
+        if(!(bpm > 0) || Double.isInfinite(bpm))
         {
             throw new IllegalArgumentException("The chart's BPM must be more than 0.");
         }
+        if(!(duration >= 0) || Double.isInfinite(duration))
+        {
+            throw new IllegalArgumentException("The chart's duration can't be below 0.");
+        }
+        if(charts == null)
+        {
+            throw new IllegalArgumentException("The chart has no notes.");
+        }
         Map<Difficulty, List<Tile>> tiles = new EnumMap<Difficulty, List<Tile>>(Difficulty.class);
         double lastBeat = 0;
-        for(Map.Entry<Difficulty, String> e: lines.entrySet())
+        for(Map.Entry<Difficulty, List<Tile>> e: charts.entrySet())
         {
-            List<Tile> list = tiles(e.getKey(), e.getValue());
-            if(list.isEmpty())
+            if(e.getKey() == null || e.getValue() == null || e.getValue().isEmpty())
             {
                 continue;
             }
+            List<Tile> list = new ArrayList<Tile>();
+            for(Tile t: e.getValue())
+            {
+                check(e.getKey(), t);
+                list.add(t);
+            }
+            list.sort(Comparator.comparingDouble(Tile::beat).thenComparingInt(Tile::lane));
             tiles.put(e.getKey(), list);
             for(Tile t: list)
             {
@@ -235,8 +284,18 @@ public class SongWriter
             }
             out.add(new Tile(beat, lane, hold, letter));
         }
-        out.sort(Comparator.comparingDouble(Tile::beat).thenComparingInt(Tile::lane));
         return out;
+    }
+
+    /** Turns down a note before beat 0, outside lanes 0-3 or with a negative hold. */
+    private static void check(Difficulty difficulty, Tile t)
+    {
+        if(t == null || !(t.beat() >= 0) || Double.isInfinite(t.beat()) || t.lane() < 0
+            || t.lane() >= LANES || !(t.holdBeats() >= 0) || Double.isInfinite(t.holdBeats()))
+        {
+            throw new IllegalArgumentException("Bad note in " + difficulty + ": " + t
+                + " (a note needs a beat of 0 or more, a lane of 0-3 and a hold of 0 or more)");
+        }
     }
 
     private static IllegalArgumentException bad(Difficulty difficulty, String token)
@@ -246,8 +305,8 @@ public class SongWriter
     }
 
     /**
-     * The notes as a queue: times and lengths in seconds, the first START, the last END, notes
-     * played together (a chord) ACCENT, the rest NORMAL.
+     * The notes as a queue: times and lengths in seconds, a hold where the tile is held, the first
+     * START, the last END, notes played together (a chord) ACCENT, the rest NORMAL.
      */
     private static Queue<Note> notes(List<Tile> tiles, double spb)
     {
@@ -262,7 +321,8 @@ public class SongWriter
                 : chord ? MusicNoteType.ACCENT
                 : MusicNoteType.NORMAL;
             double length = (t.holdBeats() > 0 ? t.holdBeats() : TAP_BEATS) * spb;
-            queue.enqueue(new Note(t.letter(), role, length, t.beat() * spb, t.lane()));
+            queue.enqueue(new Note(t.letter(), role, length, t.beat() * spb, t.lane(),
+                t.holdBeats() > 0));
         }
         return queue;
     }

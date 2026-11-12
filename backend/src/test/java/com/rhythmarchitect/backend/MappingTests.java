@@ -1,8 +1,12 @@
 package com.rhythmarchitect.backend;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -11,14 +15,25 @@ import org.junit.jupiter.api.Test;
 import com.rhythmarchitect.backend.match.Matching;
 import com.rhythmarchitect.backend.match.Text;
 import com.rhythmarchitect.backend.osu.Osu;
+import com.rhythmarchitect.backend.songs.RunReplay;
+import com.rhythmarchitect.backend.songs.SongModel;
 
 import main.Difficulty;
+import main.MusicNoteType;
+import main.Note;
+import main.NoteType;
+import main.Queue;
 import main.Song;
+import main.SongWriter;
 
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
-/** The pure parts: text matching and the osu! port. (The model's own tests are in src/java/test.) */
+/**
+ * The pure parts: text matching, the osu! port, and songs as the game's model has them (SongModel,
+ * RunReplay). (The model's own tests are in src/java/test.)
+ */
 class MappingTests {
 
     @Test
@@ -76,5 +91,64 @@ class MappingTests {
         assertEquals(48, song.path("report").path("energy").size());
         assertEquals("Chorus", song.path("report").path("sections").get(1).path("label").asString());
         assertTrue(com.rhythmarchitect.backend.songs.NewSongCheck.problem(song) == null, "a fan song passes the new-song checks");
+    }
+
+    @Test
+    void theBuiltInSongsAreModelSongs() throws Exception {
+        JsonNode seed = JsonMapper.builder().build().readTree(Files.readString(Path.of("src", "main", "resources", "seed", "songs.json")));
+        SongWriter writer = new SongWriter();
+        assertTrue(seed.path("songs").size() >= 4);
+        for (JsonNode s : seed.path("songs")) {
+            Song song = SongModel.of(s);
+            assertEquals(s.path("title").asString(), song.getTitle());
+            assertEquals(s.path("lengthBeats").asDouble() * 60 / s.path("bpm").asDouble(), song.getDuration(), 1e-9);
+            // The chart files the model's own tests read (frontend/tools/export-charts.mjs) hold the same songs.
+            String file = s.path("id").asString().replaceFirst("^(builtin|demo)-", "") + ".chart";
+            Song exported = writer.readSong(Path.of("..", "src", "java", "charts", file));
+            for (Difficulty d : Difficulty.values()) {
+                JsonNode notes = s.path("charts").path(SongModel.name(d)).path("notes");
+                Queue<Note> chart = song.getChart(d);
+                assertNotNull(chart, s.path("id").asString() + " " + d);
+                int holds = 0;
+                for (JsonNode n : notes) if (n.path("hold").asBoolean(false)) holds++;
+                int modelHolds = 0;
+                double last = -1;
+                for (int i = 0, size = chart.getSize(); i < size; i++) {
+                    Note n = chart.dequeue();
+                    if (n.isHold()) modelHolds++;
+                    assertTrue(n.getTimeStamp() >= last, "in play order");
+                    last = n.getTimeStamp();
+                    chart.enqueue(n);
+                }
+                assertEquals(notes.size(), size(song, d), s.path("id").asString() + " " + d);
+                assertEquals(holds, modelHolds, s.path("id").asString() + " " + d + " holds");
+                assertEquals(notes.size(), size(exported, d), file + " " + d);
+            }
+        }
+    }
+
+    private static int size(Song song, Difficulty d) {
+        Queue<Note> chart = song.getChart(d);
+        return chart == null ? 0 : chart.getSize();
+    }
+
+    @Test
+    void aRunIsCheckedAgainstItsChart() {
+        // Two tiles: a tap, then a hold of one second.
+        Queue<Note> chart = new Queue<>();
+        chart.enqueue(new Note(NoteType.C, MusicNoteType.START, 0.25, 0, 0));
+        chart.enqueue(new Note(NoteType.E, MusicNoteType.END, 1.0, 1, 2, true));
+        assertNotNull(RunReplay.of("PPH1000;", chart));
+        assertNotNull(RunReplay.of("PPH1002;", chart), "rounding");
+        assertNotNull(RunReplay.of("PPB", chart));
+        assertNotNull(RunReplay.of("PM", chart));
+        assertNotNull(RunReplay.of("", chart), "a run that failed at once");
+        assertNull(RunReplay.of("PPP", chart), "three tiles judged");
+        assertNull(RunReplay.of("PPH1003;", chart), "held longer than the hold");
+        assertNull(RunReplay.of("PPH500;B", chart), "two holds ended");
+        assertNull(RunReplay.of("P", new Queue<>()), "no chart for the difficulty");
+        assertEquals(2, chart.getSize(), "the chart is left as it was");
+        assertEquals(MusicNoteType.START, chart.peek().getMusicNoteType());
+        assertNotNull(RunReplay.of("PPPPPPPPPPPPPPPP", null), "no chart: counted unchecked");
     }
 }

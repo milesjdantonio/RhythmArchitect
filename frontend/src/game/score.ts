@@ -11,8 +11,11 @@
 //
 // The game counts with these as it plays (engine.ts) and records the run in order (`run`: P G E
 // L M for the hits and misses, H<ms>; for a hold held its length in milliseconds, B for a hold let
-// go). The server replays the run through GameScore and saves that (backend RunReplay.java); the
-// mock server replays it here (replayRun). Free of browser APIs.
+// go). The server checks the run against the chart it was played on (the difficulty's Queue of
+// Notes) and replays it through GameScore, and saves that (backend RunReplay.java); the mock
+// server does both here (runFits, replayRun). Free of browser APIs.
+
+import type { Chart } from '../api/types';
 
 /** main.HitResult. */
 export type HitResult = 'PERFECT' | 'GOOD' | 'EARLY' | 'LATE' | 'MISS';
@@ -96,4 +99,29 @@ export function replayRun(run: string): RunScore | null {
     else s.add(FROM_CODE[m[0]]);
   }
   return s;
+}
+
+/** How far a hold's recorded time may be off its length, in milliseconds (rounding). */
+export const HOLD_SLACK_MS = 2;
+
+/**
+ * Whether a run could have been played on the chart (backend RunReplay.fits, on the chart as the
+ * model's Queue of Notes): every tile is judged once, so no more tiles judged than the chart has,
+ * no more holds ended than it has, and the holds held to their end, longest first, each no longer
+ * than the chart's holds, longest first. A run ended early (a fail) judges fewer.
+ */
+export function runFits(run: string, chart: Chart, bpm: number): boolean {
+  const spb = 60 / bpm;
+  const holds = chart.notes.filter((n) => n.hold && n.len > 0).map((n) => Math.round(n.len * spb * 1000)).sort((a, b) => b - a);
+  const held: number[] = [];
+  let judged = 0;
+  let ended = 0;
+  for (const m of run.matchAll(/[PGELMB]|H(\d+);/g)) {
+    if (m[1] !== undefined) held.push(Number(m[1]));
+    if (m[1] !== undefined || m[0] === 'B') ended++;
+    else judged++;
+  }
+  if (judged > chart.notes.length || ended > holds.length) return false;
+  held.sort((a, b) => b - a);
+  return held.every((ms, i) => ms <= holds[i] + HOLD_SLACK_MS);
 }

@@ -24,7 +24,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { FanChartRequest, NewSong, ScoreSubmit, Song, SongPatch, SongSummary } from '../src/api/types';
 import { sortAtoZ } from '../src/library/bank';
 import { DIFFICULTIES } from '../src/api/types';
-import { replayRun } from '../src/game/score';
+import { replayRun, runFits } from '../src/game/score';
 import { gradeFor } from '../src/game/engine';
 import { builtInSongs } from './songs/builtins';
 import { fanSong } from '../src/mapping/osu';
@@ -96,7 +96,10 @@ export function checkNewSong(b: NewSong): string | null {
     const c = b.charts?.[d];
     if (!c || c.lanes !== 4 || !Array.isArray(c.notes)) return `Missing the ${d} chart`;
     for (const n of c.notes) {
-      if (!Number.isFinite(n.t) || !Number.isInteger(n.lane) || n.lane < 0 || n.lane > 3 || !Number.isFinite(n.len)) return `A bad tile in the ${d} chart`;
+      // The backend also takes the song in through the game's model (SongModel, main.SongWriter),
+      // which needs every tile at beat 0 or later and every hold to have a length.
+      if (!Number.isFinite(n.t) || n.t < 0 || !Number.isInteger(n.lane) || n.lane < 0 || n.lane > 3 || !Number.isFinite(n.len)
+        || (n.hold && !(n.len > 0))) return `A bad tile in the ${d} chart`;
     }
   }
   if (!b.charts.hard.notes.length) return 'The map has no tiles';
@@ -251,9 +254,12 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
         if (parts.length === 3 && parts[2] === 'scores' && method === 'POST') {
           const body = (await readJson(req)) as ScoreSubmit;
           if (!DIFFICULTIES.includes(body.difficulty) || !Number.isFinite(body.score)) return fail(res, 400, 'Bad score');
-          // A recorded run is counted again (the backend runs it through main.GameScore; this is
-          // the same rules, src/game/score.ts) and that is what's kept.
-          const replayed = body.run !== undefined ? replayRun(body.run) : undefined;
+          // A recorded run is checked against the chart it was played on and counted again (the
+          // backend runs it through the model's Queue of Notes and main.GameScore; this is the
+          // same rules, src/game/score.ts) and that is what's kept.
+          const chart = song.charts[body.difficulty] ?? { difficulty: body.difficulty, lanes: 4, notes: [] };
+          const counted = body.run !== undefined ? replayRun(body.run) : undefined;
+          const replayed = counted && !runFits(body.run!, chart, song.bpm) ? null : counted;
           if (replayed === null) return fail(res, 400, 'Bad run');
           song.plays += 1;
           const prev = song.best[body.difficulty];
@@ -293,6 +299,9 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
         const seconds = typeof body.seconds === 'number' && body.seconds > 0 ? body.seconds : undefined;
         const found = await findFanChart(title, artist, seconds);
         const song = fanSong(found.maps, { title, artist, videoId: body.videoId, seconds });
+        // Kept only if it passes what a mapped song must (the backend: the game's model can play it).
+        const problem = checkNewSong(song);
+        if (problem) return fail(res, 404, `The fan chart found for this song can't be played: ${problem}`);
         return send(res, 201, add(load(), song));
       }
       return fail(res, 404, 'No such route');

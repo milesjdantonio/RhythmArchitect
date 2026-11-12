@@ -75,29 +75,43 @@ class ApiTests {
         mvc.perform(get("/api/favorites").param("q", "fury"))
             .andExpect(jsonPath("$.results[0].id").value(id));
 
+        // Scores on Neon Blueprint's Hard: 98 tiles, 10 holds, the longest 1.81 s.
+        String scored = "demo-neon-blueprint";
         String run = "{\"difficulty\":\"hard\",\"score\":%d,\"accuracy\":0.9,\"maxCombo\":40,\"grade\":\"A\"}";
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(run.formatted(5000)))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(run.formatted(5000)))
             .andExpect(jsonPath("$.best.hard.score").value(5000));
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(run.formatted(100)))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(run.formatted(100)))
             .andExpect(jsonPath("$.best.hard.score").value(5000))
             .andExpect(jsonPath("$.plays").value(2));
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content("{\"difficulty\":\"expert\",\"score\":1}"))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content("{\"difficulty\":\"expert\",\"score\":1}"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad score"));
 
-        // A recorded run is counted again through main.GameScore (the same run as
-        // frontend/tests/unit/score.test.ts): its score, accuracy and combo are kept, not the
-        // client's, and it replaces the best on the old points above even though it's lower.
+        // A recorded run is checked against the chart and counted again through main.GameScore
+        // (the same run as frontend/tests/unit/score.test.ts): its score, accuracy and combo are
+        // kept, not the client's, and it replaces the best on the old points above even though
+        // it's lower.
         String recorded = "{\"difficulty\":\"hard\",\"score\":999999,\"accuracy\":1,\"maxCombo\":99,\"grade\":\"S\",\"run\":\"%s\"}";
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPPPPPPPPPGEH1500;MLBP")))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPPPPPPPPPGEH1500;MLBP")))
             .andExpect(jsonPath("$.best.hard.score").value(1860))
             .andExpect(jsonPath("$.best.hard.maxCombo").value(12))
             .andExpect(jsonPath("$.best.hard.accuracy").value(1275.0 / 1600))
             .andExpect(jsonPath("$.best.hard.grade").value("C"))
             .andExpect(jsonPath("$.best.hard.rules").value("score"));
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("P")))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("P")))
             .andExpect(jsonPath("$.best.hard.score").value(1860));
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPX")))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPX")))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
+
+        // Runs the chart couldn't have given: more tiles than it has, a hold held longer than its
+        // longest, more holds than it has. Every tile judged once is fine.
+        String[] impossible = { "P".repeat(99), "PH1900;", "PH100;".repeat(11) };
+        for (String r : impossible) {
+            mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted(r)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
+        }
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("P".repeat(98) + "H1810;")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.best.hard.maxCombo").value(98));
+        mvc.perform(get("/api/songs/" + scored)).andExpect(jsonPath("$.plays").value(5));
     }
 
     @Test

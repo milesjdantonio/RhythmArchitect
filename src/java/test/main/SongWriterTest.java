@@ -1,6 +1,7 @@
 package main;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -8,7 +9,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
@@ -52,6 +55,7 @@ class SongWriterTest
         assertEquals(NoteType.C, first.getNoteType());
         assertEquals(MusicNoteType.START, first.getMusicNoteType());
         assertEquals(0.125, first.getNoteLength()); // a tap: a sixteenth
+        assertFalse(first.isHold());
         Note second = hard.dequeue();
         assertEquals(3, second.getLane());
         assertEquals(MusicNoteType.ACCENT, second.getMusicNoteType()); // the other half of a chord
@@ -59,9 +63,58 @@ class SongWriterTest
         Note last = hard.dequeue();
         assertEquals(0.75, last.getTimeStamp());
         assertEquals(1.0, last.getNoteLength()); // held 2 beats
+        assertTrue(last.isHold());
         assertEquals(NoteType.G, last.getNoteType());
         assertEquals(MusicNoteType.END, last.getMusicNoteType());
         assertTrue(hard.isEmpty());
+    }
+
+    @Test
+    void writesTheSameSongFromTiles()
+    {
+        // The chart above, in pieces (as the game server has its songs).
+        Map<Difficulty, List<SongWriter.Tile>> charts = new EnumMap<Difficulty, List<SongWriter.Tile>>(Difficulty.class);
+        charts.put(Difficulty.EASY, List.of(new SongWriter.Tile(2, 2, 1, null), new SongWriter.Tile(0, 1, 0, null)));
+        charts.put(Difficulty.MEDIUM, List.of());
+        charts.put(Difficulty.HARD, List.of(new SongWriter.Tile(1, 3, 0, null), new SongWriter.Tile(0, 0, 0, NoteType.C),
+            new SongWriter.Tile(0, 3, 0, NoteType.E), new SongWriter.Tile(1.5, 2, 2, NoteType.G)));
+        Song fromTiles = writer.writeSong("Test Song", "Test Artist", 120, 0, charts);
+        Song fromText = writer.writeSong(CHART);
+        assertEquals(fromText.getAvailableDifficulties(), fromTiles.getAvailableDifficulties());
+        assertEquals(fromText.getDuration(), fromTiles.getDuration());
+        for(Difficulty d: fromText.getAvailableDifficulties())
+        {
+            Queue<Note> a = fromText.getChart(d);
+            Queue<Note> b = fromTiles.getChart(d);
+            assertEquals(a.getSize(), b.getSize());
+            while(!a.isEmpty())
+            {
+                Note x = a.dequeue();
+                Note y = b.dequeue();
+                assertEquals(x, y);
+                assertEquals(x.getTimeStamp(), y.getTimeStamp());
+                assertEquals(x.getLane(), y.getLane());
+                assertEquals(x.isHold(), y.isHold());
+            }
+        }
+    }
+
+    @Test
+    void turnsDownBadTiles()
+    {
+        List<SongWriter.Tile> bad = List.of(new SongWriter.Tile(-1, 0, 0, null), new SongWriter.Tile(0, 4, 0, null),
+            new SongWriter.Tile(Double.NaN, 0, 0, null), new SongWriter.Tile(0, 0, -1, null));
+        for(SongWriter.Tile t: bad)
+        {
+            Map<Difficulty, List<SongWriter.Tile>> charts = Map.of(Difficulty.HARD, List.of(t));
+            assertThrows(IllegalArgumentException.class, () -> writer.writeSong("T", "A", 120, 0, charts), t.toString());
+        }
+        Map<Difficulty, List<SongWriter.Tile>> good = Map.of(Difficulty.HARD, List.of(new SongWriter.Tile(0, 0, 0, null)));
+        assertThrows(IllegalArgumentException.class, () -> writer.writeSong("T", "A", 120, -1, good));
+        assertThrows(IllegalArgumentException.class, () -> writer.writeSong("T", "A", Double.NaN, 0, good));
+        assertThrows(IllegalArgumentException.class, () -> writer.writeSong("T", "A", 120, 0, null));
+        assertThrows(IllegalArgumentException.class, () -> writer.writeSong("T", "A", 120, 0, Map.of()));
+        assertEquals(1, writer.writeSong("T", "A", 120, 0, good).getChart(Difficulty.HARD).getSize());
     }
 
     @Test
