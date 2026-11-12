@@ -58,6 +58,12 @@ Hard); they play it. The AI does not make music. Market and word everything that
 - Every difficulty has 4 lanes, keys D F J K. Difficulty is density, holds, chords and speed. Note
   speed is fixed, not a setting: `NOTE_SPEED` (0.85) in `src/game/engine.ts`, the same fall time on
   every song (`fallTime`).
+- Scoring is `main.Score`'s rules (Perfect 100, Good 75, Early/Late 50, accuracy, combo) with the
+  game's combo multiplier (×1-×4) and held-note bonus on top: `main.GameScore` (Score.java itself is
+  Darsh's: add on top, don't edit it). The browser counts with the same rules
+  (`src/game/score.ts`) and records the run; the server replays it through GameScore
+  (`RunReplay`) before keeping a best. Change both together; `score.test.ts`, `GameScoreTest` and
+  ApiTests share one run that must give the same numbers.
 - Dev tools live on the game screen (` key): autoplay, the note queue, clock, judgements, tuning,
   effects, map data. Keep them working when gameplay changes.
 

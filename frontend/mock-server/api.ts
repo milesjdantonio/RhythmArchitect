@@ -24,6 +24,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { FanChartRequest, NewSong, ScoreSubmit, Song, SongPatch, SongSummary } from '../src/api/types';
 import { sortAtoZ } from '../src/library/bank';
 import { DIFFICULTIES } from '../src/api/types';
+import { replayRun } from '../src/game/score';
+import { gradeFor } from '../src/game/engine';
 import { builtInSongs } from './songs/builtins';
 import { fanSong } from '../src/mapping/osu';
 import { findFanChart, findVideo, SourceError } from './sources';
@@ -249,12 +251,17 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
         if (parts.length === 3 && parts[2] === 'scores' && method === 'POST') {
           const body = (await readJson(req)) as ScoreSubmit;
           if (!DIFFICULTIES.includes(body.difficulty) || !Number.isFinite(body.score)) return fail(res, 400, 'Bad score');
+          // A recorded run is counted again (the backend runs it through main.GameScore; this is
+          // the same rules, src/game/score.ts) and that is what's kept.
+          const replayed = body.run !== undefined ? replayRun(body.run) : undefined;
+          if (replayed === null) return fail(res, 400, 'Bad run');
           song.plays += 1;
           const prev = song.best[body.difficulty];
-          if (!prev || body.score > prev.score) {
-            song.best[body.difficulty] = {
-              score: Math.round(body.score), accuracy: body.accuracy, maxCombo: body.maxCombo, grade: body.grade, at: new Date().toISOString(),
-            };
+          const score = replayed ? replayed.score : Math.round(body.score);
+          if (!prev || (replayed && prev.rules !== 'score') || score > prev.score) {
+            song.best[body.difficulty] = replayed
+              ? { score, accuracy: replayed.accuracy, maxCombo: replayed.maxCombo, grade: gradeFor(replayed.accuracy, body.grade === 'F'), at: new Date().toISOString(), rules: 'score' }
+              : { score, accuracy: body.accuracy, maxCombo: body.maxCombo, grade: body.grade, at: new Date().toISOString() };
           }
           save(songs);
           return send(res, 200, song);

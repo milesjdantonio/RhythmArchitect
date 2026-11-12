@@ -2,14 +2,16 @@
 // Times are seconds from beat 0 of the song.
 
 import type { Chart, ChartNote, Difficulty, Grade } from '../api/types';
+import { RunScore, multiplierFor, type HitResult } from './score';
+
+export { multiplierFor };
 
 export type Judgement = 'perfect' | 'great' | 'good' | 'miss';
 
 /** Hit windows in seconds (either side of the note). Easier modes are more forgiving. */
 const BASE_WINDOWS = { perfect: 0.045, great: 0.09, good: 0.14 };
 const LENIENCY: Record<Difficulty, number> = { easy: 1.3, medium: 1.12, hard: 1 };
-const POINTS = { perfect: 300, great: 200, good: 100, miss: 0 };
-const ACC = { perfect: 1, great: 0.7, good: 0.4, miss: 0 };
+// Points, combo and accuracy are main.Score's, the multiplier and holds the game's own (score.ts).
 const DRAIN: Record<Difficulty, number> = { easy: 0.05, medium: 0.075, hard: 0.1 };
 /** A hold released this close to its end still counts as completed. */
 const HOLD_GRACE = 0.14;
@@ -57,7 +59,10 @@ export interface Stats {
   holdsDone: number;
 }
 
-export const multiplierFor = (combo: number) => 1 + Math.min(3, Math.floor(combo / 10));
+/** A judgement as main.HitResult has it: a Good either side of the note is Early or Late. */
+export function hitResultFor(j: Judgement, delta: number): HitResult {
+  return j === 'perfect' ? 'PERFECT' : j === 'great' ? 'GOOD' : j === 'good' ? (delta < 0 ? 'EARLY' : 'LATE') : 'MISS';
+}
 
 export class Game {
   readonly notes: LiveNote[];
@@ -66,6 +71,8 @@ export class Game {
   readonly endTime: number;
   stats: Stats;
   failed = false;
+  /** The run as main.Score counts it (score.ts), recorded for the server to replay. */
+  readonly scoring = new RunScore();
   private next: number[]; // per lane: index into byLane of the first unjudged note
   private byLane: LiveNote[][];
   private active: (LiveNote | null)[];
@@ -89,11 +96,13 @@ export class Game {
     };
   }
 
+  /** Score's accuracy (0..1); 1 before anything is judged. */
   get accuracy() {
-    const { counts, judged } = this.stats;
-    if (!judged) return 1;
-    return (counts.perfect * ACC.perfect + counts.great * ACC.great + counts.good * ACC.good) / judged;
+    return this.stats.judged ? this.scoring.accuracy : 1;
   }
+
+  /** The run so far, for the server to replay through Score (score.ts). */
+  get run() { return this.scoring.run; }
 
   get multiplier() { return multiplierFor(this.stats.combo); }
 
@@ -116,9 +125,10 @@ export class Game {
     } else {
       s.combo++;
       s.maxCombo = Math.max(s.maxCombo, s.combo);
-      s.score += POINTS[j] * this.multiplier;
       s.health = Math.min(1, s.health + (j === 'perfect' ? 0.022 : j === 'great' ? 0.016 : 0.008));
     }
+    this.scoring.add(hitResultFor(j, delta));
+    s.score = this.scoring.score;
     out.push({ type: 'judge', note, judgement: j, delta });
   }
 
@@ -172,12 +182,14 @@ export class Game {
     const s = this.stats;
     if (ok) {
       s.holdsDone++;
-      s.score += Math.round(60 * Math.max(1, n.end - n.time) * 2) * this.multiplier;
+      this.scoring.holdDone(n.end - n.time);
     } else {
       if (s.combo >= 5) out.push({ type: 'comboBreak', combo: s.combo });
       s.combo = 0;
+      this.scoring.holdBroken();
       this.hurt(DRAIN[this.difficulty] * 0.6, out);
     }
+    s.score = this.scoring.score;
     out.push({ type: 'holdEnd', note: n, ok });
   }
 

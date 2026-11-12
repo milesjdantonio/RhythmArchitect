@@ -83,6 +83,21 @@ class ApiTests {
             .andExpect(jsonPath("$.plays").value(2));
         mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content("{\"difficulty\":\"expert\",\"score\":1}"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad score"));
+
+        // A recorded run is counted again through main.GameScore (the same run as
+        // frontend/tests/unit/score.test.ts): its score, accuracy and combo are kept, not the
+        // client's, and it replaces the best on the old points above even though it's lower.
+        String recorded = "{\"difficulty\":\"hard\",\"score\":999999,\"accuracy\":1,\"maxCombo\":99,\"grade\":\"S\",\"run\":\"%s\"}";
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPPPPPPPPPGEH1500;MLBP")))
+            .andExpect(jsonPath("$.best.hard.score").value(1860))
+            .andExpect(jsonPath("$.best.hard.maxCombo").value(12))
+            .andExpect(jsonPath("$.best.hard.accuracy").value(1275.0 / 1600))
+            .andExpect(jsonPath("$.best.hard.grade").value("C"))
+            .andExpect(jsonPath("$.best.hard.rules").value("score"));
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("P")))
+            .andExpect(jsonPath("$.best.hard.score").value(1860));
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPX")))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
     }
 
     @Test

@@ -52,7 +52,7 @@ export function DifficultyPicker({ value, onChange, counts, best, compact }: Pro
             <span className="diff-text">
               <span className="diff-name">{LABEL[d]}</span>
               <span className="diff-blurb">{counts ? `${counts[d]} Notes` : BLURB[d]}</span>
-              {best?.[d] && <span className="diff-best mono">Best {best[d]!.grade} · {best[d]!.score.toLocaleString()}</span>}
+              {best?.[d] && <span className="diff-best mono" title={best[d]!.rules === 'score' ? undefined : 'On the old points, before the current scoring'}>Best {best[d]!.grade} · {best[d]!.score.toLocaleString()}{best[d]!.rules === 'score' ? '' : ' (old)'}</span>}
             </span>
           </button>
         );

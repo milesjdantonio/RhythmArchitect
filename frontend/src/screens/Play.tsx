@@ -121,7 +121,9 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
         if (!live) return;
         // On stage first (a YouTube song's player needs its spot on screen), then ready to start.
         setSong(s);
-        setPrevBest(s.best?.[difficulty]?.score);
+        // A best on the old points (before main.Score's rules) isn't one to beat.
+        const b = s.best?.[difficulty];
+        setPrevBest(b?.rules === 'score' ? b.score : undefined);
         try {
           await prepareSong(s);
         } catch (e) {
@@ -286,7 +288,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     const offset = await learnFromRun(song, offsets.current).catch(() => null);
     if (offset !== null) setSong((s) => (s && s.id === song.id ? { ...s, source: { ...s.source, offset } } : s));
     try {
-      const updated = await api.submitScore(song.id, { difficulty, score: r.score, accuracy, maxCombo: r.maxCombo, grade });
+      const updated = await api.submitScore(song.id, { difficulty, score: r.score, accuracy, maxCombo: r.maxCombo, grade, run: g.run });
       upsert(updated);
       setSaving('saved');
     } catch {

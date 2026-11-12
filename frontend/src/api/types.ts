@@ -119,6 +119,12 @@ export interface BestScore {
   maxCombo: number;
   grade: Grade;
   at: string;
+  /**
+   * 'score': the run was counted again through the game's model classes (main.Score with the
+   * multiplier and holds on top: frontend/src/game/score.ts, backend RunReplay). Missing on a best
+   * from before, on the game's old points, which any such run replaces.
+   */
+  rules?: 'score';
 }
 
 export type Grade = 'S' | 'A' | 'B' | 'C' | 'D' | 'F';
@@ -273,6 +279,11 @@ export interface ScoreSubmit {
   accuracy: number;
   maxCombo: number;
   grade: Grade;
+  /**
+   * The run in order (game/score.ts): P G E L for a hit, M a miss, H<ms>; a hold held its length,
+   * B one let go. The server counts it again and keeps that score, accuracy and max combo.
+   */
+  run?: string;
 }
 
 export interface SongList {

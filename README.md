@@ -359,10 +359,12 @@ Each change says what the spec said, what we built, why, and what prompted it.
 ### Did the model really stand alone?
 
 Yes. `src/java/main/` imports nothing but the Java standard library: no view, no Spring, no
-controller. `ModelDemo` runs it with plain `javac`/`java`, and the 39 model tests run without a
-server or a browser. The honest caveat: because the controller isn't written yet, the browser
-game doesn't play from the Java model today. It has its own copy of the rules in TypeScript.
-Connecting them is the first of the Next Steps.
+controller. `ModelDemo` runs it with plain `javac`/`java`, and the 42 model tests run without a
+server or a browser. The honest caveat: the browser game doesn't play through the Java model yet.
+Scores do go through it: the game records each run, and before a best score is kept the backend
+counts the run again through `GameScore` (`Score` with the game's combo multiplier and held-note
+bonus on top). Live judging still uses a TypeScript copy of the same rules
+(`frontend/src/game/score.ts`). Playing through `Main` is the first of the Next Steps.
 
 ### What happened to the unknowns from the scope
 
@@ -373,11 +375,11 @@ Connecting them is the first of the Next Steps.
 | Will the tiles line up with the music? | **Figured out** | Tiles are timed to each sound within a few milliseconds; the Map Syncer corrects a song's offset after a run whose hits were steadily early or late. |
 | JavaFX or the web for the view? | **Figured out** | The web (revised scope). |
 | Can it run for others, not just on our machines? | **Mostly** | The backend runs on Render (Docker). Songs saved there are lost when the service restarts (its disk isn't persistent yet), and finding songs by name needs a YouTube API key on the server. |
-| How will the controller connect the view to the model? | **Still open** | Waiting on `Main` (and `Score`). |
+| How will the controller connect the view to the model? | **Partly** | Scores: every saved run is counted again on the server through `Score` (via `GameScore`, `RunReplay`). Play: `Main` is written; routes to play through it are next. |
 
 ### What doesn't work yet
 
-- **`Score` and `Main` aren't written**, so the Java model isn't connected to the game; `HitResult` is unused in Java.
+- **The game doesn't play through `Main` yet**: key presses are judged in the browser. `Score` counts every saved run on the server (through `GameScore`), so best scores follow the model's rules.
 - **Songs mapped on the deployed site don't last**: the Render service's song file is reset when it restarts.
 - **Searching YouTube by name on the deployed site** needs `YOUTUBE_API_KEY` set on Render; pasting a YouTube link works without it.
 - **Mapping a new song needs desktop Chrome or Edge** (sharing a tab's sound); other browsers and phones get an osu! fan chart when one exists.
@@ -390,8 +392,8 @@ Connecting them is the first of the Next Steps.
 
 | # | Item | Owner | Classes and methods |
 |---|---|---|---|
-| 1 | Write `Score`. | Darsh | `Score()`, `addHit(HitResult)`, `addMiss()`, `getScore()`, `getCombo()`, `getMaxCombo()`, `getHits()`, `getMisses()`, `getAccuracy()`, `reset()`; uses `HitResult`. |
-| 2 | Write `Main`, the controller. | Darsh | `processInput(int lane, double currentTime)` (peeks the chart's queue, judges the hit, `dequeue()`s the note, calls `Score.addHit`), `checkMissedNotes(double currentTime)` (`peek()`/`dequeue()` past the miss window, `Score.addMiss`), `getUpcomingNotes(int count)`; gets its chart with `SongWriter.chartFor(song, difficulty)`. |
+| 1 | **Done.** Write `Score`. | Darsh | `Score()`, `addHit(HitResult)`, `addMiss()`, `getScore()`, `getCombo()`, `getMaxCombo()`, `getHits()`, `getMisses()`, `getAccuracy()`, `reset()`; uses `HitResult`. |
+| 2 | **Done.** Write `Main`, the controller. | Darsh | `processInput(int lane, double currentTime)` (peeks the chart's queue, judges the hit, `dequeue()`s the note, calls `Score.addHit`), `checkMissedNotes(double currentTime)` (`peek()`/`dequeue()` past the miss window, `Score.addMiss`), `getUpcomingNotes(int count)`; gets its chart with `SongWriter.chartFor(song, difficulty)`. |
 | 3 | Expose the controller to the view. | Darsh, Miles | Spring Boot routes for `Main` (for example a play session: start, input, upcoming notes, score) and a client in `frontend/src/api/client.ts`. |
 | 4 | Play through the controller. | Miles | `frontend/src/screens/Play.tsx` asks `Main` for upcoming notes and sends key presses; `frontend/src/game/engine.ts` stays as the offline fallback. |
 | 5 | Tests for `Score` and `Main`, then beta testing. | Haniya | `ScoreTest`, `MainTest` from the test plan; an end-to-end test that plays through the controller. |
@@ -473,6 +475,7 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `EmptyQueueException` | Miles D'Antonio | Wrote it (GenAI-assisted). |
 | `SongWriter` | Miles D'Antonio | Wrote it (GenAI-assisted). |
 | `ModelDemo` (driver) | Miles D'Antonio | Wrote it (GenAI-assisted). |
+| `GameScore` | Miles D'Antonio | Wrote it (GenAI-assisted): `Score` with the game's combo multiplier and held-note bonus on top, `Score`'s own rules unchanged. |
 | `Score`, `Main` | Darsh Sharma | Wrote both classes (GenAI-assisted). Implemented Score to track points, hits, misses, combos, and accuracy using HitResult. Implemented Main to handle player inputs, judge note timing, remove notes from the queue, track missed notes, and return upcoming notes.. |
 
 ### The backend (`backend/`, Java, Spring Boot)
@@ -480,7 +483,7 @@ assistant) at the named person's direction, then run and reviewed by them.
 | Class | Who | How |
 |---|---|---|
 | `BackendApplication` | Miles D'Antonio | Set up the Spring Boot project (Spring Initializr), then built on it (GenAI-assisted). |
-| `SongController`, `SongStore`, `SongLists`, `NewSongCheck` | Miles D'Antonio | Wrote them (GenAI-assisted): songs, scores, search, the music bank. |
+| `SongController`, `SongStore`, `SongLists`, `NewSongCheck`, `RunReplay` | Miles D'Antonio | Wrote them (GenAI-assisted): songs, scores (each run counted again through `GameScore`), search, the music bank. |
 | `SourceController`, `YouTubeService`, `FanChartService`, `Http` | Miles D'Antonio | Wrote them (GenAI-assisted): YouTube lookups and osu! fan charts. |
 | `Osu` | Miles D'Antonio | Ported the frontend's osu! reader to Java (GenAI-assisted). |
 | `Matching`, `Text` | Miles D'Antonio | Wrote them (GenAI-assisted): matching names and videos. |
@@ -501,10 +504,12 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `src/java/test/main/NoteTest.java` | Miles D'Antonio; Haniya Naseer | Same. |
 | `src/java/test/main/SongTest.java` | Miles D'Antonio; Haniya Naseer | Same. |
 | `src/java/test/main/SongWriterTest.java` | Miles D'Antonio; Haniya Naseer | Same, for the new SongWriter. |
+| `src/java/test/main/GameScoreTest.java` | Miles D'Antonio | `GameScore` on the same run the browser's test uses (GenAI-assisted). |
 | `backend/src/test/.../ApiTests.java` | Miles D'Antonio | Every route against a fresh song bank (GenAI-assisted). |
 | `backend/src/test/.../MappingTests.java` | Miles D'Antonio | Name matching and the osu! port (GenAI-assisted). |
 | `backend/src/test/.../BackendApplicationTests.java` | Miles D'Antonio | The app starts (generated by Spring Initializr). |
 | `frontend/tests/unit/engine.test.ts` | Miles D'Antonio | The game rules: judging, holds, combo, score (GenAI-assisted). |
+| `frontend/tests/unit/score.test.ts` | Miles D'Antonio | The score rules (`Score`'s, with the multiplier and holds), checked against `GameScore` (GenAI-assisted). |
 | `frontend/tests/unit/automap.test.ts`, `automap-band.test.ts` | Miles D'Antonio | The onset mapper and its note-finding benchmark (GenAI-assisted). |
 | `frontend/tests/unit/beats.test.ts` | Miles D'Antonio | The beat tracker's grid and inputs (GenAI-assisted). |
 | `frontend/tests/unit/trained.test.ts` | Miles D'Antonio | The trained mapper's charts: thinning, timing (GenAI-assisted). |
