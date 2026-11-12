@@ -18,7 +18,8 @@ Hard); they play it. The AI does not make music. Market and word everything that
   `backend/README.md`): the same routes as the mock. The game's own Java classes (`Song`, `Note`,
   `Queue`, `SongWriter`...) are in `src/java/main/` at the repo root (package `main`, built into the
   backend; no libraries, no view: `ModelDemo` drives them with plain `javac`), their JUnit tests in
-  `src/java/test/main/` (run by `./mvnw test`), and the built-in songs' charts for them in
+  `src/test/main/` (beside `src/java/`, not inside it, so IDEs read both roots; run by `./mvnw test`
+  or VS Code's Testing panel), and the built-in songs' charts for them in
   `src/java/charts/` (`node tools/export-charts.mjs` from `frontend/`). This is a CS 2114 project:
   the README's Reflection, Next Steps and Attribution sections follow the course rubric; keep them
   true when things change. `Main` (the controller) and `Score` are Darsh's: don't write them.

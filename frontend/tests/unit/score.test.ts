@@ -3,7 +3,7 @@ import { RunScore, holdBonus, multiplierFor, replayRun, runFits } from '../../sr
 import { Game, hitResultFor } from '../../src/game/engine';
 import type { Chart } from '../../src/api/types';
 
-// The same run is checked against main.GameScore in src/java/test/main/GameScoreTest.java and
+// The same run is checked against main.GameScore in src/test/main/GameScoreTest.java and
 // through the server in backend ApiTests: all three must agree.
 // 10 Perfects (×1 for the first 9, ×2 from the 10th), a Good and an Early (×2), a 1.5 s hold held
 // to its end (180 × 2), a miss, a Late (×1), a hold let go (a miss), a Perfect (×1).

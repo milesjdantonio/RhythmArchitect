@@ -32,7 +32,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The pure parts: text matching, the osu! port, and songs as the game's model has them (SongModel,
- * RunReplay). (The model's own tests are in src/java/test.)
+ * RunReplay). (The model's own tests are in src/test.)
  */
 class MappingTests {
 

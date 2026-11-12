@@ -1,0 +1,47 @@
+{
+  // Terminal > Run Task... (or Ctrl+Shift+P > "Tasks: Run Test Task"). The Testing panel and the
+  // Run Test buttons in src/test/main run the same tests.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run model tests",
+      "detail": "The JUnit tests in src/test/main (Node, Queue, Note, Song, SongWriter, GameScore)",
+      "type": "shell",
+      "command": "./mvnw",
+      "windows": { "command": ".\\mvnw.cmd" },
+      "args": ["test", "-Dtest=main.*Test"],
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run one model test class",
+      "type": "shell",
+      "command": "./mvnw",
+      "windows": { "command": ".\\mvnw.cmd" },
+      "args": ["test", "-Dtest=main.${input:testClass}"],
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run every backend test",
+      "detail": "The model tests plus the API tests",
+      "type": "shell",
+      "command": "./mvnw",
+      "windows": { "command": ".\\mvnw.cmd" },
+      "args": ["test"],
+      "options": { "cwd": "${workspaceFolder}/backend" },
+      "group": "test",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "testClass",
+      "type": "pickString",
+      "description": "Which test class?",
+      "options": ["NodeTest", "QueueTest", "NoteTest", "SongTest", "SongWriterTest", "GameScoreTest"]
+    }
+  ]
+}

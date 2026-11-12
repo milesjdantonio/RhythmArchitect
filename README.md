@@ -46,15 +46,21 @@ java -cp out main.ModelDemo src/java/charts/ink-and-fury.chart hard # another ch
 java -cp out main.ModelDemo src/java/charts/one-dance.chart banana  # an unknown difficulty: Easy
 ```
 
-**The tests.** JUnit 5 tests for every model class (`src/java/test/main/`: `QueueTest`, `NodeTest`,
+**The tests.** JUnit 5 tests for every model class (`src/test/main/`: `QueueTest`, `NodeTest`,
 `NoteTest`, `SongTest`, `SongWriterTest`, 42 tests from the spec's test plan, good and bad cases)
 run with the backend's tests through Maven (Java 25):
 
 ```bash
 cd backend
-./mvnw test                      # every test (Windows: mvnw.cmd test)
+./mvnw test "-Dtest=main.*Test"  # just the model's tests (Windows: .\mvnw.cmd ...)
 ./mvnw test -Dtest=QueueTest     # one class
+./mvnw test                      # every backend test (the model's and the API's)
 ```
+
+In VS Code (Red Hat's Java extension and the Test Runner for Java), the Testing panel and the Run
+Test buttons in each test file run them too, and so does **Terminal → Run Task → Run model tests**.
+Turn off Oracle's Java extension for this workspace if it's installed: it reads the folders its own
+way and shows errors that aren't there.
 
 `node tools/export-charts.mjs` (from `frontend/`) writes the chart files again after the built-in
 songs change.
@@ -329,7 +335,7 @@ frontend/               the game: everything below runs from here (npm scripts, 
   tests/                unit/ and e2e/
 backend/                the Spring Boot backend (Java): songs, search, YouTube, fan charts
 src/java/main/          the model: Queue, Node, Note, the enums, Song, SongWriter, and ModelDemo (the driver)
-src/java/test/main/     the model's JUnit tests (run with ./mvnw test in backend/)
+src/test/main/          the model's JUnit tests (run with ./mvnw test in backend/)
 src/java/charts/        the built-in songs' charts, for the model (frontend/tools/export-charts.mjs)
 docs/                   the backend contract (api.md), resources, media
 ```
@@ -353,7 +359,7 @@ Each change says what the spec said, what we built, why, and what prompted it.
 | 9 | **Validation: key at the wrong time** | Penalize the score. | A press with no tile within reach is ignored; a tile that isn't hit becomes a miss (it breaks the combo and costs signal). | Penalizing stray presses punishes players for tapping along to the beat; missing the tile already costs points. | Play-testing. |
 | 10 | **Validation: no difficulty chosen** | Default to Easy. | `SongWriter.chartFor(song, null)` gives Easy. In the game a difficulty is always chosen: the menu starts on Medium, and a link with no or an unknown difficulty goes back to the menu. | | The e2e bad-input test. |
 | 11 | **Validation: AI fails or returns bad data** | `SongWriter` throws; the view says "Couldn't create song". | If the trained mapper fails (no model download, bad output), the song still gets charts from the on-device onset mapper, and the dev tools say why. A bad chart file makes `SongWriter` throw an `IllegalArgumentException` that names the problem, and the server turns down a mapped song or fan chart `SongWriter` can't take in. | Better a playable map than an error. | The e2e test "when the trained mapper fails". |
-| 12 | **Tests** | Tests for Node, Queue, Note, Song, SongWriter, Score and Main. | 42 JUnit tests for Node, Queue, Note, Song and SongWriter (`src/java/test/main/`, good and bad cases from the plan), 3 for GameScore; 12 backend tests; 103 frontend unit tests; 22 browser tests. Score and Main have none yet (not written). | | The test plan. |
+| 12 | **Tests** | Tests for Node, Queue, Note, Song, SongWriter, Score and Main. | 42 JUnit tests for Node, Queue, Note, Song and SongWriter (`src/test/main/`, good and bad cases from the plan), 3 for GameScore; 12 backend tests; 103 frontend unit tests; 22 browser tests. Score and Main have none yet (not written). | | The test plan. |
 | 13 | **Scope** | JavaFX, then HTML/CSS (revised scope). | HTML, CSS and TypeScript (React, three.js for the 3D stage, Tone.js for sound), songs played through YouTube's embedded player. | We know the web better, and YouTube lets any song play without downloading its audio. | The revised scope and the GTA conversation. |
 
 ### Did the model really stand alone?
@@ -502,12 +508,12 @@ assistant) at the named person's direction, then run and reviewed by them.
 
 | Test file | Who | How |
 |---|---|---|
-| `src/java/test/main/QueueTest.java` | Miles D'Antonio; Haniya Naseer | Written from the spec's test plan (drafted by Sarah, completed by Haniya) (GenAI-assisted); Haniya to review. |
-| `src/java/test/main/NodeTest.java` | Miles D'Antonio; Haniya Naseer | Same. |
-| `src/java/test/main/NoteTest.java` | Miles D'Antonio; Haniya Naseer | Same. |
-| `src/java/test/main/SongTest.java` | Miles D'Antonio; Haniya Naseer | Same. |
-| `src/java/test/main/SongWriterTest.java` | Miles D'Antonio; Haniya Naseer | Same, for the new SongWriter. |
-| `src/java/test/main/GameScoreTest.java` | Miles D'Antonio | `GameScore` on the same run the browser's test uses (GenAI-assisted). |
+| `src/test/main/QueueTest.java` | Miles D'Antonio; Haniya Naseer | Written from the spec's test plan (drafted by Sarah, completed by Haniya) (GenAI-assisted); Haniya to review. |
+| `src/test/main/NodeTest.java` | Miles D'Antonio; Haniya Naseer | Same. |
+| `src/test/main/NoteTest.java` | Miles D'Antonio; Haniya Naseer | Same. |
+| `src/test/main/SongTest.java` | Miles D'Antonio; Haniya Naseer | Same. |
+| `src/test/main/SongWriterTest.java` | Miles D'Antonio; Haniya Naseer | Same, for the new SongWriter. |
+| `src/test/main/GameScoreTest.java` | Miles D'Antonio | `GameScore` on the same run the browser's test uses (GenAI-assisted). |
 | `backend/src/test/.../ApiTests.java` | Miles D'Antonio | Every route against a fresh song bank (GenAI-assisted). |
 | `backend/src/test/.../MappingTests.java` | Miles D'Antonio | Name matching and the osu! port (GenAI-assisted). |
 | `backend/src/test/.../BackendApplicationTests.java` | Miles D'Antonio | The app starts (generated by Spring Initializr). |
