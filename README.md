@@ -280,7 +280,9 @@ Before that, two models run in the browser on what was heard (the mapping worker
 - **The tiles** (`ensomi.ts`): Ensomi R2, a model trained on human-made osu!mania 4K charts, charts
   the song from the audio (about 20 s on WebGPU for a 3-minute song, about 90 s without). Its model
   (about 120 MB) downloads from Hugging Face while the song is listened to and stays in the
-  browser's cache. Its lowest star rating is already about this game's Hard, so it charts once and
+  browser's cache. Its lowest star rating is usually about this game's Hard, so it charts at that
+  rating; where Hard would be thin (fast, intense songs, whose hardest stretches 2★ eases), it
+  charts again busier and each 10 s of the song takes the chart nearest about two tiles a beat. Then
   every difficulty keeps a subset of its tiles (`thin.ts`): the strongest sounds, spaced out, each
   stretch of the song keeping its share (Easy about 1 tile a second, Medium about 2); Hard keeps nearly
   all of them (chords of two at most: 4-7 a second, more on fast songs).

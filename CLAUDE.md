@@ -50,7 +50,10 @@ Hard); they play it. The AI does not make music. Market and word everything that
 ## Maps and gameplay rules
 
 - **Every tile is a note in the song, at the moment it's heard.** No filler, nothing random, holds
-  only where a sound rings (`src/mapping/automap.ts`, `src/mapping/charts.ts`). No sound on key
+  only where a sound rings (`src/mapping/automap.ts`, `src/mapping/charts.ts`). Sounds go onto the
+  grid's 16ths (up to 20 ms) only where the grid holds there (`gridHolds`: the sounds peak on its
+  16ths, not to one side); where a song's beat drifts off one straight grid they keep their own
+  times (snapping there put tiles up to 35 ms off). "On the beat" checks allow 20 ms for that. No sound on key
   presses: the song is the sound; synth songs play every chart note themselves.
 - Every difficulty has 4 lanes, keys D F J K. Difficulty is density, holds, chords and speed. Note
   speed is fixed, not a setting: `NOTE_SPEED` (0.85) in `src/game/engine.ts`, the same fall time on
@@ -75,8 +78,12 @@ Hard); they play it. The AI does not make music. Market and word everything that
   `automap.ts` measures every sound, the grid and the sections, and the page shows them.
 - The tiles come from the trained mapper: Ensomi R2 (`src/mapping/ensomi.ts`, `@ensomi/runtime`;
   ~120 MB model from Hugging Face pinned to one commit, prefetched while listening, cached;
-  `ensomiModel.ts`), run in the same worker after the onset mapper. It charts once at its lowest
-  star rating (2); every difficulty keeps a subset of its tiles (`src/mapping/thin.ts`, `KEEP`),
+  `ensomiModel.ts`), run in the same worker after the onset mapper. It charts at its lowest star
+  rating (2). A star rating is a difficulty, not a density: on a fast, intense song 2★ eases the
+  hardest stretches (a 200 BPM song: 7 tiles a second in its intro, 2-4 after). So Hard is judged
+  10 s at a time against about two tiles a beat (`hardTargets`); while under 85% is met it charts
+  again a star busier (to 4★, at most three charts, from the same analysis) and each stretch takes
+  the chart nearest its target (`splice`). Every difficulty keeps a subset of that (`src/mapping/thin.ts`, `KEEP`),
   and its tiles move onto the onset mapper's measured sounds (`soundShift`: they come ~29 ms early).
   e2e tests switch it off (localStorage `rythm-architect:no-ensomi`).
 - Only if it's off or fails: with WebGPU the song is split with Demucs (`src/mapping/stems.ts`,
@@ -90,6 +97,9 @@ Hard); they play it. The AI does not make music. Market and word everything that
   canvases draw at most `MENU_FPS` (`menuGate`), and `ListenScope` keeps its settled stars in a
   layer instead of redrawing each one every frame. Keep the listening pass this light: a real
   listen showed the page's frames falling to ~13 a second and the audio clock 20% behind.
+- A listen that missed more than 5% of the song (at least 8 s: sound that never reached the
+  capture, or a second or more with nothing recorded; `holesIn`, `missLimit` in `capture.ts`) is an
+  error with a retry, not a map (the user would rather be told than get a thin map).
 - The recording: every chunk the audio thread hands over is kept; the video position is read on
   each chunk (they keep coming with the tab hidden) and every frame; at the end `placeChunks`
   (`src/mapping/capture.ts`) files it by stretches of steady playback (`stretchesOf`, healed:

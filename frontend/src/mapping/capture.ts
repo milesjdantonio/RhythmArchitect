@@ -203,12 +203,44 @@ function audible(pcm: Float32Array, sr: number) {
 }
 
 /**
+ * Seconds of the song the recording has nothing for: runs of at least a second where no sound was
+ * placed at all (exact zeros: a song's own quiet still has noise in it), between its first and its
+ * last sound.
+ */
+export function holesIn(pcm: Float32Array, sr: number): number {
+  let first = 0, last = pcm.length - 1;
+  while (first < pcm.length && pcm[first] === 0) first++;
+  while (last > first && pcm[last] === 0) last--;
+  let holes = 0, run = 0;
+  for (let i = first; i <= last; i++) {
+    if (pcm[i] === 0) { run++; continue; }
+    if (run >= sr) holes += run;
+    run = 0;
+  }
+  return holes / sr;
+}
+
+/**
+ * How much of a song a recording may miss (seconds) before it isn't mapped: a map with parts it
+ * never heard is worse than asking for the listen again.
+ */
+export const missLimit = (seconds: number) => Math.max(8, seconds * 0.05);
+
+/**
  * The recording to map: the seamless placement (placeChunks), unless it came out clearly worse
  * than placing each chunk as it was heard (`asHeard`, the earlier way): its first sound more than
  * 2 s later, or under 90% as much sound. That has happened once, on a listen whose cause wasn't
  * seen (an ad before the song is the likeliest); the note says which was used, for the dev tools.
  */
-export function chooseRecording(chunks: Chunk[], marks: Mark[], sr: number, seconds: number, asHeard: Float32Array): { pcm: Float32Array; note: string } {
+export function chooseRecording(chunks: Chunk[], marks: Mark[], sr: number, seconds: number, asHeard: Float32Array): { pcm: Float32Array; note: string; missed: number } {
+  const r = pickRecording(chunks, marks, sr, seconds, asHeard);
+  const holes = holesIn(r.pcm, sr);
+  const missed = r.lost + holes;
+  const gaps = holes >= 1 ? `; ${Math.round(holes)} s of it heard nothing` : '';
+  return { pcm: r.pcm, note: r.note + gaps, missed };
+}
+
+function pickRecording(chunks: Chunk[], marks: Mark[], sr: number, seconds: number, asHeard: Float32Array): { pcm: Float32Array; note: string; lost: number } {
   const placed = place(chunks, marks, sr, seconds);
   const seamless = placed.pcm;
   const n = placed.stretches;
@@ -217,9 +249,9 @@ export function chooseRecording(chunks: Chunk[], marks: Mark[], sr: number, seco
   // The audio clock fell behind the video: the computer was too busy for its audio.
   const behind = placed.lost >= 0.5 ? `; the browser's audio fell behind the video (too busy): ${Math.round(placed.lost)} s of the song never reached the capture, the rest followed and spread over it (${placed.followed} stretch${placed.followed === 1 ? '' : 'es'})` : '';
   if (a.first - b.first > 2 || a.seconds < b.seconds * 0.9) {
-    return { pcm: asHeard, note: `as heard (the seamless placement, ${n} stretch${n === 1 ? '' : 'es'}, started at ${at(a.first)} with ${Math.round(a.seconds)} s of sound, against ${at(b.first)} and ${Math.round(b.seconds)} s); first sound at ${at(b.first)}${behind}` };
+    return { pcm: asHeard, note: `as heard (the seamless placement, ${n} stretch${n === 1 ? '' : 'es'}, started at ${at(a.first)} with ${Math.round(a.seconds)} s of sound, against ${at(b.first)} and ${Math.round(b.seconds)} s); first sound at ${at(b.first)}${behind}`, lost: placed.lost };
   }
-  return { pcm: seamless, note: `seamless, ${n} stretch${n === 1 ? '' : 'es'} of playback; first sound at ${at(a.first)}, ${Math.round(a.seconds)} s of sound (as heard: ${at(b.first)}, ${Math.round(b.seconds)} s)${behind}` };
+  return { pcm: seamless, note: `seamless, ${n} stretch${n === 1 ? '' : 'es'} of playback; first sound at ${at(a.first)}, ${Math.round(a.seconds)} s of sound (as heard: ${at(b.first)}, ${Math.round(b.seconds)} s)${behind}`, lost: placed.lost };
 }
 
 /** The stretches of steady playback in the position reads, each with its offset (see placeChunks). */

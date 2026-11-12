@@ -14,10 +14,11 @@ import type { AutomapResult } from './automap';
 import type { FromMapper, ToMapper } from './listen.worker';
 import type { ChartProgress, SongLevels } from '../api/types';
 import type { Trained, TrainedStage } from './ensomi';
-import { Placer, chooseRecording, findTick, type Chunk, type Mark } from './capture';
+import { Placer, chooseRecording, findTick, missLimit, type Chunk, type Mark } from './capture';
 import { logChunk, logMark, newListenLog, saveListenLog } from './listenLog';
 
-export type ListenFailure = 'unsupported' | 'declined' | 'no-audio' | 'silent' | 'stopped' | 'video';
+/** Why listening failed ('gaps': it ran, but too much of the song never reached the recording). */
+export type ListenFailure = 'unsupported' | 'declined' | 'no-audio' | 'silent' | 'stopped' | 'video' | 'gaps';
 
 export class ListenError extends Error {
   constructor(message: string, readonly reason: ListenFailure) { super(message); }
@@ -290,6 +291,11 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
     const recording = chooseRecording(chunks, marks, sr, duration || 600, asHeard.result());
     if (import.meta.env?.DEV) console.info('[listen] ' + recording.note);
     saveListenLog(log, recording.note);
+    // Parts of the song never heard would be mapped thin or empty: the player would rather be told.
+    const song = duration || recording.pcm.length / sr;
+    if (recording.missed > missLimit(song)) {
+      throw new ListenError(`The listen missed ${Math.round(recording.missed)} s of the song (the computer was too busy for its sound), so it wasn’t mapped. Close other tabs and apps and try again.`, 'gaps');
+    }
     return { pcm: recording.pcm, sr, delay, calibrated, placement: recording.note };
   } finally {
     cleanup.forEach((f) => f());

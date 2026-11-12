@@ -6,7 +6,7 @@
 //   node tools/replay-listen.mjs <listen-log.json>        (from frontend/; Node 23.6+ runs the .ts directly)
 
 import { readFileSync } from 'node:fs';
-import { place, stretchesOf } from '../src/mapping/capture.ts';
+import { holesIn, missLimit, place, stretchesOf } from '../src/mapping/capture.ts';
 
 const file = process.argv[2];
 if (!file) { console.log('usage: node tools/replay-listen.mjs <listen-log.json>'); process.exit(1); }
@@ -81,3 +81,6 @@ for (let i = 0; i < Math.ceil(dur * sr); i++) {
 if (from >= 0 && Math.ceil(dur * sr) - from > sr * 0.5) missing.push([from / sr, dur]);
 console.log(`the recording holds ${s(held / sr)} of ${s(dur)} (${Math.round((held / sr / dur) * 100)}%)`);
 console.log(`missing (video time, > 0.5 s): ${missing.length ? missing.slice(0, 12).map(([a, b]) => `${s(a)}-${s(b)}`).join(', ') : 'nothing'}${missing.length > 12 ? ', …' : ''}`);
+// The check the listen makes before mapping (listen.ts: too much of the song missed is an error).
+const missed = placed.lost + holesIn(pcm, sr);
+console.log(`missed: ${s(missed)} (the limit is ${s(missLimit(dur))}): ${missed > missLimit(dur) ? 'not mapped, the player is asked to listen again' : 'mapped'}`);

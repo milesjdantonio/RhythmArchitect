@@ -91,8 +91,9 @@ function pick(melody: MelodyNote[], rule: Rules): Picked[] {
   for (const { n } of order) {
     const i = at(n.t);
     const prev = chosen[i - 1], next = chosen[i];
-    if (prev && n.t - prev.t < rule.minGap - 1e-6) continue;
-    if (next && next.t - n.t < rule.minGap - 1e-6) continue;
+    // (A little short of the gap still counts: sounds where the grid drifts keep their own times.)
+    if (prev && n.t - prev.t < rule.minGap * 0.95) continue;
+    if (next && next.t - n.t < rule.minGap * 0.95) continue;
     // Nothing else is played inside a hold on Easy and Medium.
     if (!rule.playDuringHold && prev?.hold && n.t < prev.t + prev.len + 0.25) continue;
     let len = n.len;

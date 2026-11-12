@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DIFFICULTIES } from '../../src/api/types';
 import { FollowClock } from '../../src/audio/clock';
-import { Placer, chooseRecording, findTick, place, placeChunks, stretchesOf, type Mark } from '../../src/mapping/capture';
+import { Placer, chooseRecording, findTick, holesIn, missLimit, place, placeChunks, stretchesOf, type Mark } from '../../src/mapping/capture';
 import { computeLevels, decodeLevels, levelAt, levelsFromNotes } from '../../src/mapping/levels';
 import { beatGrid, fanNotes, fanSong, parseOsu } from '../../src/mapping/osu';
 import { setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchSet } from '../../mock-server/match';
@@ -332,5 +332,21 @@ describe('the listening pass', () => {
     expect(levelAt(fake, 1.02).bass).toBeGreaterThan(0.8);
     expect(levelAt(fake, 1.6).bass).toBeLessThan(0.2);
     expect(levelAt(fake, 2.02).high).toBeGreaterThan(0.8);
+  });
+});
+
+describe('a listen that missed too much of the song', () => {
+  it('counts the stretches of a second or more with nothing recorded, inside the song', () => {
+    const sr = 1000;
+    const pcm = new Float32Array(20 * sr);
+    pcm.fill(0.1, 2 * sr, 9 * sr); // silence before the first sound isn't a hole
+    pcm.fill(0.1, 12 * sr, 18 * sr); // a 3 s hole between; a 0.5 s one is the song's own quiet
+    pcm.fill(0, 15 * sr, 15.5 * sr);
+    expect(holesIn(pcm, sr)).toBeCloseTo(3, 3);
+  });
+
+  it('is refused past 5% of the song, at least 8 s', () => {
+    expect(missLimit(60)).toBe(8);
+    expect(missLimit(301)).toBeCloseTo(15.05, 2);
   });
 });

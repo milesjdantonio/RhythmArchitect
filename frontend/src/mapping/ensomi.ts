@@ -2,8 +2,9 @@
 // trained on human-made osu!mania 4K charts. It reads the heard audio and places the tiles itself.
 // Runs in the mapping worker (listen.worker.ts); the audio stays in the browser.
 //
-// Its lowest star rating (2) is already about as busy as this game's Hard, so it charts the song
-// once, at that rating, and every difficulty keeps a subset of its tiles (thin.ts): Hard most of
+// Its lowest star rating (2) is usually about as busy as this game's Hard, so it charts the song
+// at that rating (again, busier, when Hard would have under about two tiles a beat: nextStar), and
+// every difficulty keeps a subset of its tiles (thin.ts): Hard most of
 // them (chords of two at most), Medium and Easy fewer. Its tiles come
 // in milliseconds, a little early; they go onto the sounds the onset mapper measured and onto its
 // beat grid (soundShift, toChart).
@@ -85,7 +86,109 @@ export interface TrainedOptions {
   artist?: string;
 }
 
-export type TrainedStage = 'load' | 'listen' | 'chart';
+/** Loading the model, its listening (beat tracking, features), charting, charting again busier (nextStar). */
+export type TrainedStage = 'load' | 'listen' | 'chart' | 'again';
+
+// A star rating is a difficulty, not a density. On a fast, intense song 2★ spreads its tiles thin,
+// and unevenly: it eases the hardest stretches (a 200 BPM shred song: about 7 tiles a second in
+// its intro, 2-4 in the loud, busy verses after it, which played sparse and disconnected). So Hard
+// is judged a stretch of the song at a time (WINDOW): each should have about two tiles a beat, more
+// or fewer as it has more or fewer sounds than the song's usual stretch (hardTargets). While too
+// little of that is met (COVER), the song is charted again a star busier, from what the model
+// already heard (its audio stages aren't run again), and each stretch takes its tiles from the
+// chart that fits it best (splice). Every tile is still one of the model's, on a sound it heard.
+
+/** Hard aims for this many tiles a beat (a stream of 8ths, a little more)... */
+const HARD_PER_BEAT = 2.2;
+/** ...and never more than this many a second. */
+const HARD_MAX_RATE = 8;
+/** The stretches of the song Hard is judged by, in seconds. */
+const WINDOW = 10;
+/** Charting again busier stops once Hard meets this share of its targets. */
+const COVER = 0.85;
+/** The highest star rating charted for a busier Hard (on a fast song 4★ has about twice 2★'s tiles). */
+export const MAX_STAR = 4;
+/** At most this many charts per song (each takes ~15 s on a graphics chip for 5 minutes of song). */
+const MAX_TRIES = 3;
+
+type Grid = Pick<TrainedOptions, 'bpm' | 'offset'>;
+
+/**
+ * Hard's tiles to aim for in each WINDOW of the song: HARD_PER_BEAT at `bpm` (at most
+ * HARD_MAX_RATE a second), times how many sounds the stretch has against the song's median
+ * stretch (0.6 to 1.25 of it); nothing asked of a stretch with hardly any (under a quarter).
+ */
+export function hardTargets(events: Pick<SoundEvent, 'sec'>[], bpm: number, seconds: number): number[] {
+  const n = Math.max(1, Math.ceil(seconds / WINDOW));
+  const rate = Math.min((HARD_PER_BEAT * bpm) / 60, HARD_MAX_RATE);
+  const sounds = new Array<number>(n).fill(0);
+  for (const e of events) {
+    const w = Math.floor(e.sec / WINDOW);
+    if (w >= 0 && w < n) sounds[w]++;
+  }
+  const heard = sounds.filter((c) => c > 0).sort((a, b) => a - b);
+  const median = heard.length ? heard[heard.length >> 1] : 0;
+  return sounds.map((c, w) => {
+    const busy = median ? c / median : 0;
+    if (busy < 0.25) return 0;
+    const secs = Math.max(0, Math.min(WINDOW, seconds - w * WINDOW));
+    return Math.round(rate * secs * Math.min(1.25, Math.max(0.6, busy)));
+  });
+}
+
+const windowOf = (t: number, g: Grid) => Math.floor((g.offset + (t * 60) / g.bpm) / WINDOW);
+
+/** A chart's tiles in each WINDOW (`n` of them). */
+export function perWindow(notes: ChartNote[], g: Grid, n: number): number[] {
+  const out = new Array<number>(n).fill(0);
+  for (const x of notes) {
+    const w = windowOf(x.t, g);
+    if (w >= 0 && w < n) out[w]++;
+  }
+  return out;
+}
+
+/** The share of the targets a chart meets (tiles over a stretch's target don't make up for another's). */
+export function coverage(counts: number[], targets: number[]): number {
+  let got = 0, want = 0;
+  for (let i = 0; i < targets.length; i++) { got += Math.min(counts[i] ?? 0, targets[i]); want += targets[i]; }
+  return want ? got / want : 1;
+}
+
+/** How far a stretch's tiles are from its target (falling short counts half again as much). */
+const misfit = (n: number, t: number) => (n >= t ? Math.log(n / t) : 1.5 * Math.log(t / Math.max(n, 0.5)));
+
+/**
+ * One chart from several of the same song: each WINDOW takes its tiles from the chart whose Hard
+ * there is nearest its target (the first chart where nothing is asked). Hard's counts per stretch
+ * are in `counts`. A tile that would start under a hold from the stretch before is left out.
+ */
+export function splice(charts: { notes: ChartNote[]; counts: number[] }[], targets: number[], g: Grid): ChartNote[] {
+  const pick = targets.map((t, w) => {
+    if (!t) return 0;
+    let best = 0;
+    for (let i = 1; i < charts.length; i++) if (misfit(charts[i].counts[w], t) < misfit(charts[best].counts[w], t)) best = i;
+    return best;
+  });
+  const last = targets.length - 1;
+  const chosen = charts.flatMap((c, i) => c.notes.filter((x) => pick[Math.min(last, Math.max(0, windowOf(x.t, g)))] === i));
+  chosen.sort((a, b) => a.t - b.t || a.lane - b.lane);
+  const held = [-Infinity, -Infinity, -Infinity, -Infinity];
+  const out: ChartNote[] = [];
+  for (const x of chosen) {
+    if (held[x.lane] > x.t + 1e-6) continue;
+    if (x.hold) held[x.lane] = x.t + x.len;
+    out.push(x);
+  }
+  return out;
+}
+
+/** The next star rating to chart at, or null when done (Hard meets COVER, or MAX_STAR or MAX_TRIES is reached). */
+export function nextStar(stars: number[], cover: number): number | null {
+  if (cover >= COVER || stars.length >= MAX_TRIES) return null;
+  const next = Math.floor(Math.max(...stars)) + 1;
+  return next <= MAX_STAR ? next : null;
+}
 
 /** Downloads (or reads from the cache) the model and charts the song. */
 export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: TrainedOptions): Promise<Trained> {
@@ -107,38 +210,58 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     // The chart comes a page at a time, so the screen can show how much of the song is charted.
     // (Pages are meant for playing while it charts: with a lead longer than any song it never
     // waits for play, and the chart is the same as made in one go.)
-    o.onStage?.('chart', 0);
-    const s = await rt.ChartScheduler.create(models, prepared, { star: STAR, seed: SEED, title: o.title, artist: o.artist }, {
-      mode: 'ahead-of-play',
-      renderLeadMs: 1e9,
-      onPage: (page) => o.onStage?.('chart', Math.min(1, page.coverage_ms / songMs)),
-    });
-    let result: Awaited<ReturnType<typeof rt.generateChart>> | undefined;
-    try {
-      s.start(0);
-      for (let i = 0; i < 1e4 && !result; i++) {
-        const a = await s.work(); // 'ready' (play could start) and on, until 'done'
-        if (a.kind === 'done') {
-          if (!a.result) throw new Error('trained mapper: no chart');
-          result = a.result;
+    const chartAt = async (star: number, stage: TrainedStage) => {
+      o.onStage?.(stage, 0);
+      const s = await rt.ChartScheduler.create(models, prepared, { star, seed: SEED, title: o.title, artist: o.artist }, {
+        mode: 'ahead-of-play',
+        renderLeadMs: 1e9,
+        onPage: (page) => o.onStage?.(stage, Math.min(1, page.coverage_ms / songMs)),
+      });
+      let result: Awaited<ReturnType<typeof rt.generateChart>> | undefined;
+      try {
+        s.start(0);
+        for (let i = 0; i < 1e4 && !result; i++) {
+          const a = await s.work(); // 'ready' (play could start) and on, until 'done'
+          if (a.kind === 'done') {
+            if (!a.result) throw new Error('trained mapper: no chart');
+            result = a.result;
+          }
         }
+      } finally {
+        s.free();
       }
-    } finally {
-      s.free();
-    }
-    if (!result) throw new Error('trained mapper: no chart');
-    o.onStage?.('chart', 1);
-    const objects = result.chart.objects;
-    const shift = soundShift(objects, o.events);
+      if (!result) throw new Error('trained mapper: no chart');
+      o.onStage?.(stage, 1);
+      return result;
+    };
+    const first = await chartAt(STAR, 'chart');
+    const shift = soundShift(first.chart.objects, o.events);
     // The model's own grid (its larger beat tracker) can replace the first one: then the tiles go
     // on that one.
     let on: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'> = o;
-    const own = o.regrid ? osuGrid(result.osu, songMs / 1000) : null;
+    const own = o.regrid ? osuGrid(first.osu, songMs / 1000) : null;
     if (own && o.regrid) on = o.regrid({ ...own, offset: Math.round((own.offset + shift) * 1000) / 1000 }) ?? o;
-    const charts = easierCharts(toChart(objects, 'hard', on, shift).notes, on);
+    // Hard a stretch at a time (see hardTargets): charted again busier while too little is met.
+    const targets = hardTargets(on.events, on.bpm, songMs / 1000);
+    const hardOf = (notes: ChartNote[]) => perWindow(easierCharts(notes, on).hard.notes, on, targets.length);
+    const firstNotes = toChart(first.chart.objects, 'hard', on, shift).notes;
+    const tries = [{ star: STAR, notes: firstNotes, counts: hardOf(firstNotes) }];
+    let notes = firstNotes;
+    const covers = [coverage(tries[0].counts, targets)];
+    for (let star = nextStar([STAR], covers[0]); star != null; star = nextStar(tries.map((t) => t.star), covers[covers.length - 1])) {
+      const more = toChart((await chartAt(star, 'again')).chart.objects, 'hard', on, shift).notes;
+      tries.push({ star, notes: more, counts: hardOf(more) });
+      notes = splice(tries, targets, on);
+      covers.push(coverage(hardOf(notes), targets));
+    }
+    const charts = easierCharts(notes, on);
     for (const d of DIFFS) o.onProgress?.({ difficulty: d, done: 1, total: 1, tiles: charts[d].notes.length });
     const v = models.capabilities.model_version;
-    return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${STAR}★; each difficulty a subset; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds)` };
+    const pct = (x: number) => `${Math.round(x * 100)}%`;
+    const stars = tries.length > 1
+      ? `${tries.map((t) => `${t.star}★`).join(' + ')} by stretch of the song (Hard met ${pct(covers[0])} of its ${targets.reduce((a, b) => a + b, 0)}-tile target at ${STAR}★; ${tries.slice(1).map((t, i) => `with ${t.star}★ ${pct(covers[i + 1])}`).join(', ')})`
+      : `${STAR}★ (Hard met ${pct(covers[0])} of its target)`;
+    return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${stars}; each difficulty a subset; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds)` };
   } finally {
     await models.dispose().catch(() => {});
   }
@@ -206,8 +329,8 @@ export function easierCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' |
 /**
  * The model's objects (lane, ms), moved `shift` seconds later, as a chart in beats on the song's
  * grid. A tile within 15 ms of a measured sound takes that sound's place (as the onset mapper put
- * it, on a 16th when it's within 20 ms of one); others keep their own time, on a 16th when
- * within 12 ms of one.
+ * it, on a 16th when it's within 20 ms of one and the grid holds there); others keep their own
+ * time, on a 16th when within 12 ms of one where the grid holds.
  */
 export function toChart(objects: { lane: number; start_ms: number; end_ms?: number }[], difficulty: Difficulty, o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events'>, shift = 0): Chart {
   const bps = o.bpm / 60;
@@ -222,7 +345,13 @@ export function toChart(objects: { lane: number; start_ms: number; end_ms?: numb
     const close = (lim: number) => [events[j], events[j + 1]].filter((e) => e && Math.abs(e.sec - sec) < lim).sort((a, b) => Math.abs(a.sec - sec) - Math.abs(b.sec - sec))[0];
     const on = close(0.015);
     const q = Math.round(raw * 4) / 4;
-    const t = Math.max(0, on ? on.t : Math.abs(raw - q) / bps < 0.012 ? q : Math.round(raw * 1000) / 1000);
+    // Its own time goes onto a 16th only where the grid holds (the onset mapper put the sounds
+    // around it on 16ths: automap.ts gridHolds); elsewhere the grid is off the music there.
+    let holds = false;
+    for (let k = Math.max(0, j - 4); k < Math.min(events.length, j + 5) && !holds; k++) {
+      holds = Math.abs(events[k].sec - sec) < 0.5 && Math.abs(events[k].t * 4 - Math.round(events[k].t * 4)) < 1e-6;
+    }
+    const t = Math.max(0, on ? on.t : holds && Math.abs(raw - q) / bps < 0.012 ? q : Math.round(raw * 1000) / 1000);
     const len = ob.end_ms != null ? Math.round(((ob.end_ms - ob.start_ms) / 1000) * bps * 1000) / 1000 : 0;
     // The pitch of the sound it's on, when a pitched one was heard within 60 ms (synth playback only).
     const pitched = close(0.06);

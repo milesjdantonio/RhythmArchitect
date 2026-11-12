@@ -55,6 +55,7 @@ export function listenProblem(e: ListenError | null): string {
     case 'no-audio': return 'No sound was shared. Share this tab with its audio turned on.';
     case 'silent': return 'No sound came through. Share this tab (not another one) with its audio.';
     case 'video': return e.message;
+    case 'gaps': return e.message;
     default: return e?.message || 'Listening stopped part-way. Try again.';
   }
 }

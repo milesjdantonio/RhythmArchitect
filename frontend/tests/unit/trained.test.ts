@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ChartNote, SoundEvent } from '../../src/api/types';
 import { capChord, thinChart, type ThinOptions } from '../../src/mapping/thin';
-import { easierCharts, osuGrid, soundShift, toChart } from '../../src/mapping/ensomi';
+import { coverage, easierCharts, hardTargets, nextStar, osuGrid, perWindow, soundShift, splice, toChart, MAX_STAR, STAR } from '../../src/mapping/ensomi';
 
 const BPM = 120, SPB = 0.5;
 
@@ -140,5 +140,57 @@ describe("the trained mapper's own beat grid (its chart's timing)", () => {
   it('none without timing, or out of range', () => {
     expect(osuGrid('[HitObjects]\n1,1,1,1,0', 60)).toBeNull();
     expect(osuGrid(osu(['0,100,4,2,0,60,1,0']), 60)).toBeNull(); // 600 BPM
+  });
+});
+
+describe('Hard a stretch of the song at a time (busier where 2★ is thin)', () => {
+  // A sound every 8th at 200 BPM for 60 s, with a 10 s break of nothing in the middle.
+  const events = Array.from({ length: 400 }, (_, i) => ({ sec: i * 0.15 })).filter((e) => e.sec < 30 || e.sec >= 40);
+  const g = { bpm: 200, offset: 0 };
+  /** A tile every `step` beats from beat `from` to `to`. */
+  const run = (from: number, to: number, step: number, lane = 0): ChartNote[] =>
+    Array.from({ length: Math.round((to - from) / step) }, (_, i) => ({ t: from + i * step, lane: (lane + i) % 4, pitch: 'C5', len: 0.25 }));
+
+  it('aims for about two tiles a beat where there are sounds, nothing where there are none', () => {
+    const t = hardTargets(events, 200, 60);
+    expect(t).toHaveLength(6);
+    expect(t[3]).toBe(0); // the break
+    expect(t[0]).toBe(Math.round(((2.2 * 200) / 60) * 10)); // 73 in 10 s
+    // A slow song asks for fewer; a very fast one at most 8 a second.
+    expect(hardTargets(events, 80, 60)[0]).toBeLessThan(t[0]);
+    expect(hardTargets(events, 300, 60)[0]).toBe(80);
+  });
+
+  it('a busy start does not make up for a thin rest of the song', () => {
+    const targets = [70, 70, 70, 70];
+    expect(coverage([200, 20, 20, 20], targets)).toBeCloseTo((70 + 60) / 280, 5);
+    expect(coverage([70, 70, 70, 70], targets)).toBe(1);
+  });
+
+  it('each stretch takes the chart nearest its target, and nothing starts under a hold across the seam', () => {
+    // 10 s at 200 BPM is 33.3 beats. The first chart is right in its first stretch and thin after it;
+    // the second is thin first, busy after; its hold at the seam runs into the second stretch.
+    const sparse = [...run(0, 33, 0.5), ...run(34, 66, 2)];
+    const busyLater = [...run(0, 33, 2), { t: 33, lane: 1, pitch: 'C5', len: 3, hold: true }, ...run(34, 66, 0.5, 1)];
+    const targets = [66, 66];
+    const charts = [sparse, busyLater].map((notes) => ({ notes, counts: perWindow(notes, g, 2) }));
+    const out = splice(charts, targets, g);
+    const counts = perWindow(out, g, 2);
+    expect(counts[0]).toBe(charts[0].counts[0]);
+    expect(counts[1]).toBeGreaterThan(charts[0].counts[1] * 2);
+    // Every tile is one of the charts'.
+    const key = (n: ChartNote) => `${n.t}:${n.lane}`;
+    const all = new Set([...sparse, ...busyLater].map(key));
+    expect(out.every((n) => all.has(key(n)))).toBe(true);
+    // No tile in a lane while a hold in it is held.
+    for (const h of out.filter((n) => n.hold)) expect(out.some((n) => n !== h && n.lane === h.lane && n.t > h.t && n.t < h.t + h.len)).toBe(false);
+  });
+
+  it('charts again a star busier only while too little is met, up to the limits', () => {
+    expect(nextStar([STAR], 0.97)).toBeNull();
+    expect(nextStar([STAR], 0.64)).toBe(STAR + 1);
+    expect(nextStar([STAR, STAR + 1], 0.7)).toBe(STAR + 2);
+    expect(nextStar([STAR, STAR + 1, STAR + 2], 0.7)).toBeNull(); // at most three charts
+    expect(nextStar([MAX_STAR], 0.1)).toBeNull();
   });
 });

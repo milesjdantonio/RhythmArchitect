@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DIFFICULTIES } from '../../src/api/types';
-import { automap } from '../../src/mapping/automap';
+import { automap, gridHolds } from '../../src/mapping/automap';
 
 type Event = { at: number; kind: 'kick' | 'hat' | 'tone'; seconds?: number };
 
@@ -95,5 +95,29 @@ describe('automap', () => {
   it('is deterministic', () => {
     const { x, sr } = clickTrack(110, 20);
     expect(automap(x, sr).charts).toEqual(automap(x, sr).charts);
+  });
+});
+
+describe('where the beat grid holds (sounds go onto its 16ths only there)', () => {
+  const spb = 0.3; // 200 BPM: a 16th is 75 ms
+  // A sound on most 16ths, a few ms of human timing either way (a fixed pattern, no randomness).
+  const jitter = [0, 0.003, -0.002, 0.004, -0.004, 0.001, 0.002, -0.003];
+  const onGrid = (from: number, to: number, drift = 0) =>
+    Array.from({ length: Math.round((to - from) / (spb / 4)) }, (_, i) => from + i * (spb / 4) + jitter[i % 8] + drift * i)
+      .filter((_, i) => i % 5 !== 3);
+
+  it('holds where the sounds sit on the grid', () => {
+    const holds = gridHolds(onGrid(0, 40), 0, spb);
+    for (const t of [2, 10, 20, 37]) expect(holds(t)).toBe(true);
+  });
+
+  it("doesn't where the beat runs off it, or sits to one side, or there are too few sounds", () => {
+    // The same playing, but 0.1% slower than the grid: in phase at the start, 10 ms off it by 10 s.
+    const drifting = gridHolds(onGrid(0, 40, (spb / 4) * 0.001), 0, spb);
+    expect(drifting(2)).toBe(true);
+    expect(drifting(30)).toBe(false);
+    // Steady, but 15 ms after every 16th.
+    expect(gridHolds(onGrid(0, 40).map((s) => s + 0.015), 0, spb)(20)).toBe(false);
+    expect(gridHolds([1, 5, 9], 0, spb)(5)).toBe(false);
   });
 });

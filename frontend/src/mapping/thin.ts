@@ -78,8 +78,10 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
   const rows: Row[] = src.map((r) => {
     const sec = o.offset + r.t * o.spb;
     const hold = r.notes.some((n) => n.hold);
-    const pos = r.t - Math.floor(r.t + 0.001);
-    const grid = !o.onGrid ? 0 : Math.abs(pos) < 0.01 || pos > 0.99 ? 0.2 : Math.abs(pos - 0.5) < 0.01 ? 0.1 : 0;
+    // On a beat or half-beat: within 20 ms of one (tiles are put on the grid only where it holds).
+    const tol = Math.max(0.01, 0.02 / o.spb);
+    const pos = r.t - Math.floor(r.t + tol);
+    const grid = !o.onGrid ? 0 : Math.abs(pos) < tol || pos > 1 - tol ? 0.2 : Math.abs(pos - 0.5) < tol ? 0.1 : 0;
     const bar = o.onGrid && grid === 0.2 && Math.round(r.t) % 4 === 0 ? 0.1 : 0;
     const len = Math.max(0, ...r.notes.map((n) => (n.hold ? n.len : 0)));
     return { t: r.t, notes: r.notes, w: strengthAt(o.events, sec, cursor) + 0.25 * (r.notes.length - 1) + (hold ? 0.2 : 0) + grid + bar, end: r.t + len };

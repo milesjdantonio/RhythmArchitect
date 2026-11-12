@@ -63,6 +63,43 @@ export const GRID_TRUST = 0.4;
 /** Its straight-grid `fit` at least this much means one grid stays on the beat all song long. */
 export const GRID_STRAIGHT = 0.5;
 
+/** The stretches the grid is checked in, in seconds (each judged by its sounds and its neighbours'). */
+const HOLD_BIN = 4;
+
+/**
+ * Where a straight beat grid (`offset` s, `spb` s a beat) lines up with the song's sounds (`secs`):
+ * true for a time in a stretch (and its neighbours) whose sounds peak on the 16ths: half again as
+ * many within 6 ms of one as, for the same width, 6-18 ms off (sounds that don't follow the grid
+ * spread evenly; on a composed track about 2.5 times), and those near one sit on it, not to one
+ * side (median within 6 ms). Where the song's beat drifts off the grid, or there are too few
+ * sounds to tell, false: sounds there keep their own times.
+ */
+export function gridHolds(secs: number[], offset: number, spb: number): (sec: number) => boolean {
+  const six = spb / 4;
+  const last = secs.length ? secs[secs.length - 1] : 0;
+  const n = Math.floor(last / HOLD_BIN) + 1;
+  const ok: boolean[] = [];
+  const sorted = [...secs].sort((a, b) => a - b);
+  let lo = 0;
+  for (let b = 0; b < n; b++) {
+    const from = b * HOLD_BIN - HOLD_BIN / 2, to = (b + 1) * HOLD_BIN + HOLD_BIN / 2;
+    while (lo < sorted.length && sorted[lo] < from) lo++;
+    const near: number[] = [];
+    let on = 0, beside = 0;
+    for (let i = lo; i < sorted.length && sorted[i] < to; i++) {
+      const k = (sorted[i] - offset) / six;
+      const r = Math.abs((k - Math.round(k)) * six);
+      if (r < 0.006) on++;
+      else if (r < 0.018) beside++;
+      if (r < 0.02) near.push((k - Math.round(k)) * six);
+    }
+    near.sort((a, b) => a - b);
+    // `beside` spans twice the width of `on`: an even spread gives on = beside / 2.
+    ok.push(on + beside >= 8 && on >= beside * 0.75 && Math.abs(near[near.length >> 1] ?? 1) <= 0.006);
+  }
+  return (sec) => ok[Math.min(n - 1, Math.max(0, Math.floor(sec / HOLD_BIN)))] ?? false;
+}
+
 /**
  * Whether the mapper takes the beat tracker's grid over its own tempo estimate: whenever the
  * tracker found a steady beat. (A guard for a 3:2 clash between the two was tried and dropped:
@@ -477,14 +514,20 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
   }
 
   // Each onset in beats. Quantised music sits on the grid, so an attack within 20 ms of a 16th
-  // is placed on it; anything else keeps its exact time.
+  // is placed on it, but only where the grid holds there (gridHolds): where the song's beat runs
+  // off one straight grid (a drifting tempo, a speed-up), moving it would put the tile up to 20 ms
+  // off the sound. Anything else keeps its exact time.
+  const holds = gridHolds(peaks.map((p) => p.sec), offset, spb);
+  let held = 0, bins = 0;
+  for (let t = HOLD_BIN / 2; t < (peaks[peaks.length - 1]?.sec ?? 0); t += HOLD_BIN) { bins++; if (holds(t)) held++; }
+  const holdNote = bins ? `; sounds on the grid's 16ths where it holds (${Math.round((held / bins) * 100)}% of the song), elsewhere at their own times` : '';
   type Onset = { beat: number; sec: number; frame: number; strength: number; band: 0 | 1 | 2; part: number; midi: number; clarity: number; bright: number; ringsTo: number };
   const onsets: Onset[] = [];
   for (const p of peaks) {
     let beat = (p.sec - offset) / spb;
     if (beat < -0.05) continue;
     const q = Math.round(beat * 4) / 4;
-    beat = Math.max(0, Math.abs(beat - q) * spb < 0.02 ? q : Math.round(beat * 1000) / 1000);
+    beat = Math.max(0, Math.abs(beat - q) * spb < 0.02 && holds(p.sec) ? q : Math.round(beat * 1000) / 1000);
     const o: Onset = { beat, sec: p.sec, frame: p.frame, strength: p.strength, band: p.band, part: p.part, midi: 60, clarity: 0, bright: 60, ringsTo: p.sec };
     const prev = onsets[onsets.length - 1];
     if (prev && (beat - prev.beat) * spb < 0.04) {
@@ -534,7 +577,8 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
   const baseMidi = 48 + rootIndex(opts.key ?? 'C');
   const melody: MelodyNote[] = onsets.map((o) => {
     const rings = Math.max(0.25, (o.ringsTo - o.sec) / spb);
-    const onBeat = Math.abs(o.beat - Math.round(o.beat)) < 1e-6;
+    // On a beat: within 20 ms of one (where the grid doesn't hold, sounds keep their own times).
+    const onBeat = Math.abs(o.beat - Math.round(o.beat)) * spb < 0.02;
     return {
       t: o.beat,
       len: Math.round(Math.min(8, rings) * 100) / 100,
@@ -631,6 +675,6 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
     onsetInfo: onsets.map((o) => ({ sec: Math.round(o.sec * 1000) / 1000, midi: o.midi, clarity: Math.round(o.clarity * 100) / 100, bright: Math.round(o.bright), band: o.band })),
     events,
     barEnergy,
-    report: { mapper: grid ? 'Onset mapper v3 (exact attacks, Beat This! grid)' : 'Onset mapper v2 (exact attacks)', confidence: Math.round(confidence * 100) / 100, sections, energy: curve, cues, ...(beatNote ? { beat: beatNote } : {}) },
+    report: { mapper: grid ? 'Onset mapper v3 (exact attacks, Beat This! grid)' : 'Onset mapper v2 (exact attacks)', confidence: Math.round(confidence * 100) / 100, sections, energy: curve, cues, ...(beatNote ? { beat: beatNote + holdNote } : {}) },
   };
 }
