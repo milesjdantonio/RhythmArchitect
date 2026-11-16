@@ -1,3 +1,4 @@
+
 package com.rhythmarchitect.backend;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -71,34 +72,87 @@ class ApiTests {
     @Test
     void favouritesAndScores() throws Exception {
         String id = "builtin-ink-and-fury";
+
         mvc.perform(patch("/api/songs/" + id).contentType(MediaType.APPLICATION_JSON).content("{\"favorite\":true}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.favorite").value(true));
+
         mvc.perform(get("/api/favorites").param("q", "fury"))
             .andExpect(jsonPath("$.results[0].id").value(id));
 
-        String run = "{\"difficulty\":\"ultra\",\"score\":%d,\"accuracy\":0.9,\"maxCombo\":40,\"grade\":\"A\"}";
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(run.formatted(5000)))
-            .andExpect(jsonPath("$.best.ultra.score").value(5000));
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(run.formatted(100)))
+        // Ultra difficulty scores.
+        String ultraRun = "{\"difficulty\":\"ultra\",\"score\":%d,\"accuracy\":0.9,\"maxCombo\":40,\"grade\":\"A\"}";
+
+        mvc.perform(post("/api/songs/" + id + "/scores")
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(ultraRun.formatted(5000)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.best.ultra.score").value(5000))
+            .andExpect(jsonPath("$.plays").value(1));
+
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRun.formatted(100)))
             .andExpect(jsonPath("$.best.ultra.score").value(5000))
             .andExpect(jsonPath("$.plays").value(2));
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content("{\"difficulty\":\"expert\",\"score\":1}"))
+
+        // Hard difficulty scores on Neon Blueprint.
+        String scored = "demo-neon-blueprint";
+        String hardRun = "{\"difficulty\":\"hard\",\"score\":%d,\"accuracy\":0.9,\"maxCombo\":40,\"grade\":\"A\"}";
+
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(hardRun.formatted(5000)))
+            .andExpect(jsonPath("$.best.hard.score").value(5000));
+
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(hardRun.formatted(100)))
+            .andExpect(jsonPath("$.best.hard.score").value(5000))
+            .andExpect(jsonPath("$.plays").value(2));
+
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content("{\"difficulty\":\"expert\",\"score\":1}"))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad score"));
 
-        // A recorded run is counted again through main.GameScore (the same run as
-        // frontend/tests/unit/score.test.ts): its score, accuracy and combo are kept, not the
-        // client's, and it replaces the best on the old points above even though it's lower.
-        String recorded = "{\"difficulty\":\"ultra\",\"score\":999999,\"accuracy\":1,\"maxCombo\":99,\"grade\":\"S\",\"run\":\"%s\"}";
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPPPPPPPPPGEH1500;MLBP")))
-            .andExpect(jsonPath("$.best.ultra.score").value(1860))
-            .andExpect(jsonPath("$.best.ultra.maxCombo").value(12))
-            .andExpect(jsonPath("$.best.ultra.accuracy").value(1275.0 / 1600))
-            .andExpect(jsonPath("$.best.ultra.grade").value("C"))
+        // A recorded Ultra run is counted again through main.GameScore.
+        String ultraRecorded = "{\"difficulty\":\"ultra\",\"score\":999999,\"accuracy\":1,\"maxCombo\":99,\"grade\":\"S\",\"run\":\"%s\"}";
+
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("P")))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.best.ultra.score").value(100))
+            .andExpect(jsonPath("$.best.ultra.maxCombo").value(1))
+            .andExpect(jsonPath("$.best.ultra.accuracy").value(1.0))
+            .andExpect(jsonPath("$.best.ultra.grade").value("S"))
             .andExpect(jsonPath("$.best.ultra.rules").value("score"));
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("P")))
-            .andExpect(jsonPath("$.best.ultra.score").value(1860));
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPX")))
+
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("P")))
+            .andExpect(jsonPath("$.best.ultra.score").value(100));
+
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("PPX")))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
+
+        // A recorded Hard run is checked against the chart and counted again through main.GameScore.
+        String recorded = "{\"difficulty\":\"hard\",\"score\":999999,\"accuracy\":1,\"maxCombo\":99,\"grade\":\"S\",\"run\":\"%s\"}";
+
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPPPPPPPPPGEH1500;MLBP")))
+            .andExpect(jsonPath("$.best.hard.score").value(1860))
+            .andExpect(jsonPath("$.best.hard.maxCombo").value(12))
+            .andExpect(jsonPath("$.best.hard.accuracy").value(1275.0 / 1600))
+            .andExpect(jsonPath("$.best.hard.grade").value("C"))
+            .andExpect(jsonPath("$.best.hard.rules").value("score"));
+
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("P")))
+            .andExpect(jsonPath("$.best.hard.score").value(1860));
+
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPX")))
+            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
+
+        // Runs the Ultra chart couldn't have given: more tiles than it has, a hold held longer than
+        // its longest, more holds than it has. Every tile judged once is fine.
+        String[] impossible = { "P".repeat(99), "PH1900;", "PH100;".repeat(11) };
+
+        for (String r : impossible) {
+            mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted(r)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
+        }
+
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("P".repeat(98) + "H1810;")))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.best.ultra.maxCombo").value(98));
+
+        mvc.perform(get("/api/songs/" + scored)).andExpect(jsonPath("$.plays").value(5));
     }
 
     @Test
@@ -114,23 +168,29 @@ class ApiTests {
              "source":{"kind":"youtube","videoId":"dQw4w9WgXcQ","offset":0.5,"chart":"listened"},
              "report":{"mapper":"test","confidence":0.9,"sections":[{"label":"Intro","beat":0}],"energy":[0.5]},
              "charts":{"easy":%s,"medium":%s,"hard":%s,"ultra":%s}}""".formatted(chart.formatted("easy"), chart.formatted("medium"), chart.formatted("hard"), chart.formatted("ultra"));
+
         String body = mvc.perform(post("/api/songs").contentType(MediaType.APPLICATION_JSON).content(song))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.id").value(startsWith("yt-dqw4w9wgxcq-")))
             .andExpect(jsonPath("$.plays").value(0))
             .andReturn().getResponse().getContentAsString();
+
         String id = body.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
 
         mvc.perform(patch("/api/songs/" + id).contentType(MediaType.APPLICATION_JSON).content("{\"offset\":0.6255}"))
             .andExpect(jsonPath("$.source.offset").value(0.626));
+
         mvc.perform(get("/api/songs/" + id)).andExpect(jsonPath("$.charts.ultra.notes", hasSize(2)));
+
         mvc.perform(delete("/api/songs/" + id)).andExpect(status().isNoContent());
+
         mvc.perform(get("/api/songs/" + id)).andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("Song not found"));
     }
 
     @Test
     void youtubeNeedsATitleAndAKeyToSearch() throws Exception {
         mvc.perform(get("/api/youtube").param("title", " ")).andExpect(status().isBadRequest());
+
         mvc.perform(get("/api/youtube").param("title", "Mr. Brightside").param("artist", "The Killers"))
             .andExpect(status().isServiceUnavailable())
             .andExpect(jsonPath("$.error").value(startsWith("Finding songs on YouTube by name needs")));

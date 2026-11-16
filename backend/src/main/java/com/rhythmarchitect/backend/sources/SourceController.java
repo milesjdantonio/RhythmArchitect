@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.rhythmarchitect.backend.match.Text;
 import com.rhythmarchitect.backend.osu.Osu;
+import com.rhythmarchitect.backend.songs.NewSongCheck;
 import com.rhythmarchitect.backend.songs.SongStore;
 import com.rhythmarchitect.backend.web.ApiException;
 
@@ -61,6 +62,9 @@ public class SourceController {
         } catch (IllegalArgumentException e) {
             throw ApiException.notFound(e.getMessage());
         }
+        // Kept only if it passes what a mapped song must (the game's model can play it).
+        String problem = NewSongCheck.problem(song);
+        if (problem != null) throw ApiException.notFound("The fan chart found for this song can't be played: " + problem);
         return ResponseEntity.status(HttpStatus.CREATED).body(store.add(song));
     }
 }

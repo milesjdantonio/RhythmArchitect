@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { RunScore, holdBonus, multiplierFor, replayRun } from '../../src/game/score';
+import { RunScore, holdBonus, multiplierFor, replayRun, runFits } from '../../src/game/score';
 import { Game, hitResultFor } from '../../src/game/engine';
 import type { Chart } from '../../src/api/types';
 
-// The same run is checked against main.GameScore in src/java/test/main/GameScoreTest.java and
+// The same run is checked against main.GameScore in src/test/main/GameScoreTest.java and
 // through the server in backend ApiTests: all three must agree.
 // 10 Perfects (×1 for the first 9, ×2 from the 10th), a Good and an Early (×2), a 1.5 s hold held
 // to its end (180 × 2), a miss, a Late (×1), a hold let go (a miss), a Perfect (×1).
@@ -54,7 +54,19 @@ describe("the score: main.Score's rules, the multiplier and holds on top", () =>
     expect(again.accuracy).toBeCloseTo(g.accuracy, 10);
     expect(again.maxCombo).toBe(g.stats.maxCombo);
     expect(g.run).toMatch(/^PGEMPH1000;PM$/);
+    expect(runFits(g.run, chart, 120)).toBe(true); // the server would take it
     const fresh = new RunScore();
     expect(fresh.accuracy).toBe(0);
+  });
+
+  it('a run is checked against the chart it was played on, as the backend does (RunReplay.fits)', () => {
+    // 120 BPM: a tap, then a hold of two beats (one second). The same chart as backend MappingTests.
+    const chart: Chart = { difficulty: 'hard', lanes: 4, notes: [
+      { t: 0, lane: 0, pitch: 'C5', len: 0.25 },
+      { t: 2, lane: 2, pitch: 'E5', len: 2, hold: true },
+    ] };
+    for (const ok of ['PPH1000;', 'PPH1002;', 'PPB', 'PM', '']) expect(runFits(ok, chart, 120), ok).toBe(true);
+    for (const bad of ['PPP', 'PPH1003;', 'PPH500;B']) expect(runFits(bad, chart, 120), bad).toBe(false);
+    expect(runFits('P', { ...chart, notes: [] }, 120)).toBe(false);
   });
 });

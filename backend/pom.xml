@@ -38,8 +38,8 @@
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
 			<!-- The game's own classes (package main: Song, Note, Queue...) live in ../src/java/main and
-			     their JUnit tests in ../src/java/test/main; both are built and run with the backend
-			     (./mvnw test). -->
+			     their JUnit tests in ../src/test/main; both are built and run with the backend
+			     (./mvnw test). The two roots are side by side, not nested, so IDEs read them too. -->
 			<plugin>
 				<groupId>org.codehaus.mojo</groupId>
 				<artifactId>build-helper-maven-plugin</artifactId>
@@ -64,23 +64,8 @@
 						</goals>
 						<configuration>
 							<sources>
-								<source>${project.basedir}/../src/java/test</source>
+								<source>${project.basedir}/../src/test</source>
 							</sources>
-						</configuration>
-					</execution>
-				</executions>
-			</plugin>
-			<!-- ../src/java/test holds the tests: not part of the app (the test root above builds them). -->
-			<plugin>
-				<groupId>org.apache.maven.plugins</groupId>
-				<artifactId>maven-compiler-plugin</artifactId>
-				<executions>
-					<execution>
-						<id>default-compile</id>
-						<configuration>
-							<excludes>
-								<exclude>test/**</exclude>
-							</excludes>
 						</configuration>
 					</execution>
 				</executions>

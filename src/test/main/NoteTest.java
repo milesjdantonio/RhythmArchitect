@@ -1,7 +1,9 @@
 package main;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
 
@@ -20,6 +22,17 @@ class NoteTest
         assertEquals(0.5, n.getNoteLength());
         assertEquals(12.25, n.getTimeStamp());
         assertEquals(3, n.getLane());
+    }
+
+    @Test
+    void aNoteIsTappedUnlessItIsAHold()
+    {
+        assertFalse(new Note(NoteType.C, null, 0.5, 0, 0).isHold());
+        Note held = new Note(NoteType.C, null, 2, 0, 0, true);
+        assertTrue(held.isHold());
+        assertEquals(2, held.getNoteLength());
+        held.setHold(false);
+        assertFalse(held.isHold());
     }
 
     @Test

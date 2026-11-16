@@ -1,0 +1,6 @@
+{
+  // backend/pom.xml builds the game's classes (src/java/main) and their JUnit tests
+  // (src/test/main). Re-import it whenever it changes so the Testing panel and the
+  // Run Test buttons in the test files always see JUnit and the model classes.
+  "java.configuration.updateBuildConfiguration": "automatic"
+}

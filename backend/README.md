@@ -38,7 +38,9 @@ and run `npm run dev` as usual. Open the app as `localhost`, not `127.0.0.1`.
 ```
 src/main/java/com/rhythmarchitect/backend/
   songs/    SongController (songs, scores, search, favourites, library), SongStore (the JSON bank),
-            SongLists (search ranking, A to Z), NewSongCheck (what a mapped song must contain)
+            SongLists (search ranking, A to Z), NewSongCheck (what a mapped song must contain),
+            SongModel (a song of the bank as the model's Song, written by SongWriter),
+            RunReplay (a run checked against the chart's Queue of Notes, counted through GameScore)
   sources/  SourceController (GET /api/youtube, POST /api/fan-chart), YouTubeService,
             FanChartService (osu! search and downloads), Http
   osu/      Osu: .osu parser and fan chart to song, a port of frontend/src/mapping/osu.ts
@@ -47,7 +49,8 @@ src/main/java/com/rhythmarchitect/backend/
 src/main/resources/seed/songs.json   the built-in songs (exported from frontend/mock-server/songs)
 
 ../src/java/main/   the game's own classes, package main, built into the backend (build-helper in pom.xml):
-  Song, Note, Queue, Node, Difficulty, NoteType, MusicNoteType, HitResult, EmptyQueueException
+  Song, Note, Queue, Node, Difficulty, NoteType, MusicNoteType, HitResult, EmptyQueueException,
+  SongWriter, Score, GameScore (Main and ModelDemo are built too, but no route uses them)
 ```
 
 The built-in songs come from the mock. After changing them (or re-mapping them with `npm run map`),
