@@ -237,12 +237,17 @@
   .now-playing { gap: var(--space-3); padding: var(--space-3) var(--space-4); }
   .now-id { gap: var(--space-3); }
 }
+@container stage (max-width: 640px) {
+  .now-playing .diff-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .now-playing .diff-option { min-width: 0; justify-content: center; padding: 10px 6px; }
+  .now-playing .diff-badge { display: none; }
+  .now-playing .diff-text { min-width: 0; justify-items: center; overflow: visible; }
+  .now-playing .diff-name { white-space: normal; overflow: visible; text-overflow: clip; }
+}
 @container stage (max-width: 480px) {
   .now-playing { grid-template-columns: minmax(0, 1fr); grid-template-areas: "id" "actions" "picker"; }
   .now-actions { margin-right: 0; }
   .now-actions .play-btn { flex: 1; justify-content: center; }
-  /* Two columns leave every difficulty name readable in the narrow stage panel. */
-  .diff-picker { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .now-id { grid-area: id; min-width: 0; display: flex; align-items: center; gap: var(--space-4); padding-right: 40px; }
 .now-text { min-width: 0; display: grid; gap: 4px; justify-items: start; }
