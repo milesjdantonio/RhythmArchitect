@@ -21,6 +21,10 @@ the recordings are made locally and kept out of the repo). It shows the intro, s
 song, a bot playing *Ink and Fury* on Hard with real audio and the dev tools open, *One Dance*
 from YouTube (its video in its spot under the stage, then in the game's corner), and the
 hand-mapped test song played badly enough to show misses and the results.
+`npm run video:overdrive` records the Overdrive update to `docs/media/overdrive.webm` (with a still
+of each level): the Background and key settings, the start card's Practice picker, a run that
+climbs through all five Overdrive levels to ×10, mashing the keys (strays drain the signal), and a
+part of a song practised on a loop at 75%.
 
 ## Project 3: First prototype (Deliverable 3)
 
@@ -116,15 +120,43 @@ the mock: `cd backend && ./mvnw spring-boot:run`, and `VITE_API_BASE_URL=http://
   and picking a song plays it right away without leaving the bank (a "Now playing" card shows it,
   with a YouTube song's video). Esc clears the search, then goes back to the menu with the song
   that was playing on stage, its preview carrying on from where it was.
-- **The game.** Four lanes on D F J K (or arrows / 1–4 / touch). Perfect/great/good windows, holds,
-  combo multiplier up to ×4 with **fever**, health and no-fail, pause, early/late feedback (under
-  the hit line, never over the tiles). One **run panel** down the left holds the score, accuracy,
+- **The game.** Four lanes on D F J K by default (rebindable in Settings; arrows / 1–4 / touch work
+  too). Perfect/great/good windows, holds, a combo multiplier up to ×5 with **fever** at ×5, health
+  ("signal") and no-fail, pause, early/late feedback (under the hit line, never over the tiles).
+  A Perfect is worth 1,000 (`Score`'s 100, ×10). A miss costs a good chunk of signal and hits give
+  only a little back. A key pressed with no tile to hit is a **stray**: it costs some signal and
+  Overdrive charge, so mashing every key can't clear a song (a few strays are forgiven; a second of
+  mashing drains the signal). One **run panel** down the left holds the score, accuracy,
   multiplier, combo, signal and live Perfect/Great/Good/Miss counts, headed by a YouTube song's
   video; where you hit stays in the centre of the screen. Every 25 in a row (and fever) is
   **called out on the right**: the number slams in and counts up, a streak cuts across, rings and
   shards burst, every hundred in gold. Big moments burst from the sides of the track and tiles draw
   over every effect, so the notes stay readable. Hitting a tile makes no sound: the song is the
   sound (synth songs play every note of the map themselves).
+- **Overdrive.** Accurate hits fill a charge (shown under the multiplier). When it's full, press
+  **Space** (or the key you bound, or the HUD's button on touch screens): Overdrive adds +1 to the
+  multiplier for the next 48 tiles. Press again whenever the charge fills while it runs to stack it,
+  up to five levels: ×5 from the combo plus ×5 from Overdrive is **×10**. Each level takes the whole
+  field to its own colours (the tiles, pads, beams, walls, track, the world and the sky): *Surge*
+  (electric blue), *Plasma* (magenta), *Aurora* (green), *Inferno* (red-orange) and *Prism* (every
+  colour, turning across the lanes). Each level goes up with a bigger burst: light pours up both
+  sides of the track, rings sweep every lane, bands climb the walls, fireworks and comets fill the
+  sky, and the screen's edges glow in the level's colour. Every hit rings wider, light streams up
+  the sides, and every bar pulses in the level's colours. A miss costs 8 of the 48 tiles. When it
+  runs out, the colours flow back to the song's. The server checks every Overdrive in a saved run
+  (`GameScore.startOverdrive`).
+- **Practice.** On the start card, *Practice a part*: pick a section of the song (or a quarter, for
+  songs without sections) and a speed from 50% to 100%. The part loops (Loop 2, 3...) until you stop
+  it from the pause menu; nothing is saved and you can't fail. The song really slows down: the
+  track, the synth, or YouTube's own player (at the nearest speed it has).
+- **Settings.** Volume and backing in 1% steps; **keybinds** (click a lane or Overdrive, press the
+  new key; keys swap rather than double up; every key shown in the game follows them); and
+  **Background**: *Dynamic* (it follows the song, as before) or a fixed colour (Nebula, Ocean,
+  Aurora, Rose, Ember, Gold) on the menu and in every song.
+- **Waking the server.** A free server sleeps when nobody plays. If it doesn't answer within a
+  second and a half, the game shows a reactor powering up (a ring that fills as the seconds pass,
+  a pulsing core, four lanes charging, how long it has been) and opens by itself once the server is
+  up, with a retry after three minutes.
 - **Results.** Grade and score; accuracy and max combo, then Perfect, Great, Good and Miss; *Play
   again* (R) or *Return to main menu* (Esc). The song plays again quietly behind it, and back on
   the menu it plays on from where it was as the song's preview.
@@ -209,6 +241,10 @@ Two backends implement all of it:
 - **`backend/`** (Java, Spring Boot): the real one (no AI runs on it: songs are charted in the browser). Run it with
   `./mvnw spring-boot:run` from `backend/` and set `VITE_API_BASE_URL=http://localhost:8080` in
   `frontend/.env.local`; see [backend/README.md](backend/README.md).
+  Its song bank can live in **Supabase** (Postgres) instead of a file, so it survives restarts:
+  set `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` ([docs/supabase.md](docs/supabase.md)). It starts in
+  about 2 s in its Docker image (the jar unpacked, plus Java 25's ahead-of-time class cache),
+  and reads the song bank in the background once it's up.
 - **`frontend/mock-server/`**: runs inside the Vite server when `VITE_API_BASE_URL` is empty and
   keeps its songs in `frontend/.data/songs.json`.
 
@@ -217,7 +253,12 @@ beatmap** maps a new one, and it plays from YouTube:
 
 1. **Find the video.** Paste the song's YouTube link into Title, or type title and artist (searching
    YouTube by name needs a free YouTube Data API key: `YOUTUBE_API_KEY` in `frontend/.env.local`, see
-   `frontend/.env.example`). The video shows in YouTube's own embedded player. Its audio is never downloaded.
+   [docs/youtube-api.md](docs/youtube-api.md)). The video shows in YouTube's own embedded player. Its audio is never downloaded.
+   **Only songs:** search asks YouTube for its Music category, and every video, found or pasted, is
+   checked (`notSongReason` in `mock-server/match.ts`, `Matching` in the backend): a reaction,
+   tutorial, full album or ten-hour loop, or anything under 45 s or over 15 min, is refused with a
+   message saying why; with the API key, a pasted link must also be music on YouTube or look like
+   a song upload (a Topic or VEVO channel, "Official Audio", "Artist - Title").
 2. **Listen once.** Press *Listen and map* and share this tab with its audio. The song plays once
    while the browser records what it hears (a short tick first measures the capture delay; at the
    end the recording is filed by the video's position, one offset per stretch of steady playback,
@@ -361,16 +402,17 @@ Each change says what the spec said, what we built, why, and what prompted it.
 | 6 | **Song** (validation) | Reject a null or empty title or artist and a non-positive duration or BPM; `getChart` returns null when there's no chart; `setChart` rejects nulls. | As specified (`IllegalArgumentException` with a message; `getChart(null)` is null). | | `SongTest` from the test plan. |
 | 7 | **Model/View boundary** | The view knows only the next few notes, never the whole queue at once. | The view loads a song's whole chart once (a few KB), because it draws tiles all the way down a 3D track and runs offline from the server; but each frame it now only looks at the notes near the hit line. | Drawing far-away tiles needs their times; asking a server for every frame's notes would add network delay to every hit. | Miles asking whether the game "loads the entire queue" while chasing a slowdown (Nov 11): the per-frame work was cut to a window. |
 | 8 | **Controller** | `Main` (Spring Boot) relays input and score between the view and the model. | Not built yet (Darsh's part). The Spring Boot backend serves the songs, search, YouTube lookups and fan charts; judging hits and scoring run in the browser for now (`frontend/src/game/engine.ts`). | The view had to be playable before the controller existed. | Division of work and the schedule. |
-| 9 | **Validation: key at the wrong time** | Penalize the score. | A press with no tile within reach is ignored; a tile that isn't hit becomes a miss (it breaks the combo and costs signal). | Penalizing stray presses punishes players for tapping along to the beat; missing the tile already costs points. | Play-testing. |
+| 9 | **Validation: key at the wrong time** | Penalize the score. | A press with no tile to hit is a *stray*: it costs a little signal and Overdrive charge (recorded in the run as `X`, so the server's replay agrees), but no points and no combo. Strays don't count from long before the first tile or after the last. | At first strays were ignored (penalizing them seemed to punish tapping along to the beat), but then mashing every key cleared songs for free. A small cost per stray stops mashing without punishing the odd extra press. | Play-testing (Miles, Nov 17). |
 | 10 | **Validation: no difficulty chosen** | Default to Easy. | `SongWriter.chartFor(song, null)` gives Easy. In the game a difficulty is always chosen: the menu starts on Medium, and a link with no or an unknown difficulty goes back to the menu. | | The e2e bad-input test. |
 | 11 | **Validation: AI fails or returns bad data** | `SongWriter` throws; the view says "Couldn't create song". | If the trained mapper fails (no model download, bad output), the song still gets charts from the on-device onset mapper, and the dev tools say why. A bad chart file makes `SongWriter` throw an `IllegalArgumentException` that names the problem, and the server turns down a mapped song or fan chart `SongWriter` can't take in. | Better a playable map than an error. | The e2e test "when the trained mapper fails". |
-| 12 | **Tests** | Tests for Node, Queue, Note, Song, SongWriter, Score and Main. | 42 JUnit tests for Node, Queue, Note, Song and SongWriter (`src/test/main/`, good and bad cases from the plan), 3 for GameScore; 12 backend tests; 103 frontend unit tests; 22 browser tests. Score and Main have none yet (not written). | | The test plan. |
+| 12 | **Tests** | Tests for Node, Queue, Note, Song, SongWriter, Score and Main. | 44 JUnit tests for Node, Queue, Note, Song and SongWriter (`src/test/main/`, good and bad cases from the plan), 6 for GameScore; 16 backend tests; 113 frontend unit tests; 22 browser tests. Score and Main have none yet (not written). | | The test plan. |
 | 13 | **Scope** | JavaFX, then HTML/CSS (revised scope). | HTML, CSS and TypeScript (React, three.js for the 3D stage, Tone.js for sound), songs played through YouTube's embedded player. | We know the web better, and YouTube lets any song play without downloading its audio. | The revised scope and the GTA conversation. |
+| 14 | **Score** (rules on top) | `Score`: a Perfect 100, a Good 75, an Early or Late 50; a combo. | `Score` unchanged. `GameScore` on top: points ×10 (a Perfect is 1,000), a combo multiplier to ×5, and Overdrive (+1 per level, five levels: ×10 at most), checked and counted again on the server. Signal drains faster on a miss and refills slower on a hit. | Scores felt small and the run too forgiving; Overdrive (an idea in the last Next Steps) needed to matter. | Play-testing (Miles, Nov 17). |
 
 ### Did the model really stand alone?
 
 Yes. `src/java/main/` imports nothing but the Java standard library: no view, no Spring, no
-controller. `ModelDemo` runs it with plain `javac`/`java`, and the 45 model tests run without a
+controller. `ModelDemo` runs it with plain `javac`/`java`, and the 50 model tests run without a
 server or a browser. The honest caveat: the browser game doesn't play through the Java model yet.
 The server does: every song it keeps goes into the model first (`SongModel`: `SongWriter` writes
 it as a `Song`, a `Queue<Note>` per `Difficulty`), and a mapped song or fan chart the model can't
@@ -388,14 +430,15 @@ through `GameScore` (`Score` with the game's combo multiplier and held-note bonu
 | Where does the audio come from, legally? | **Figured out** | YouTube's embedded player plays the song; the game never downloads it. It listens once through tab sharing and keeps only the tiles and a loudness curve. |
 | Will the tiles line up with the music? | **Figured out** | Tiles are timed to each sound within a few milliseconds; the Map Syncer corrects a song's offset after a run whose hits were steadily early or late. |
 | JavaFX or the web for the view? | **Figured out** | The web (revised scope). |
-| Can it run for others, not just on our machines? | **Mostly** | The backend runs on Render (Docker). Songs saved there are lost when the service restarts (its disk isn't persistent yet), and finding songs by name needs a YouTube API key on the server. |
+| Can it run for others, not just on our machines? | **Mostly** | The backend runs on Render (Docker) and can keep its songs in Supabase, so they outlive restarts once `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set there ([docs/supabase.md](docs/supabase.md)). Finding songs by name needs a YouTube API key on the server ([docs/youtube-api.md](docs/youtube-api.md)). A sleeping free server shows a waking screen instead of failing. |
 | How will the controller connect the view to the model? | **Partly** | Songs: every song the server keeps is a model `Song` first (`SongModel`, `SongWriter`). Scores: every saved run is checked against its `Queue<Note>` and counted again through `Score` (via `GameScore`, `RunReplay`). Play: `Main` is written; routes to play through it are next. |
 
 ### What doesn't work yet
 
 - **The game doesn't play through `Main` yet**: key presses are judged in the browser. `Score` counts every saved run on the server (through `GameScore`, after checking it against the song's `Queue<Note>`), so best scores follow the model's rules.
-- **Songs mapped on the deployed site don't last**: the Render service's song file is reset when it restarts.
-- **Searching YouTube by name on the deployed site** needs `YOUTUBE_API_KEY` set on Render; pasting a YouTube link works without it.
+- **Songs mapped on the deployed site don't last until Supabase is set up there**: the Render service's song file is reset when it restarts; with `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` set the bank is kept in Supabase ([docs/supabase.md](docs/supabase.md)).
+- **Searching YouTube by name on the deployed site** needs `YOUTUBE_API_KEY` set on Render ([docs/youtube-api.md](docs/youtube-api.md)); pasting a YouTube link works without it. Without the key, a pasted link is checked as a song by its title and channel only.
+- **Practice and Overdrive run in the browser's copy of the rules** like the rest of play (Overdrive is checked again on the server; practice runs are never saved).
 - **Mapping a new song needs desktop Chrome or Edge** (sharing a tab's sound); other browsers and phones get an osu! fan chart when one exists.
 - **The first song mapped downloads the trained model** (about 120 MB, then cached); without WebGPU, charting a 3-minute song takes about 90 s instead of 20 s.
 - **The menu starts on Medium**, not Easy as the spec's "no difficulty chosen" row says.
@@ -411,13 +454,19 @@ through `GameScore` (`Score` with the game's combo multiplier and held-note bonu
 | 3 | Expose the controller to the view. | Darsh, Miles | Spring Boot routes for `Main` (for example a play session: start, input, upcoming notes, score) and a client in `frontend/src/api/client.ts`. |
 | 4 | Play through the controller. | Miles | `frontend/src/screens/Play.tsx` asks `Main` for upcoming notes and sends key presses; `frontend/src/game/engine.ts` stays as the offline fallback. |
 | 5 | Tests for `Score` and `Main`, then beta testing. | Haniya | `ScoreTest`, `MainTest` from the test plan; an end-to-end test that plays through the controller. |
-| 6 | Keep songs on the deployed site. | Miles | `backend/.../songs/SongStore.java` on a persistent disk or a database; `YOUTUBE_API_KEY` on Render. |
+| 6 | **Built; to switch on.** Keep songs on the deployed site. | Miles | `SongStore` keeps the bank in Supabase through `SupabaseSongs` when `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set; set them and `YOUTUBE_API_KEY` on Render ([docs/supabase.md](docs/supabase.md), [docs/youtube-api.md](docs/youtube-api.md)). |
 | 7 | Review the model changes in this deliverable. | Sarah | `Queue`, `Note`, `Song` (changes 2-6 above) and the new `SongWriter`. |
 
 ### A change feature not in the MVP: Practice mode
 
 Pick a section of a song (a verse, the drop) and play it on a loop, optionally slowed down, until
 you get it right. Nothing in the MVP plays part of a song or changes its speed.
+
+**Built (Nov 17).** How it turned out against the prediction below: `Song.getChartBetween` was added
+as predicted (with its test); the view plays the part on a loop at 50-100% (`playback.ts` runs the
+song and its clock at the speed, `Play.tsx` and the start card choose the part). `Main` wasn't
+changed (it isn't wired to play yet, and it's Darsh's), and `Score` needed no `isPractice()`:
+practice runs are simply never sent to the server.
 
 | Will change | How (prediction) |
 |---|---|
@@ -434,6 +483,13 @@ you get it right. Nothing in the MVP plays part of a song or changes its speed.
 | The mappers (`frontend/src/mapping/`) | Practice plays existing charts. |
 
 ### Idea: Overdrive, a power-up you earn
+
+**Built (Nov 17).** The open questions, answered: it changes scoring (+1 on the multiplier per
+level, up to five levels, so ×10 with the combo's ×5); it lasts 48 tiles (a miss costs 8); a full
+charge while it runs raises the level and starts the 48 again; it can be set off any time the
+charge is full. `GameScore` (not `Score`, which stays Darsh's) has the charge and the levels
+(`getCharge`, `isCharged`, `startOverdrive`, `getOverdrive`); the run records it (`O`) and the server
+refuses an Overdrive the charge couldn't have paid for. `Main` is unchanged.
 
 The player builds up a **charge** by hitting tiles, faster the more accurate they are (a Perfect
 fills more than a Good; a miss drains some). When the meter is full, the game says so, and pressing
@@ -485,11 +541,11 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `Queue` | Sarah Schallon; Miles D'Antonio | Sarah wrote the first draft and its fix (linked nodes, `enqueue`, `dequeue`, `clear`, `peek`); Miles made it compile (constructor, `isEmpty`, `clear`), added `getSize`, `enqueue(T)`, the empty-queue checks, the null-node rule and Javadoc (GenAI-assisted). |
 | `Note` | Sarah Schallon; Miles D'Antonio | Sarah wrote it (fields, getters, setters, `equals`, `toString`); Miles made it compile (constructor, a setter's type, `equals`/`hashCode`) and added the spec's defaults for bad input, its `toString` and the hold flag (`isHold`) (GenAI-assisted). |
 | `NoteType`, `MusicNoteType`, `Difficulty`, `HitResult` | Sarah Schallon | Wrote them (Miles put them in package `main`, public). |
-| `Song` | Sarah Schallon; Miles D'Antonio | Sarah started it (fields, constructor, the method signatures); Miles implemented one chart per difficulty (`getChart`, `setChart`, `getAvailableDifficulties`) and the spec's validation (GenAI-assisted). |
+| `Song` | Sarah Schallon; Miles D'Antonio | Sarah started it (fields, constructor, the method signatures); Miles implemented one chart per difficulty (`getChart`, `setChart`, `getAvailableDifficulties`), the spec's validation and `getChartBetween` for practice (GenAI-assisted). |
 | `EmptyQueueException` | Miles D'Antonio | Wrote it (GenAI-assisted). |
 | `SongWriter` | Miles D'Antonio | Wrote it (GenAI-assisted). |
 | `ModelDemo` (driver) | Miles D'Antonio | Wrote it (GenAI-assisted). |
-| `GameScore` | Miles D'Antonio | Wrote it (GenAI-assisted): `Score` with the game's combo multiplier and held-note bonus on top, `Score`'s own rules unchanged. |
+| `GameScore` | Miles D'Antonio | Wrote it (GenAI-assisted): `Score` with the game's ×10 points, combo multiplier (to ×5), held-note bonus, Overdrive (charge, levels, to ×10) and stray presses on top, `Score`'s own rules unchanged. |
 | `Score`, `Main` | Darsh Sharma | Wrote both classes (GenAI-assisted). Implemented Score to track points, hits, misses, combos, and accuracy using HitResult. Implemented Main to handle player inputs, judge note timing, remove notes from the queue, track missed notes, and return upcoming notes.. |
 
 ### The backend (`backend/`, Java, Spring Boot)
@@ -498,7 +554,8 @@ assistant) at the named person's direction, then run and reviewed by them.
 |---|---|---|
 | `BackendApplication` | Miles D'Antonio | Set up the Spring Boot project (Spring Initializr), then built on it (GenAI-assisted). |
 | `SongController`, `SongStore`, `SongLists`, `NewSongCheck`, `SongModel`, `RunReplay` | Miles D'Antonio | Wrote them (GenAI-assisted): songs (each one taken into the model through `SongWriter`), scores (each run checked against the chart's `Queue<Note>`, then counted again through `GameScore`), search, the music bank. |
-| `SourceController`, `YouTubeService`, `FanChartService`, `Http` | Miles D'Antonio | Wrote them (GenAI-assisted): YouTube lookups and osu! fan charts. |
+| `SourceController`, `YouTubeService`, `FanChartService`, `Http` | Miles D'Antonio | Wrote them (GenAI-assisted): YouTube lookups (songs only) and osu! fan charts. |
+| `SupabaseSongs`, `HealthController` | Miles D'Antonio | Wrote them (GenAI-assisted): the song bank in Supabase, and the health check the waking screen asks. |
 | `Osu` | Miles D'Antonio | Ported the frontend's osu! reader to Java (GenAI-assisted). |
 | `Matching`, `Text` | Miles D'Antonio | Wrote them (GenAI-assisted): matching names and videos. |
 | `ApiException`, `ApiExceptionHandler`, `CorsConfig` | Miles D'Antonio | Wrote them (GenAI-assisted). |
@@ -520,7 +577,8 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `src/test/main/SongWriterTest.java` | Miles D'Antonio; Haniya Naseer | Same, for the new SongWriter. |
 | `src/test/main/GameScoreTest.java` | Miles D'Antonio | `GameScore` on the same run the browser's test uses (GenAI-assisted). |
 | `backend/src/test/.../ApiTests.java` | Miles D'Antonio | Every route against a fresh song bank (GenAI-assisted). |
-| `backend/src/test/.../MappingTests.java` | Miles D'Antonio | Name matching and the osu! port (GenAI-assisted). |
+| `backend/src/test/.../MappingTests.java` | Miles D'Antonio | Name matching, the song check and the osu! port (GenAI-assisted). |
+| `backend/src/test/.../SupabaseTests.java` | Miles D'Antonio | The song bank in Supabase, against a stand-in for its REST API (GenAI-assisted). |
 | `backend/src/test/.../BackendApplicationTests.java` | Miles D'Antonio | The app starts (generated by Spring Initializr). |
 | `frontend/tests/unit/engine.test.ts` | Miles D'Antonio | The game rules: judging, holds, combo, score (GenAI-assisted). |
 | `frontend/tests/unit/score.test.ts` | Miles D'Antonio | The score rules (`Score`'s, with the multiplier and holds), checked against `GameScore` (GenAI-assisted). |

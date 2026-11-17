@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { wakeAudio } from '../audio/playback';
-import { KEYS, laneForCode } from '../game/engine';
+import { laneForCode } from '../game/engine';
+import { getBinds, laneKeyList, useBinds } from '../lib/keys';
 import { bus } from '../lib/bus';
 import { CHARGE_MS, FLIGHT_MS } from '../lib/entrance';
 import { isCalm } from '../lib/settings';
@@ -63,6 +64,7 @@ export function Intro({ onEnter, onDone }: { onEnter: () => void; onDone: () => 
   // The title gathers once the orbit has formed.
   const [titleOn, setTitleOn] = useState(false);
   const [lit, setLit] = useState([0, 0, 0, 0]);
+  const binds = useBinds();
   // Where the pointer is: only the soft light follows it (the world and the art stay put).
   const pointer = useRef({ px: innerWidth / 2, py: innerHeight / 2 });
   const [useWorld, setUseWorld] = useState(() => !!worldChunk);
@@ -173,7 +175,8 @@ export function Intro({ onEnter, onDone }: { onEnter: () => void; onDone: () => 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
       if (leavingRef.current || e.repeat || e.metaKey || e.ctrlKey || e.altKey || e.code === 'Tab') return;
-      const l = laneForCode(e.code);
+      const b = getBinds();
+      const l = laneForCode(e.code, 4, b.lanes, [b.overdrive]);
       e.preventDefault();
       if (l >= 0) lane(l); else enter();
     };
@@ -234,7 +237,7 @@ export function Intro({ onEnter, onDone }: { onEnter: () => void; onDone: () => 
       <div className={`intro-prompt ${ready ? 'is-ready' : ''}`}>
         <p className="intro-press">Click to start</p>
         <div className="intro-keys" aria-label="Lane keys">
-          {KEYS.map((k, i) => <kbd key={`${k.code}-${lit[i]}`} className={lit[i] ? 'is-lit' : ''} style={{ '--i': i } as React.CSSProperties}>{k.label}</kbd>)}
+          {laneKeyList(binds).map((k, i) => <kbd key={`${k.code}-${lit[i]}`} className={lit[i] ? 'is-lit' : ''} style={{ '--i': i } as React.CSSProperties}>{k.label}</kbd>)}
         </div>
       </div>
       <button type="button" className="sr-only" onClick={() => enter()} autoFocus>Enter Rythm Architect</button>

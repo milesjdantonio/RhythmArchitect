@@ -5,6 +5,7 @@ import { isCalm } from '../../lib/settings';
 import { Icon } from '../Icon';
 import type { AuraHandle } from './ListenAura';
 import type { TrainedStage } from '../../mapping/ensomi';
+import { getBinds, keyLabel } from '../../lib/keys';
 
 export interface ScopeHandle {
   /** What's heard, every ~12 ms: where in the song (s), its loudness, and its lows, mids and highs. */
@@ -38,7 +39,8 @@ const FLY_MS = 1500; // the front of tiles flying into their lanes, left to righ
 const HOP_MS = 460; // one tile's flight
 const LANES = 4;
 const BAND_NAMES = ['LOW', 'MID', 'HIGH'];
-const LANE_KEYS = ['D', 'F', 'J', 'K'];
+/** The lane keys as the player set them (src/lib/keys.ts). */
+const laneKeys = () => getBinds().lanes.map(keyLabel);
 
 /**
  * The listening and mapping animation, under the video: the song as a field of light, in four acts.
@@ -406,7 +408,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
             g.fillRect((w - span) / 2, y - 0.5, span, 1 + fl * 1.5);
             if (fl > 0) st.laneFlash[l] = Math.max(0, fl - dt * 2.5);
             g.globalAlpha = 0.6 * open;
-            g.fillText(LANE_KEYS[l], 0, y);
+            g.fillText(laneKeys()[l], 0, y);
           }
           g.globalAlpha = 0.25 * open;
           g.fillStyle = '#fff';

@@ -28,6 +28,7 @@ import { MAX_CLIMB, HIGHWAY_VERT, HIGHWAY_FRAG, WALL_FRAG, PAD_FRAG, UV_VERT, TI
 import { glowTexture, beamTexture, columnTexture, starTexture } from './textures';
 import { watchLost } from './lost';
 import type { SceneEvent } from '../background/scene';
+import { OVERDRIVE_LOOKS, overdriveHue } from '../game/overdrive';
 /** The WebGPU materials (gpu.ts), passed in by the stage worker for perf profile B. */
 export type GpuKit = typeof import('./gpu');
 
@@ -193,6 +194,18 @@ export class Stage3D {
   private mode: StageMode;
   private hues: [number, number] = [196, 272];
   private laneColors: THREE.Color[] = [];
+  /** The song's own lane colours (laneColors leaves them for Overdrive's and comes back). */
+  private baseColors: THREE.Color[] = [];
+  /** The particle world's and the ribbons' song colours (A, B), for the same. */
+  private baseForm: THREE.Color[] = [];
+  private baseRibbon: THREE.Color[] = [];
+  /** Overdrive: its level (0 off, 1..5), the level whose colours show (kept while they fade), and how far they show (0..1). */
+  private odLevel = 0;
+  private odShown = 1;
+  private od = 0;
+  private odApplied = false;
+  private odStream = 0;
+  private odColors = [new THREE.Color(), new THREE.Color(), new THREE.Color(), new THREE.Color()];
   private white = new THREE.Color(1, 1, 1);
   private red = new THREE.Color(1, 0.3, 0.38);
   private gold = new THREE.Color(1, 0.84, 0.5);
@@ -691,7 +704,11 @@ export class Stage3D {
     (this.ribbonMat.uniforms.uHueA.value as THREE.Color).setHSL(a / 360, 1, 0.52);
     (this.ribbonMat.uniforms.uHueB.value as THREE.Color).setHSL(b / 360, 1, 0.55);
     this.pillarMats.forEach((m, i) => m.color.copy(ca).lerp(cb, (this.pillars[i].userData.f as number) ?? 0.5));
-    this.laneColors = [0, 1, 2, 3].map((l) => ca.clone().lerp(cb, l / 3));
+    this.baseColors = [0, 1, 2, 3].map((l) => ca.clone().lerp(cb, l / 3));
+    this.laneColors = this.baseColors.map((c) => c.clone());
+    this.baseForm = [(this.formMat.uniforms.uHueA.value as THREE.Color).clone(), (this.formMat.uniforms.uHueB.value as THREE.Color).clone()];
+    this.baseRibbon = [(this.ribbonMat.uniforms.uHueA.value as THREE.Color).clone(), (this.ribbonMat.uniforms.uHueB.value as THREE.Color).clone()];
+    this.odApplied = this.od > 0.002;
     this.pads.forEach((p, l) => (p.uniforms.uColor.value as THREE.Color).copy(this.laneColors[l]));
     this.beamMats.forEach((m, l) => m.color.copy(this.laneColors[l]));
     this.wallMats.forEach((m, i) => (m.uniforms.uColor.value as THREE.Color).copy(i ? cb : ca));
@@ -720,6 +737,120 @@ export class Stage3D {
     if (on) {
       this.feverBurst();
       for (let k = 0; k < 4; k++) this.climb(0, 0.9, { gold: 1, delay: k * 3, width: 1.3, speed: 34 });
+    }
+  }
+
+  /**
+   * Overdrive at a level (0 off, 1..5). Each level takes the field to its own palette (tiles,
+   * pads, beams, walls, track, the world) and goes up with a burst bigger than the last.
+   */
+  setOverdrive(level: number) {
+    const next = Math.max(0, Math.min(5, Math.round(level)));
+    const prev = this.odLevel;
+    if (next === prev || this.failK >= 0) return;
+    this.odLevel = next;
+    if (next > 0) this.odShown = next;
+    if (next > prev) this.overdriveBurst(next);
+    else if (next === 0) this.overdriveFade();
+  }
+
+  /** A level's lane colours, `t` seconds in (level 5 turns), into odColors. */
+  private overdriveColors(level: number, t: number) {
+    const look = OVERDRIVE_LOOKS[Math.max(1, Math.min(5, level))];
+    for (let l = 0; l < 4; l++) this.odColors[l].setHSL(overdriveHue(level, l, t) / 360, look.sat, look.light);
+    return this.odColors;
+  }
+
+  /** Overdrive goes up a level: light pours up both sides, rings sweep every lane, the sky answers. */
+  private overdriveBurst(level: number) {
+    const c = this.overdriveColors(level, this.clock).map((x) => x.clone());
+    for (const side of [-1, 1]) {
+      for (let k = 0; k < 1 + level; k++) {
+        this.emit(side * EDGE, 0.2, -k * 2.2, 26 + level * 8, c[side < 0 ? k % 2 : 3 - (k % 2)],
+          { speed: 2.6 + level * 0.3, up: 8 + level * 1.2, size: 1.3 + level * 0.08, life: 1.5 + level * 0.1, grav: 3, drag: 1.4, spin: side * (1.5 + level * 0.3), white: 0.35 });
+      }
+      this.flare(side * EDGE, 0.6, 0, c[side < 0 ? 0 : 3], 3 + level * 0.8, 0.5);
+    }
+    for (let l = 0; l < LANES; l++) this.ring(laneX(l), 0, c[l], 3.5 + level * 0.6, 0.8 + level * 0.06, l * 0.05);
+    this.ring(0, 0, this.white, 11 + level * 2, 1.1);
+    this.ring(0, 0, c[1], 15 + level * 3, 1.4, 0.14);
+    if (level >= 3) this.ring(0, 0, c[2], 20 + level * 3, 1.7, 0.3);
+    for (let k = 0; k <= level; k++) this.climb(0, 1.1, { gold: 0, delay: k * 2.4, width: 1.2 + level * 0.06, speed: 36 + level * 3 });
+    this.lightWalls(1, 1.4 + level * 0.3);
+    this.skyPulse(c[2], 0.85, 52 + level * 6, 2.2);
+    this.skyPulse(this.white, 0.5, 38, 1.6, 0.14);
+    this.skyBurst(-26, 13, -64, c[0], 50 + level * 12, 0.9 + level * 0.06);
+    this.skyBurst(26, 13, -64, c[3], 50 + level * 12, 0.9 + level * 0.06);
+    if (level >= 2) this.skyBurst(0, 22, -84, c[1], 60 + level * 14, 1 + level * 0.08);
+    for (let k = 0; k < level - 1; k++) this.comet(1);
+    if (level >= 5) {
+      // Prism: a crown of fireworks in every colour across the sky.
+      for (let k = 0; k < 6; k++) this.skyBurst(-40 + k * 16, 16 + (k % 2) * 8, -76, new THREE.Color().setHSL(k / 6, 1, 0.64), 70, 1.15);
+    }
+    this.kick = 1;
+    this.pulse = 1;
+    this.sweep = 0.001;
+    this.shake = Math.max(this.shake, 0.2 + level * 0.07);
+  }
+
+  /** Overdrive runs out: a last ring, and the colours flow back to the song's. */
+  private overdriveFade() {
+    this.ring(0, 0, this.white, 10, 0.9);
+    for (const side of [-1, 1]) this.emit(side * EDGE, 0.4, -1, 18, this.laneColor(side < 0 ? 0 : 3), { speed: 2, up: 2, size: 1, life: 1, grav: 6, drag: 2, white: 0.3 });
+    this.pulse = Math.max(this.pulse, 0.5);
+  }
+
+  /** Every frame: the colours move toward the level's (or back), and light streams up the sides while it runs. */
+  private stepOverdrive(dt: number) {
+    const on = this.odLevel > 0 && this.failK < 0;
+    this.od += ((on ? 1 : 0) - this.od) * Math.min(1, dt * 3.2);
+    if (!on && this.od < 0.003) {
+      this.od = 0;
+      if (this.odApplied) {
+        for (let l = 0; l < 4; l++) this.laneColors[l].copy(this.baseColors[l]);
+        this.applyLaneColors(0);
+        this.odApplied = false;
+      }
+      return;
+    }
+    this.odApplied = true;
+    const c = this.overdriveColors(this.odShown, this.clock);
+    for (let l = 0; l < 4; l++) this.laneColors[l].copy(this.baseColors[l]).lerp(c[l], this.od);
+    this.applyLaneColors(this.od);
+    if (!on) return;
+    const level = this.odLevel;
+    // The walls stay lit, brighter each level.
+    this.wallLit = Math.max(this.wallLit, 0.3 + level * 0.1);
+    this.wallHold = Math.max(this.wallHold, 0.1);
+    // Streams of light rising from both sides of the track (never across the lanes).
+    this.odStream -= dt;
+    if (this.odStream <= 0) {
+      this.odStream = Math.max(0.12, 0.42 - level * 0.06);
+      for (const side of [-1, 1]) {
+        const lane = side < 0 ? Math.floor(Math.random() * 2) : 3 - Math.floor(Math.random() * 2);
+        this.emit(side * (EDGE + Math.random() * 0.5), 0.15, -Math.random() * 10, 2 + level, this.laneColor(lane),
+          { speed: 0.8, up: 5 + level, size: 1 + level * 0.1, life: 1.1, grav: -0.6, drag: 1, spin: side * 0.8, white: 0.25 });
+      }
+    }
+  }
+
+  /** The lane colours onto everything that shows them; `od`: how far Overdrive's show (the world and ribbons follow). */
+  private applyLaneColors(od: number) {
+    const lc = this.laneColors;
+    if (lc.length < 4) return;
+    if (this.failK < 0) {
+      this.pads.forEach((p, l) => (p.uniforms.uColor.value as THREE.Color).copy(lc[l]));
+      this.beamMats.forEach((m, l) => m.color.copy(lc[l]));
+    }
+    this.wallMats.forEach((m, i) => (m.uniforms.uColor.value as THREE.Color).copy(i ? lc[3] : lc[0]));
+    (this.highwayMat.uniforms.uHueA.value as THREE.Color).copy(lc[0]);
+    (this.highwayMat.uniforms.uHueB.value as THREE.Color).copy(lc[3]);
+    (this.hitLine.material as THREE.MeshBasicMaterial).color.copy(lc[0]).lerp(lc[3], 0.5).multiplyScalar(1.3);
+    if (this.baseForm.length) {
+      (this.formMat.uniforms.uHueA.value as THREE.Color).copy(this.baseForm[0]).lerp(lc[0], od);
+      (this.formMat.uniforms.uHueB.value as THREE.Color).copy(this.baseForm[1]).lerp(lc[3], od);
+      (this.ribbonMat.uniforms.uHueA.value as THREE.Color).copy(this.baseRibbon[0]).lerp(lc[1], od);
+      (this.ribbonMat.uniforms.uHueB.value as THREE.Color).copy(this.baseRibbon[1]).lerp(lc[2], od);
     }
   }
 
@@ -875,6 +1006,11 @@ export class Stage3D {
       for (let k = 0; k < 3; k++) this.glint(x + (Math.random() - 0.5) * 0.6, 0.6, -0.2, c, { size: 1 });
     } else if (kind === 'great') this.glint(x, 0.6, -0.2, c, { size: 0.8 });
     this.pulse = Math.min(1, this.pulse + 0.12 * big);
+    // Overdrive: every hit rings wider, and from level 3 throws glints, more each level.
+    if (this.odLevel) {
+      this.ring(x, 0, c, 1.6 + this.odLevel * 0.4, 0.5);
+      for (let k = 0; k < this.odLevel - 2; k++) this.glint(x + (Math.random() - 0.5) * 0.8, 0.5, -0.2, c, { size: 0.9 });
+    }
     // Every hit echoes far away in the sky, above its own side of the track.
     this.emit((lane - 1.5) * 9 + (Math.random() - 0.5) * 6, 10 + Math.random() * 7, -58 - Math.random() * 14, Math.round(5 + 9 * big), c,
       { speed: 3 + big * 3, up: 1.5, size: 3.6, life: 1.8, grav: -0.25, drag: 0.7, white: 0.25, flat: 1 });
@@ -974,6 +1110,7 @@ export class Stage3D {
     this.failK = 0;
     this.laneDead = [false, false, false, false];
     this.feverTarget = 0;
+    this.odLevel = 0;
     this.shake = 1;
     this.missFx = 1;
     this.ring(0, 0, this.red, 9, 0.9);
@@ -984,6 +1121,11 @@ export class Stage3D {
   revive() {
     this.failK = -1;
     this.laneDead = [false, false, false, false];
+    this.odLevel = 0;
+    this.od = 0;
+    for (let l = 0; l < this.baseColors.length; l++) this.laneColors[l].copy(this.baseColors[l]);
+    this.applyLaneColors(0);
+    this.odApplied = false;
     this.setExposure(1.2);
     this.layoutForMode();
     this.pads.forEach((p, l) => (p.uniforms.uColor.value as THREE.Color).copy(this.laneColors[l]));
@@ -1145,6 +1287,12 @@ export class Stage3D {
     if (downbeat && Math.random() < 0.2) this.comet(0.6);
     if (downbeat) this.skyPulse(this.fever > 0.5 ? this.gold : this.laneColor(Math.floor(this.clock * 2) % 4), 0.22 + this.levels.bass * 0.35 + this.fever * 0.15, 30, 1.6);
     if (downbeat) this.kick = Math.max(this.kick, 0.3);
+    // Overdrive: every bar rings out in the level's colours; from level 4 the sky bursts too.
+    if (downbeat && this.odLevel) {
+      this.skyPulse(this.laneColor(Math.floor(Math.random() * 4)), 0.3 + this.odLevel * 0.08, 34 + this.odLevel * 4, 1.6);
+      if (this.odLevel >= 2) this.climb(0, 0.5 + this.odLevel * 0.08, { gold: 0, width: 1.1 });
+      if (this.odLevel >= 4) this.skyBurst((Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 26), 12 + Math.random() * 10, -66, this.laneColor(Math.floor(Math.random() * 4)), 30 + this.odLevel * 6);
+    }
     // The climb answers accents only: a downbeat clearly louder than the recent music.
     const lv = this.levels.level;
     if (downbeat && lv > this.energyAvg * 1.3 + 0.06 && this.clock - this.lastSongClimb > 1.4) {
@@ -1293,6 +1441,7 @@ export class Stage3D {
     this.pulse *= k(2.2);
     this.missFx *= k(5);
     this.fever += (this.feverTarget - this.fever) * Math.min(1, dt * 2);
+    this.stepOverdrive(dt);
     if (this.sweep > 0) this.sweep = this.sweep >= 1 ? 0 : Math.min(1, this.sweep + dt * 0.9);
     if (this.morph < 1) this.morph = Math.min(1, this.morph + dt / 3.2);
 
@@ -1324,7 +1473,7 @@ export class Stage3D {
     f.uHigh.value = this.levels.high;
     f.uPulse.value = this.pulse;
     f.uFever.value = this.fever;
-    f.uSpin.value = 0.045 + this.fever * 0.12 + this.build * 0.08;
+    f.uSpin.value = 0.045 + this.fever * 0.12 + this.build * 0.08 + this.od * this.odShown * 0.04;
     f.uCalm.value = 1 - this.calm * 0.45;
 
     this.stepSky(dt);
@@ -1625,7 +1774,7 @@ export class Stage3D {
         this.camera.position.z += f * 0.8;
         this.camera.lookAt(sway * 0.4, -f * 1.4, -10);
       } else this.camera.lookAt(sway * 0.4, 0, -10);
-      this.camera.fov = 52 - this.kick * 1.6 + bass * 0.6 + this.fever * 2;
+      this.camera.fov = 52 - this.kick * 1.6 + bass * 0.6 + this.fever * 2 + this.od * this.odShown * 0.6;
     } else {
       // A broadcast angle: a little to the side and above, drifting slowly so it never sits still.
       const driftX = Math.sin(this.clock * 0.13) * 1.4;

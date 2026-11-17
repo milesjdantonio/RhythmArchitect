@@ -6,6 +6,8 @@
 
 import { audioLevels } from '../audio/playback';
 import { bus } from '../lib/bus';
+import { getSettings, onSettings } from '../lib/settings';
+import { themeHues } from './themes';
 import { MENU_FPS, perf } from '../lib/perf';
 import { ORDER, cancelFrame, nextFrame } from '../lib/ticker';
 import { SynthScene, type SceneEnv, type SceneEvent } from './scene';
@@ -22,8 +24,17 @@ export interface Backdrop { setCalm(calm: boolean): void; destroy(): void }
 const playing = () => document.body.dataset.scene === 'play';
 const size = () => ({ w: innerWidth, h: innerHeight, dpr: devicePixelRatio || 1 });
 
-/** Forwards the bus, the pointer and resizes to `send`. Returns the unsubscribe. */
+/**
+ * Forwards the bus, the pointer and resizes to `send`. Returns the unsubscribe. The Background
+ * setting applies here, for the menu's backdrop and the game's sky alike: a fixed theme replaces
+ * every song's (and Overdrive's) hues with its own and holds still across sections.
+ */
 export function forward(send: (e: SceneEvent) => void) {
+  // The hues the page asked for last (the song's), to go back to when the theme is Dynamic again.
+  let asked: [number, number] | null = null;
+  let theme = getSettings().backdrop;
+  const fixed = () => themeHues(theme);
+  if (fixed()) send({ type: 'hues', hues: fixed() });
   const onMove = (e: PointerEvent) => send({ type: 'pointermove', x: e.clientX, y: e.clientY });
   const onDown = (e: PointerEvent) => send({ type: 'pointerdown', x: e.clientX, y: e.clientY });
   const onLeave = () => send({ type: 'pointerleave' });
@@ -43,8 +54,15 @@ export function forward(send: (e: SceneEvent) => void) {
     bus.on('fever', ({ on }) => send({ type: 'fever', on })),
     bus.on('milestone', () => send({ type: 'milestone' })),
     bus.on('miss', ({ x }) => send({ type: 'miss', x })),
-    bus.on('hues', (hues) => send({ type: 'hues', hues })),
-    bus.on('section', ({ index }) => send({ type: 'section', index })),
+    bus.on('hues', (hues) => { asked = hues; send({ type: 'hues', hues: fixed() ?? hues }); }),
+    // A fixed theme keeps its colours: every section is sent as the first (no palette step).
+    bus.on('section', ({ index }) => send({ type: 'section', index: fixed() ? 0 : index })),
+    onSettings(() => {
+      const next = getSettings().backdrop;
+      if (next === theme) return;
+      theme = next;
+      send({ type: 'hues', hues: fixed() ?? asked });
+    }),
     bus.on('cue', ({ kind, strength }) => send({ type: 'cue', kind, strength })),
     bus.on('sky', ({ x, y, strength }) => send({ type: 'sky', x, y, strength })),
   ];

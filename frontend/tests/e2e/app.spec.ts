@@ -599,7 +599,7 @@ test.describe('Rythm Architect', () => {
     // Long before the first tile reaches the line: too early to count for anything.
     const firstTile = await page.evaluate(() => (window as unknown as { __rythm: { game: { notes: { time: number }[] } } }).__rythm.game.notes[0].time);
     const now = await page.evaluate(() => (window as unknown as { __rythm: Rythm }).__rythm.time());
-    if (firstTile - now > 0.5) {
+    if (firstTile - now > 1.5) { // (closer than a second, a press with no tile is a stray: engine.ts)
       for (const key of ['KeyD', 'KeyF', 'KeyJ', 'KeyK']) await page.keyboard.press(key);
       expect(await judged()).toEqual(before);
     }

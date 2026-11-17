@@ -22,9 +22,9 @@ describe('game engine', () => {
     expect(g.stats.combo).toBe(2);
   });
 
-  it('ignores presses far from any tile and misses tiles that slip past', () => {
+  it('ignores presses long before the first tile and misses tiles that slip past', () => {
     const g = new Game(chart, 120, 'hard');
-    expect(g.press(0, -1)).toEqual([]);
+    expect(g.press(0, -1.5)).toEqual([]);
     const ev = g.update(0.3);
     expect(ev.find((e) => e.type === 'judge')).toMatchObject({ judgement: 'miss' });
     expect(g.stats.counts.miss).toBe(1);
@@ -62,7 +62,22 @@ describe('game engine', () => {
     for (let i = 1; i < games.length; i++) expect(games[i].windows.good).toBeLessThan(games[i - 1].windows.good);
     const e = games[0], u = games[games.length - 1];
     expect(e.press(0, 0.15)[0]).toMatchObject({ judgement: 'good' });
-    expect(u.press(0, 0.15)).toEqual([]);
+    expect(u.press(0, 0.15).some((e) => e.type === 'judge')).toBe(false);
+  });
+
+  it('a stray press (no tile to hit) costs signal and charge, so mashing fails the song', () => {
+    const g = new Game(chart, 120, 'hard');
+    g.press(0, 0); // a Perfect: some charge
+    const charge = g.charge;
+    expect(g.press(3, 0.2)).toContainEqual({ type: 'stray', lane: 3 });
+    expect(g.stats.health).toBeLessThan(1);
+    expect(g.charge).toBeLessThan(charge);
+    expect(g.run).toBe('PX');
+    // Mashing every key ten times a second, between the tiles:
+    const masher = new Game({ ...chart, notes: Array.from({ length: 40 }, (_, i) => ({ t: i, lane: i % 4, pitch: 'C5', len: 0.25 })) }, 120, 'hard');
+    for (let t = 0; t < 20 && !masher.failed; t += 0.1) for (let l = 0; l < 4; l++) { masher.press(l, t); masher.release(l, t + 0.05); masher.update(t); }
+    expect(masher.failed).toBe(true);
+    expect(masher.strays).toBeGreaterThan(20);
   });
 
   it('grades, multipliers and keys', () => {
@@ -71,6 +86,7 @@ describe('game engine', () => {
     expect(gradeFor(0.5, false)).toBe('D');
     expect(multiplierFor(0)).toBe(1);
     expect(multiplierFor(35)).toBe(4);
+    expect(multiplierFor(45)).toBe(5);
     expect(laneForCode('KeyJ', 4)).toBe(2);
     expect(laneForCode('ArrowRight')).toBe(3);
     expect(laneForCode('Digit5')).toBe(-1);

@@ -94,7 +94,7 @@ public class SongController {
      * the game recorded (`run`) is checked against the song's chart and counted again through the
      * game's model classes (RunReplay: the difficulty's Queue of Notes from SongModel, then
      * main.GameScore, Score with the multiplier and holds on top), and that is what's kept, marked
-     * "rules": "score"; a best from before (the game's old points) gives way to any such run.
+     * "rules": "overdrive"; a best from before (older points: before Score, or before the x10 scale and Overdrive) gives way to any such run.
      */
     @PostMapping("/songs/{id}/scores")
     public ObjectNode score(@PathVariable String id, @RequestBody JsonNode body) {
@@ -116,7 +116,7 @@ public class SongController {
             ObjectNode best = song.path("best") instanceof ObjectNode b ? b : song.putObject("best");
             JsonNode prev = best.path(difficulty);
             long score = replayed != null ? replayed.score() : Math.round(body.path("score").asDouble());
-            boolean old = !prev.isMissingNode() && !prev.isNull() && !"score".equals(prev.path("rules").asString(""));
+            boolean old = !prev.isMissingNode() && !prev.isNull() && !"overdrive".equals(prev.path("rules").asString(""));
             if (prev.isMissingNode() || prev.isNull() || (replayed != null && old) || score > prev.path("score").asDouble()) {
                 ObjectNode run = best.putObject(difficulty);
                 run.put("score", score);
@@ -124,7 +124,7 @@ public class SongController {
                     run.put("accuracy", replayed.accuracy());
                     run.put("maxCombo", replayed.maxCombo());
                     run.put("grade", RunReplay.gradeFor(replayed.accuracy(), "F".equals(body.path("grade").asString(""))));
-                    run.put("rules", "score");
+                    run.put("rules", "overdrive");
                 } else {
                     run.set("accuracy", body.path("accuracy"));
                     run.set("maxCombo", body.path("maxCombo"));

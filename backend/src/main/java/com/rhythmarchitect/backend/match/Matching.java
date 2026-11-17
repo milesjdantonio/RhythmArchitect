@@ -36,6 +36,59 @@ public final class Matching {
         return new SongName(tidy(String.join(" - ", List.of(parts).subList(1, parts.length))), tidy(a));
     }
 
+    /** Words in a video's title that say it isn't a song, whatever else it says (unless typed). As match.ts. */
+    public static final String[] NOT_A_SONG = { "reaction", "reacts", "tutorial", "how to", "lesson", "podcast", "gameplay", "walkthrough",
+        "let s play", "unboxing", "full album", "compilation", "playlist", "hours", "1 hour", "livestream", "live stream", "asmr", "prank",
+        "speedrun", "stream highlights" };
+    /** Words that say it probably isn't, unless something marks it as music. */
+    public static final String[] MAYBE_NOT_A_SONG = { "review", "interview", "vlog", "trailer", "teaser", "documentary", "explained",
+        "breakdown", "behind the scenes", "highlights", "episode", "meme", "analysis", "news", "podcast clip" };
+    private static final Pattern MUSIC_SIGNS = Pattern.compile(
+        "\\b(official (music )?video|official audio|official lyric video|lyric video|lyrics|visuali[sz]er|audio|ft|feat|prod)\\b");
+    /** YouTube's Music category. */
+    public static final String MUSIC_CATEGORY = "10";
+    public static final int SONG_MIN_SECONDS = 45;
+    public static final int SONG_MAX_SECONDS = 900;
+
+    private static boolean has(String t, String w) {
+        return Pattern.compile("\\b" + w + "\\b").matcher(t).find();
+    }
+
+    private static String what(String w) {
+        return w.equals("hours") || w.equals("1 hour") ? "long loop" : w.equals("let s play") ? "let's play" : w.replaceAll("s$", "");
+    }
+
+    /**
+     * Why a video isn't a song, or null when it is one (match.ts notSongReason): a title that says
+     * it's something else (unless typed), a length outside 45 s to 15 min, or nothing marking it as
+     * music (the Music category, a Topic or VEVO channel, a song upload's title) with a title like
+     * a review or the news, or the category known and not Music.
+     *
+     * @param seconds    its length, or null if unknown
+     * @param categoryId YouTube's category, or null if unknown
+     * @param typed      what the player typed (title and artist)
+     */
+    public static String notSongReason(String videoTitle, String channel, Integer seconds, String categoryId, String typed) {
+        String t = Text.norm(videoTitle), ch = Text.norm(channel), asked = Text.norm(typed == null ? "" : typed);
+        for (String w : NOT_A_SONG) {
+            if (has(t, w) && !asked.contains(w)) return "it looks like a " + what(w) + " video, not a song";
+        }
+        if (seconds != null && seconds > 0) {
+            if (seconds < SONG_MIN_SECONDS) return "it's only " + seconds + " seconds long";
+            if (seconds > SONG_MAX_SECONDS) return "it's " + Math.round(seconds / 60.0) + " minutes long (a song is under " + SONG_MAX_SECONDS / 60 + ")";
+        }
+        boolean channelSays = ch.endsWith(" topic") || ch.endsWith("vevo");
+        boolean titleSays = MUSIC_SIGNS.matcher(t).find() || Pattern.compile("\\s[-–|]\\s").matcher(videoTitle).find();
+        boolean music = MUSIC_CATEGORY.equals(categoryId) || channelSays || titleSays;
+        if (!music) {
+            for (String w : MAYBE_NOT_A_SONG) {
+                if (has(t, w) && !asked.contains(w)) return "it looks like a " + what(w) + " video, not a song";
+            }
+            if (categoryId != null) return "YouTube doesn't list it as music";
+        }
+        return null;
+    }
+
     private static final String[] NOT_THE_SONG = { "live", "cover", "remix", "sped up", "slowed", "reverb", "nightcore", "8d",
         "karaoke", "instrumental", "hour", "loop", "reaction", "tutorial", "acoustic", "mashup" };
 

@@ -31,6 +31,7 @@ Base URL: `VITE_API_BASE_URL` (empty means same origin). All bodies are JSON. Er
 
 | Route | Body | Returns |
 |---|---|---|
+| `GET /api/health` | | `{ ok: true }`: the server is up. The app asks this when it opens and shows its "waking the server" screen while there's no answer (a sleeping free server takes a while to start). |
 | `GET /api/youtube?title=&artist=` | | `VideoMatch`: the video that plays the song. `title` may be a YouTube link (no API key needed; checked with oEmbed). Searching by name needs `YOUTUBE_API_KEY` on the server (else `503` with a message saying so). `422` when the video can't be embedded. |
 | `POST /api/songs` | `NewSong` (a song the browser mapped by listening; `source.kind` must be `youtube`) | `201 Song`. Every tile at beat 0 or later and every hold with a length ("A bad tile in the … chart"), and the song must go into the game's model (`main.SongWriter` writes it as a `main.Song`; 400 "The game can't play this map: …" if not). |
 | `POST /api/fan-chart` | `{ title, artist, videoId, seconds? }` | `201 Song`: a fan-made osu! chart of the song, lined up with the video, saved. `404` if there's none, or if it doesn't pass the same checks as `POST /api/songs`. |

@@ -43,6 +43,9 @@
   .hud-panel .hud-counts { display: none; }
   .hud-combo { font-size: 46px; }
 }
+.hud-score-block { position: relative; width: 100%; }
+.hud-gain { position: absolute; right: 0; top: 0; font-size: 14px; letter-spacing: 0.04em; color: hsl(var(--hA) 100% 82%); text-shadow: 0 0 10px hsl(var(--hA) 100% 60%); }
+.play.is-overdrive .hud-gain { color: hsl(var(--od, 196) 100% 84%); text-shadow: 0 0 12px hsl(var(--od, 196) 100% 60%); font-size: 16px; }
 .hud-score, .hud-combo { display: inline-block; transform-origin: 0 60%; }
 .hud-score { font-family: var(--font-display); font-weight: 200; font-size: clamp(30px, 3vw, 44px); line-height: 1; letter-spacing: 0.02em; text-shadow: 0 0 24px var(--glowA); }
 .hud-acc { font-family: var(--font-display); font-weight: 200; font-size: 22px; line-height: 1; color: var(--ink); }
@@ -54,7 +57,40 @@
 .combo-fallback { display: flex; gap: 4px; height: 100%; align-items: center; }
 .combo-fallback i { width: 20px; height: 3px; background: rgb(255 255 255 / 0.15); }
 .combo-fallback[data-level='1'] i:nth-child(-n+1), .combo-fallback[data-level='2'] i:nth-child(-n+2),
-.combo-fallback[data-level='3'] i:nth-child(-n+3), .combo-fallback[data-level='4'] i { background: var(--lightA); box-shadow: 0 0 8px var(--glowA); }
+.combo-fallback[data-level='3'] i:nth-child(-n+3), .combo-fallback[data-level='4'] i:nth-child(-n+4), .combo-fallback[data-level='5'] i { background: var(--lightA); box-shadow: 0 0 8px var(--glowA); }
+.combo-fallback i { width: 16px; }
+
+/* Overdrive: the charge bar, the level's five pips, and, full, a cue to press its key. --od: the level's hue. */
+.od-1 { --od: 196; } .od-2 { --od: 296; } .od-3 { --od: 142; } .od-4 { --od: 14; } .od-5 { --od: 300; }
+.hud-od { width: 100%; gap: 7px; }
+.hud-od-head { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; }
+.hud-od.is-on .label { color: hsl(var(--od) 100% 82%); }
+.hud-od-pips { display: inline-flex; gap: 3px; }
+.hud-od-pips i { width: 10px; height: 4px; transform: skewX(-20deg); background: rgb(255 255 255 / 0.14); }
+.hud-od-pips i.is-lit { background: hsl(var(--od) 100% 70%); box-shadow: 0 0 8px hsl(var(--od) 100% 60%); }
+.od-5 .hud-od-pips i.is-lit:nth-child(1) { background: hsl(0 100% 70%); } .od-5 .hud-od-pips i.is-lit:nth-child(2) { background: hsl(60 100% 66%); }
+.od-5 .hud-od-pips i.is-lit:nth-child(3) { background: hsl(140 100% 64%); } .od-5 .hud-od-pips i.is-lit:nth-child(4) { background: hsl(210 100% 70%); }
+.od-5 .hud-od-pips i.is-lit:nth-child(5) { background: hsl(285 100% 72%); }
+.hud-od-bar { position: relative; width: 100%; height: 4px; background: rgb(255 255 255 / 0.1); overflow: hidden; }
+.hud-od-bar span { position: absolute; inset: 0; transform-origin: left; background: linear-gradient(90deg, hsl(var(--od) 100% 55%), hsl(var(--od) 100% 78%)); transition: transform 120ms linear; }
+.hud-od-bar .hud-od-charge { top: auto; height: 1px; background: #fff; opacity: 0.8; }
+.hud-od.is-ready .hud-od-bar span:first-child { box-shadow: 0 0 10px hsl(var(--od) 100% 60%); animation: od-ready 0.6s ease-in-out infinite alternate; }
+.od-5 .hud-od-bar span:first-child { background: linear-gradient(90deg, hsl(0 100% 62%), hsl(60 100% 60%), hsl(140 100% 56%), hsl(210 100% 64%), hsl(285 100% 66%)); }
+.hud-od-fire { pointer-events: auto; text-shadow: none; border-color: hsl(var(--od) 100% 70% / 0.85); color: hsl(var(--od) 100% 90%);
+  background: hsl(var(--od) 80% 30% / 0.55); box-shadow: 0 0 18px -4px hsl(var(--od) 100% 60%); animation: od-ready 0.6s ease-in-out infinite alternate; }
+@keyframes od-ready { to { opacity: 0.65; } }
+.hud-mult.is-overdrive { color: hsl(var(--od, 196) 100% 80%); text-shadow: 0 0 16px hsl(var(--od, 196) 100% 60%); animation: fever 0.4s ease-in-out infinite alternate; }
+.play.is-overdrive .hud-mult.is-overdrive { font-size: 26px; }
+/* The screen's edges glow in the level's colour while Overdrive runs (opacity only). */
+.play::after { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 400ms var(--ease-out);
+  box-shadow: inset 0 0 120px -20px hsl(var(--od, 196) 100% 55% / 0.7), inset 0 0 2px 1px hsl(var(--od, 196) 100% 70% / 0.6); }
+.play.is-overdrive::after { opacity: 1; animation: od-edge 0.9s ease-in-out infinite alternate; }
+.play.od-5::after { box-shadow: inset 60px 0 120px -40px hsl(330 100% 60% / 0.7), inset -60px 0 120px -40px hsl(190 100% 60% / 0.7), inset 0 60px 120px -60px hsl(60 100% 60% / 0.5), inset 0 -60px 120px -60px hsl(140 100% 55% / 0.5); }
+@keyframes od-edge { from { opacity: 0.55; } to { opacity: 1; } }
+.callout-overdrive { --c: hsl(var(--od, 196) 100% 72%); --g: hsl(var(--od, 196) 100% 60% / 0.75); }
+.callout-overdrive .callout-num { font-size: clamp(44px, 4.4vw, 76px); letter-spacing: 0.12em; text-transform: uppercase; color: hsl(var(--od, 196) 100% 92%); }
+.callout-overdrive.od-5 .callout-num { background: linear-gradient(90deg, hsl(0 100% 75%), hsl(60 100% 72%), hsl(140 100% 70%), hsl(210 100% 76%), hsl(290 100% 78%)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+@media (prefers-reduced-motion: reduce) { .play.is-overdrive::after, .hud-od-fire, .hud-od.is-ready .hud-od-bar span:first-child, .hud-mult.is-overdrive { animation: none; } }
 .hud-health { width: 100%; height: 2px; background: rgb(255 255 255 / 0.1); }
 /* Every judgement so far, live. */
 .hud-counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 0; padding-top: 14px; border-top: 1px solid var(--hair); }
@@ -295,3 +331,17 @@
 .dev-sync { display: grid; gap: 8px; margin-top: 12px; }
 .dev-sync p { margin: 0; }
 .dev-credit { overflow-wrap: anywhere; }
+
+/* Practice: under Start, a part to loop and a speed. */
+.practice { display: grid; justify-items: center; gap: 10px; width: 100%; }
+.practice-body { display: grid; gap: 12px; width: 100%; max-width: 440px; padding: 14px; border: 1px solid var(--hair-strong); border-radius: var(--r-md, 10px); background: rgb(4 6 16 / 0.7); text-align: left; }
+.practice-help { margin: 0; font-size: 13px; }
+.practice-parts { display: flex; flex-wrap: wrap; gap: 6px; max-height: 120px; overflow-y: auto; }
+.practice-part { cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font: inherit; font-size: 12px;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); background: rgb(255 255 255 / 0.05); border: 1px solid var(--hair-strong); }
+.practice-part .muted { color: var(--ink-soft); }
+.practice-part:hover { background: rgb(255 255 255 / 0.1); }
+.practice-part.is-on { border-color: hsl(var(--hA) 100% 72% / 0.9); color: #fff; background: hsl(var(--hA) 70% 40% / 0.35); box-shadow: 0 0 12px -4px hsl(var(--hA) 100% 60%); }
+.practice-speed { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; font-size: 13px; }
+.practice-speed input { width: 100%; accent-color: hsl(var(--hA) 100% 70%); }
+.hud-practice { border-color: hsl(var(--hA) 100% 72% / 0.6); }

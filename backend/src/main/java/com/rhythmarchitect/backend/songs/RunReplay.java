@@ -15,7 +15,9 @@ import main.Queue;
  * which is {@code main.Score} with the game's multiplier and holds on top), before its best score
  * is kept. The run is the results in order, as the game recorded them (frontend/src/game/score.ts):
  * P, G, E, L for a PERFECT, GOOD, EARLY or LATE hit, M for a miss, H&lt;ms&gt;; for a held note held
- * its length in milliseconds, B for one let go early.
+ * its length in milliseconds, B for one let go early, X for a stray press (no tile), O where the
+ * player set off Overdrive (the run
+ * is refused if the charge wasn't full there: GameScore.startOverdrive).
  *
  * <p>First the run is checked against the chart it was played on (the difficulty's
  * {@code Queue} of {@code Note}s, from {@link SongModel}): every tile is judged once, so a run
@@ -23,8 +25,8 @@ import main.Queue;
  * than the chart's holds last. A run ended early (a fail) judges fewer.</p>
  */
 public final class RunReplay {
-    private static final Pattern VALID = Pattern.compile("(?:[PGELMB]|H\\d{1,7};)*");
-    private static final Pattern TOKEN = Pattern.compile("[PGELMB]|H(\\d+);");
+    private static final Pattern VALID = Pattern.compile("(?:[PGELMBOX]|H\\d{1,7};)*");
+    private static final Pattern TOKEN = Pattern.compile("[PGELMBOX]|H(\\d+);");
     /** How far a hold's recorded time may be off its length, in milliseconds (rounding). */
     static final long HOLD_SLACK_MS = 2;
 
@@ -60,6 +62,10 @@ public final class RunReplay {
                 case 'E' -> s.addHit(HitResult.EARLY);
                 case 'L' -> s.addHit(HitResult.LATE);
                 case 'M' -> s.addMiss();
+                case 'X' -> s.addStray();
+                case 'O' -> {
+                    if (!s.startOverdrive()) return null;
+                }
                 default -> s.addHoldBroken();
             }
         }
@@ -84,6 +90,7 @@ public final class RunReplay {
         List<Long> held = new ArrayList<>();
         Matcher m = TOKEN.matcher(run);
         while (m.find()) {
+            if (m.group().equals("O") || m.group().equals("X")) continue;
             if (m.group(1) != null) held.add(Long.parseLong(m.group(1)));
             if (m.group(1) != null || m.group().equals("B")) ended++;
             else judged++;

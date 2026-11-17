@@ -158,4 +158,24 @@ class MappingTests {
         assertEquals(MusicNoteType.START, chart.peek().getMusicNoteType());
         assertNotNull(RunReplay.of("PPPPPPPPPPPPPPPP", null), "no chart: counted unchecked");
     }
+
+    /** Only songs: the cases in frontend tests/unit/youtube.test.ts. */
+    @Test
+    void onlySongsAreTaken() {
+        assertNull(Matching.notSongReason("One Dance (feat. WizKid & Kyla) - Drake (Official Audio)", "Drake Media", 174, "10", ""));
+        assertNull(Matching.notSongReason("One Dance", "Drake - Topic", 174, "10", ""));
+        assertNull(Matching.notSongReason("Good News", "Mac Miller - Topic", 342, "10", ""));
+        assertNull(Matching.notSongReason("Jack Johnson - Breakdown", "jackjohnsonmusic", null, null, ""));
+        assertNull(Matching.notSongReason("Kendrick Lamar - HUMBLE.", "KendrickLamarVEVO", 177, "24", ""));
+        assertTrue(Matching.notSongReason("Drake - One Dance REACTION", "Some Reactor", 600, "24", "").contains("reaction"));
+        assertNotNull(Matching.notSongReason("How to play One Dance on piano (tutorial)", "Piano Guy", null, null, ""));
+        assertTrue(Matching.notSongReason("Drake - Views (Full Album)", "Albums", 4900, "10", "").contains("full album"));
+        assertTrue(Matching.notSongReason("One Dance 10 hours", "Loops", 36000, "10", "").contains("long loop"));
+        assertTrue(Matching.notSongReason("Minecraft gameplay part 3", "Gamer", 1200, "20", "").contains("gameplay"));
+        assertEquals("YouTube doesn't list it as music", Matching.notSongReason("My morning routine", "Vlogger", 480, "22", ""));
+        assertTrue(Matching.notSongReason("Movie trailer 2026", "Studio", null, null, "").contains("trailer"));
+        assertTrue(Matching.notSongReason("Ringtone", "Tones", 20, "10", "").contains("20 seconds"));
+        assertTrue(Matching.notSongReason("Ambient set", "DJ", 3600, "10", "").contains("60 minutes"));
+        assertNull(Matching.notSongReason("Tutorial (Official Audio)", "Some Band - Topic", 200, "10", "Tutorial Some Band"));
+    }
 }

@@ -28,10 +28,12 @@ and run `npm run dev` as usual. Open the app as `localhost`, not `127.0.0.1`.
 
 | Variable | What it does |
 |---|---|
-| `YOUTUBE_API_KEY` | Lets Generate find a song's video by name. Pasted YouTube links need no key. |
+| `YOUTUBE_API_KEY` | Lets Generate find a song's video by name, and check a pasted link's length and category. Pasted YouTube links need no key. How to get one: [docs/youtube-api.md](../docs/youtube-api.md). |
 | `PORT` | Port to listen on (8080). |
 | `SONGS_FILE` | Where the song bank is kept (`.data/songs.json`). Seeded with the three built-in songs the first time. |
 | `CORS_ORIGINS` | Pages allowed to call it (`http://localhost:*`). |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` | Both set: the song bank lives in Supabase instead of `SONGS_FILE` (the file's songs go in the first time). The secret key stays here, never in the frontend. Setup: [docs/supabase.md](../docs/supabase.md). |
+| `SUPABASE_TABLE` | The table (`songs`). |
 
 ## How it's laid out
 

@@ -20,6 +20,8 @@ interface YTPlayer {
   pauseVideo(): void;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   getCurrentTime(): number;
+  setPlaybackRate?(rate: number): void;
+  getPlaybackRate?(): number;
   getDuration(): number;
   getPlayerState(): number;
   setVolume(v: number): void;
@@ -202,6 +204,17 @@ export const ytStarted = () => playedSinceAsk;
 export function ytNudge() { if (intent === 'play') player?.playVideo(); }
 export function ytPause() { intent = 'pause'; player?.pauseVideo(); }
 export function ytResume() { intent = 'play'; player?.playVideo(); }
+
+/**
+ * The video's speed (practice mode slows it). YouTube rounds to the speeds it has; the speed it
+ * took is returned, and the clock runs at that.
+ */
+export function ytSetRate(rate: number): number {
+  try { player?.setPlaybackRate?.(rate); } catch { /* not ready */ }
+  const got = Number(player?.getPlaybackRate?.()) || rate;
+  clock.speed = got > 0 ? got : 1;
+  return clock.speed;
+}
 
 /** The video's position in seconds, smoothed (see clock.ts). */
 export function ytTime(): number {

@@ -10,7 +10,7 @@
 // If the browser takes the graphics chip away from the stage (moving the window to a monitor on
 // another graphics adapter, a driver reset), the worker says so and the proxy starts a fresh
 // canvas and worker in its place, replaying what the stage keeps (colours, tempo, the notes, the
-// ghost chart, fever, sleeping): the game carries on. After MAX_RESTARTS in a minute it stops trying.
+// ghost chart, fever, Overdrive, sleeping): the game carries on. After MAX_RESTARTS in a minute it stops trying.
 
 import { perf } from '../lib/perf';
 import type { SceneEvent } from '../background/scene';
@@ -51,7 +51,7 @@ export function unpackNote(n: StageNote, b: number) {
 export const wallMs = () => performance.timeOrigin + performance.now();
 
 /** The calls whose effect lasts (replayed on a fresh stage after the GPU was lost). */
-const STICKY = new Set(['setTiming', 'setHues', 'setGhostChart', 'setFever']);
+const STICKY = new Set(['setTiming', 'setHues', 'setGhostChart', 'setFever', 'setOverdrive']);
 /** Fresh stages at most this many times a minute (then it stops: something is badly wrong). */
 const MAX_RESTARTS = 3;
 /**
@@ -240,6 +240,7 @@ export class StageProxy {
   section(force = false) { this.call('section', force); }
   cue(kind: 'build' | 'drop' | 'break' | 'flash', strength = 1) { this.call('cue', kind, strength); }
   setFever(on: boolean) { this.call('setFever', on); }
+  setOverdrive(level: number) { this.call('setOverdrive', level); }
   setPressed(lane: number, down: boolean) { this.call('setPressed', lane, down); }
   onBeat(downbeat: boolean) { this.call('onBeat', downbeat); }
   clear(full: boolean) { this.call('clear', full); }

@@ -8,12 +8,15 @@ import { VideoError, YT_STATE, ytIntent, ytOnState, ytStarted } from '../audio/y
 import { ComboCallout, type Callout } from '../components/play/ComboCallout';
 import { DevTools, type DevEffect, type DevProbe } from '../components/play/DevTools';
 import { PlayHud, type HudState } from '../components/play/PlayHud';
-import { PauseCard, StartCard } from '../components/play/PlayCards';
+import { PauseCard, StartCard, type Practice } from '../components/play/PlayCards';
 import { botPlan, type BotMode } from '../game/autoplay';
 import { Icon } from '../components/Icon';
 import { Loader } from '../components/Loader';
 import { Results, type RunResult } from '../components/play/Results';
-import { Game, KEYS, fallTime, gradeFor, laneForCode, type GameEvent, type Judgement } from '../game/engine';
+import { Game, fallTime, gradeFor, laneForCode, multiplierFor, type GameEvent, type Judgement } from '../game/engine';
+import { overdriveHues } from '../game/overdrive';
+import { POINT_SCALE, holdBonus } from '../game/score';
+import { getBinds, keyLabel, laneKeyList, useBinds } from '../lib/keys';
 import { drawField, laneHue, layoutFor, type Layout } from '../game/render';
 import type { RiveHandle } from '../rive/RiveAnim';
 import { FAIL_SECONDS, Stage3D } from '../stage/Stage3D';
@@ -27,6 +30,7 @@ import { frameGate, perf } from '../lib/perf';
 import { ORDER, cancelFrame, nextFrame } from '../lib/ticker';
 import { JudgePool, type JudgePoolHandle } from '../components/play/JudgePool';
 import { forward } from '../background/host';
+import { themeHues } from '../background/themes';
 
 type Phase = 'loading' | 'ready' | 'starting' | 'playing' | 'paused' | 'failing' | 'results' | 'error';
 /** A judgement word's kind. */
@@ -39,6 +43,7 @@ interface Banner { id: number; kind: 'fever' | 'section'; big: string; small?: s
 
 const JUDGE_TEXT: Record<Judgement, string> = { perfect: 'Perfect', great: 'Great', good: 'Good', miss: 'Miss' };
 const MILESTONE = 25;
+const EMPTY_HUD: HudState = { score: 0, combo: 0, accuracy: 1, health: 1, multiplier: 1, progress: 0, counts: { perfect: 0, great: 0, good: 0, miss: 0 }, charge: 0, overdrive: 0, overdriveLeft: 0 };
 /** How many times a second the HUD's numbers update. */
 const HUD_HZ = 10;
 
@@ -51,7 +56,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const [phase, setPhase] = useState<Phase>('loading');
   const [error, setError] = useState('');
   const [count, setCount] = useState<number | null>(null);
-  const [hud, setHud] = useState<HudState>({ score: 0, combo: 0, accuracy: 1, health: 1, multiplier: 1, progress: 0, counts: { perfect: 0, great: 0, good: 0, miss: 0 } });
+  const [hud, setHud] = useState<HudState>({ ...EMPTY_HUD, counts: { ...EMPTY_HUD.counts } });
   const [banner, setBanner] = useState<Banner | null>(null);
   const [callout, setCallout] = useState<Callout | null>(null);
   /** Screen space the left HUD panel covers. */
@@ -65,6 +70,16 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const [use3d] = useState(() => Stage3D.supported());
   const [bot, setBotState] = useState<BotMode>('off');
   const { devTools } = useSettings();
+  const binds = useBinds();
+  /** The dev tools' Overdrive preview: the level the stage shows (looks only, no score). */
+  const devOd = useRef(0);
+  /**
+   * Practice mode: a stretch of the song on a loop, maybe slowed down. Nothing is saved, there is
+   * no fail, and each time round starts over (a fresh score). Null: a normal run.
+   */
+  const practiceRef = useRef<Practice | null>(null);
+  const [practice, setPractice] = useState<Practice | null>(null);
+  const loops = useRef(0);
 
   const host = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
@@ -123,7 +138,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
         setSong(s);
         // A best on the old points (before main.Score's rules) isn't one to beat.
         const b = s.best?.[difficulty];
-        setPrevBest(b?.rules === 'score' ? b.score : undefined);
+        setPrevBest(b?.rules === 'overdrive' ? b.score : undefined);
         try {
           await prepareSong(s);
         } catch (e) {
@@ -204,6 +219,9 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       const opts = { mode: 'play' as const, hues: song.hues };
       const s = StageProxy.supported() ? new StageProxy(host.current, opts) : new Stage3D(host.current, opts);
       s.setTiming(60 / song.bpm, fallTime(difficulty));
+      // The sky takes the song's colours, unless the Background setting holds a theme.
+      const held = themeHues(getSettings().backdrop);
+      if (held) s.skyEvent({ type: 'hues', hues: held });
       stage.current = s;
       // The page's backdrop answers the sky: its grains scatter from where a burst appears.
       s.onSky = (x, y, strength) => bus.emit('sky', { x: x / innerWidth, y: y / innerHeight, strength });
@@ -315,8 +333,9 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     bus.emit('fever', { on: false });
     bus.emit('miss', { x: 0.5 });
     bus.emit('intensity', 0.05);
+    if (song) bus.emit('hues', song.hues);
     setPhase('failing');
-  }, []);
+  }, [song]);
 
   // Hitting a tile makes no sound: the song is the sound. Every hit is light and motion instead.
   const handle = useCallback((events: GameEvent[]) => {
@@ -355,26 +374,53 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       } else if (e.type === 'holdEnd') {
         holds.current[e.note.lane]?.end(e.ok);
         hudChanged = true;
-        if (e.ok) { popup(e.note.lane, 'hold', 'Held', `+${Math.round(60 * Math.max(1, e.note.end - e.note.time) * 2)}`); stage.current?.hit(e.note.lane, 'great'); }
+        if (e.ok) { popup(e.note.lane, 'hold', 'Held', `+${(holdBonus(e.note.end - e.note.time) * POINT_SCALE * g.multiplier).toLocaleString()}`); stage.current?.hit(e.note.lane, 'great'); }
         else { popup(e.note.lane, 'miss', 'Let go'); bursts.current[e.note.lane]?.fire('miss'); stage.current?.miss(e.note.lane); }
       } else if (e.type === 'comboBreak') {
         combo.current?.fire('break');
+      } else if (e.type === 'stray') {
+        // A key with no tile to hit: a red flicker on its pad, and the signal and charge drain.
+        hudChanged = true;
+        bursts.current[e.lane]?.fire('miss');
+        popup(e.lane, 'miss', 'Stray');
+      } else if (e.type === 'charged') {
+        hudChanged = true;
+      } else if (e.type === 'overdrive') {
+        // Overdrive goes up a level: the field takes the level's colours with a burst, the sky follows.
+        hudChanged = true;
+        stage.current?.setOverdrive(e.level);
+        bus.emit('hues', overdriveHues(e.level));
+        bus.emit('milestone', { combo: g.stats.combo });
+        if (!stage.current) addClimb(0, 2 + e.level);
+        impact(1.2 + e.level * 0.15);
+        setCallout({ id: Date.now(), kind: 'overdrive', value: e.level });
+      } else if (e.type === 'overdriveEnd') {
+        hudChanged = true;
+        stage.current?.setOverdrive(0);
+        bus.emit('hues', song.hues);
       } else if (e.type === 'fail') {
         dropSignal();
       }
     }
     if (hudChanged) {
       const s = g.stats;
-      const level = s.combo === 0 ? 0 : g.multiplier;
+      const level = s.combo === 0 ? 0 : multiplierFor(s.combo);
       // (The HUD's numbers: the frame loop copies the stats a few times a second.)
       combo.current?.set('level', level);
-      const on = level >= 4;
-      if (on && !fever.current) setCallout({ id: Date.now(), kind: 'fever', value: 4 });
+      const on = level >= 5;
+      if (on && !fever.current) setCallout({ id: Date.now(), kind: 'fever', value: 5 });
       if (on !== fever.current) bus.emit('fever', { on });
       fever.current = on;
       stage.current?.setFever(on);
     }
   }, [song, popup, dropSignal, anchor, impact, pf]);
+
+  /** The Overdrive key (or the HUD's button): sets it off with a full charge. */
+  const fireOverdrive = useCallback(() => {
+    const g = game.current;
+    if (!g || phaseRef.current !== 'playing') return;
+    handle(g.overdrive());
+  }, [handle]);
 
   // `at`: the song time of the press, when it isn't now (the autoplay bot presses at its planned
   // moment, so a slow frame doesn't make a perfect run late).
@@ -398,6 +444,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     const mode = botRef.current;
     for (let l = 0; l < 4; l++) if (botRelease.current[l] && t >= botRelease.current[l]) { botRelease.current[l] = 0; release(l); }
     if (mode === 'off') return;
+    if (g.charged) handle(g.overdrive());
     while (botIdx.current < g.notes.length) {
       const n = g.notes[botIdx.current];
       const plan = botPlan(mode, n.idx);
@@ -408,7 +455,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       press(n.lane, n.time + plan.jitter);
       botRelease.current[n.lane] = n.hold ? (plan.early ? n.time + 0.2 : n.end + 0.02) : t + 0.06;
     }
-  }, [press, release]);
+  }, [press, release, handle]);
 
   // The frame loop.
   // `ts`: requestAnimationFrame's timestamp (shared with the backdrop, for the frame cap).
@@ -432,7 +479,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       else if (canvas.current && layout) {
         drawField(canvas.current.getContext('2d')!, layout, {
           now: fail.t, speed: layout.hitY / fallTime(difficulty), spb: 60 / song.bpm, notes: g.notes,
-          pressed: [false, false, false, false], flash: [0, 0, 0, 0], hues: song.hues, keys: KEYS.map((x) => x.label), beatPulse: 0, climbs: [],
+          pressed: [false, false, false, false], flash: [0, 0, 0, 0], hues: song.hues, keys: laneKeyList(getBinds()).map((x) => x.label), beatPulse: 0, climbs: [],
         });
       }
       if (k >= 1) { finish(); return; }
@@ -461,7 +508,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       const speed = layout.hitY / fallTime(difficulty);
       drawField(canvas.current.getContext('2d')!, layout, {
         now: t, speed, spb: 60 / song.bpm, notes: g.notes, pressed: pressed.current.map((p, i) => p || g.isHolding(i)),
-        flash: flash.current, hues: song.hues, keys: KEYS.map((k) => k.label), beatPulse: beatPulse.current, climbs: c.starts,
+        flash: flash.current, hues: g.overdriveLevel ? overdriveHues(g.overdriveLevel, t) : song.hues, keys: laneKeyList(getBinds()).map((k) => k.label), beatPulse: beatPulse.current, climbs: c.starts,
       });
     }
     // The backdrop's energy follows the song (its loudness), a few times a second.
@@ -478,9 +525,12 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       const s = g.stats;
       const progress = Math.max(0, Math.min(1, t / total));
       setClock((c) => (Math.floor(Math.max(0, t)) !== c ? Math.floor(Math.max(0, t)) : c));
-      setHud((h) => (h.score === s.score && h.combo === s.combo && h.health === s.health && h.counts.miss === s.counts.miss && Math.abs(progress - h.progress) <= 0.004 ? h
-        : { score: s.score, combo: s.combo, accuracy: g.accuracy, health: s.health, multiplier: g.multiplier, progress, counts: { ...s.counts } }));
+      const charge = g.charge, od = g.overdriveLevel, left = g.overdriveLeft;
+      setHud((h) => (h.score === s.score && h.combo === s.combo && h.health === s.health && h.counts.miss === s.counts.miss && Math.abs(progress - h.progress) <= 0.004
+        && h.charge === charge && h.overdrive === od && h.overdriveLeft === left ? h
+        : { score: s.score, combo: s.combo, accuracy: g.accuracy, health: s.health, multiplier: g.multiplier, progress, counts: { ...s.counts }, charge, overdrive: od, overdriveLeft: left }));
     }
+    if (practiceRef.current) { raf.current = nextFrame(loop, ORDER.game); return; }
     if (g.finished && !g.failed && !cleared.current && t > g.endTime + 0.2) {
       // The finale: light on every lane, then the results.
       cleared.current = true;
@@ -494,19 +544,27 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     raf.current = nextFrame(loop, ORDER.game);
   }, [layout, song, difficulty, handle, finish, botStep, pf]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (practiceRun?: Practice | null) => {
     if (!song || phaseRef.current === 'starting') return;
+    // A practice keeps going round until the player stops it; a new start from the card is a new choice.
+    const p = practiceRun === undefined ? null : practiceRun;
+    if (!p || p !== practiceRef.current) loops.current = 0;
+    practiceRef.current = p;
+    setPractice(p);
     setPhase('starting');
     await unlockAudio();
-    const chart = song.charts[difficulty];
-    const g = new Game(chart, song.bpm, difficulty, { noFail: getSettings().noFail });
+    const whole = song.charts[difficulty];
+    // Practice: only the stretch's tiles (at their real times in the song).
+    const chart = p ? { ...whole, notes: whole.notes.filter((n) => n.t >= p.from && n.t < p.to) } : whole;
+    const g = new Game(chart, song.bpm, difficulty, { noFail: p ? true : getSettings().noFail });
     game.current = g;
     pressed.current = [false, false, false, false];
     flash.current = [0, 0, 0, 0];
     offsets.current = [];
     botIdx.current = 0;
     botRelease.current = [0, 0, 0, 0];
-    assisted.current = botRef.current !== 'off';
+    // Practice runs are never saved (as with autoplay).
+    assisted.current = botRef.current !== 'off' || !!p;
     fever.current = false;
     failing.current = null;
     cleared.current = false;
@@ -518,9 +576,12 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     setSection('');
     setClock(0);
     for (let l = 0; l < 4; l++) holds.current[l]?.end(true);
-    setHud({ score: 0, combo: 0, accuracy: 1, health: 1, multiplier: 1, progress: 0, counts: { perfect: 0, great: 0, good: 0, miss: 0 } });
+    setHud({ ...EMPTY_HUD, counts: { ...EMPTY_HUD.counts } });
     combo.current?.set('level', 0);
     stage.current?.setFever(false);
+    stage.current?.setOverdrive(0);
+    devOd.current = 0;
+    bus.emit('hues', song.hues);
     const spb = 60 / song.bpm;
     const travel = fallTime(difficulty);
     stage.current?.setTiming(spb, travel);
@@ -531,7 +592,13 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
         leadInBeats,
         onCount: (n) => setCount(n <= 3 ? n : null),
         autoMelody: song.source.kind === 'synth' ? songMelody(song) : undefined,
+        ...(p ? {
+          fromBeat: p.from, beats: p.to - p.from, rate: p.speed,
+          // Round again: the same stretch, a fresh run.
+          onEnd: () => { if (practiceRef.current === p && phaseRef.current === 'playing') { loops.current++; startRef.current?.(p); } },
+        } : {}),
       });
+      if (p && loops.current > 0) setBanner({ id: Date.now(), kind: 'section', big: `Loop ${loops.current + 1}`, small: p.label });
     } catch (e) {
       if (e instanceof VideoError) { setError(e.message); setPhase('error'); }
       return; // otherwise the player left (or restarted) while the track was loading
@@ -544,6 +611,9 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     cancelFrame(raf.current);
     raf.current = nextFrame(loop, ORDER.game);
   }, [song, difficulty, loop]);
+
+  const startRef = useRef<typeof start | null>(null);
+  startRef.current = start;
 
   // Keep the running loop pointing at the latest closure.
   useEffect(() => {
@@ -595,7 +665,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const restart = useCallback(async () => {
     stopSong();
     await resumeAudio();
-    start();
+    start(practiceRef.current);
   }, [start]);
 
   const toggleDev = useCallback(() => setSettings({ devTools: !getSettings().devTools }), []);
@@ -607,20 +677,25 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       if ((e.target as HTMLElement)?.closest?.('.devtools')) return;
       if (e.repeat) { if (e.code === 'Space') e.preventDefault(); return; }
       const p = phaseRef.current;
-      if (p === 'ready' && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); start(); return; }
+      if (p === 'ready' && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); start(null); return; }
       if (p === 'results' && e.code === 'KeyR') { restart(); return; }
       if (p === 'results' && e.code === 'Escape') { navigate(href.song(songId, difficulty)); return; }
-      if (e.code === 'Escape' || e.code === 'KeyP') { if (p === 'playing') pause(); else if (p === 'paused') resume(); return; }
+      const b = getBinds();
+      const bound = b.lanes.includes(e.code) || b.overdrive === e.code;
+      // P pauses too, unless it's one of the player's keys.
+      if (e.code === 'Escape' || (e.code === 'KeyP' && !bound)) { if (p === 'playing') pause(); else if (p === 'paused') resume(); return; }
       if (p === 'paused' && e.code === 'Space') { e.preventDefault(); resume(); return; }
       if (p !== 'playing' || !game.current) return;
-      const lane = laneForCode(e.code);
+      if (e.code === b.overdrive) { e.preventDefault(); fireOverdrive(); return; }
+      const lane = laneForCode(e.code, 4, b.lanes, [b.overdrive]);
       if (lane < 0) return;
       e.preventDefault();
       press(lane);
     };
     const up = (e: KeyboardEvent) => {
       if (phaseRef.current !== 'playing') return;
-      const lane = laneForCode(e.code);
+      const b = getBinds();
+      const lane = laneForCode(e.code, 4, b.lanes, [b.overdrive]);
       if (lane >= 0) release(lane);
     };
     const blur = () => pause();
@@ -628,7 +703,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     addEventListener('keyup', up);
     addEventListener('blur', blur);
     return () => { removeEventListener('keydown', down); removeEventListener('keyup', up); removeEventListener('blur', blur); };
-  }, [start, restart, pause, resume, press, release, toggleDev]);
+  }, [start, restart, pause, resume, press, release, toggleDev, fireOverdrive]);
 
   // Touch and mouse: each pointer owns the lane it went down in.
   const laneAt = (clientX: number) => {
@@ -638,7 +713,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     return lane >= 0 && lane < 4 ? lane : -1;
   };
   const onPointerDown = (e: React.PointerEvent) => {
-    if (phase === 'ready') { start(); return; }
+    if (phase === 'ready') { start(null); return; }
     if (phase !== 'playing') return;
     const lane = laneAt(e.clientX);
     if (lane < 0) return;
@@ -673,6 +748,14 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
         s?.milestone(v); bus.emit('milestone', { combo: v }); setCallout({ id: Date.now(), kind: 'combo', value: v });
       }
       else if (kind === 'fever') { const on = !fever.current; fever.current = on; s?.setFever(on); bus.emit('fever', { on }); if (on) setCallout({ id: Date.now(), kind: 'fever', value: 4 }); }
+      else if (kind === 'overdrive') {
+        // Steps the look through the levels (no score): 1, 2, 3, 4, 5, off.
+        const lv = (devOd.current + 1) % 6;
+        devOd.current = lv;
+        s?.setOverdrive(lv);
+        bus.emit('hues', lv ? overdriveHues(lv) : song?.hues ?? null);
+        if (lv) setCallout({ id: Date.now(), kind: 'overdrive', value: lv });
+      }
       else if (kind === 'section') { s?.section(true); setBanner({ id: Date.now(), kind: 'section', big: 'Section' }); }
       else if (kind === 'miss') { for (let l = 0; l < 4; l++) s?.miss(l); bus.emit('miss', { x: 0.5 }); }
       else if (kind === 'climb') { for (let k = 0; k < 4; k++) s?.climb(0, 1.2, { delay: k * 3 }); }
@@ -708,16 +791,18 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const hitY = song ? anchor(0).y : innerHeight * 0.8;
 
   return (
-    <div className={`play ${devTools ? 'has-dev' : ''} ${hud.multiplier >= 4 && hud.combo > 0 && phase === 'playing' ? 'is-fever' : ''} ${phase === 'failing' || (phase === 'results' && result?.failed) ? 'is-failing' : ''}`} style={song ? ({ '--hA': song.hues[0], '--hB': song.hues[1], '--inset': `${inset}px` } as React.CSSProperties) : undefined}>
+    <div className={`play ${devTools ? 'has-dev' : ''} ${multiplierFor(hud.combo) >= 5 && phase === 'playing' ? 'is-fever' : ''} ${hud.overdrive && phase === 'playing' ? `is-overdrive od-${hud.overdrive}` : ''} ${phase === 'failing' || (phase === 'results' && result?.failed) ? 'is-failing' : ''}`} style={song ? ({ '--hA': song.hues[0], '--hB': song.hues[1], '--inset': `${inset}px` } as React.CSSProperties) : undefined}>
       <div ref={host} className="play-stage" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
-        role="application" aria-label="Playfield, 4 lanes. Keys D F J K.">
+        role="application" aria-label={`Playfield, 4 lanes. Keys ${laneKeyList(binds).map((k) => k.label).join(' ')}. Overdrive ${keyLabel(binds.overdrive)}.`}>
         {!use3d && <canvas ref={canvas} className="play-canvas" />}
       </div>
 
       {song && (
         <>
           <PlayHud song={song} difficulty={difficulty} section={section} hud={hud} clock={clock} bot={bot} devTools={devTools}
-            canPause={phase === 'playing'} onDev={toggleDev} onPause={pause} combo={combo} panel={panel} />
+            canPause={phase === 'playing'} onDev={toggleDev} onPause={pause} combo={combo} panel={panel}
+            overdriveKey={keyLabel(binds.overdrive)} onOverdrive={fireOverdrive}
+            practice={practice ? `Practice · ${practice.label} · ${Math.round(practice.speed * 100)}%` : undefined} />
           <ComboCallout callout={callout} step={MILESTONE} />
 
           <AnimatePresence>
@@ -767,10 +852,10 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
 
       <AnimatePresence>
         {(phase === 'ready' || phase === 'starting') && song && (
-          <StartCard key="start" song={song} difficulty={difficulty} starting={phase === 'starting'} milestone={MILESTONE} onStart={start} />
+          <StartCard key="start" song={song} difficulty={difficulty} starting={phase === 'starting'} milestone={MILESTONE} onStart={(p) => start(p ?? null)} />
         )}
         {phase === 'paused' && (
-          <PauseCard key="paused" at={clock} of={song ? (song.lengthBeats * 60) / song.bpm : 0} onResume={resume} onRestart={restart} onQuit={() => navigate(href.song(songId, difficulty))} />
+          <PauseCard key="paused" practice={practice} onStopPractice={() => { practiceRef.current = null; setPractice(null); stopSong(); resumeAudio().then(() => setPhase('ready')); }} at={clock} of={song ? (song.lengthBeats * 60) / song.bpm : 0} onResume={resume} onRestart={restart} onQuit={() => navigate(href.song(songId, difficulty))} />
         )}
         {phase === 'loading' && (
           <Loader key="loading" title={song?.title} artist={song?.artist} hues={song?.hues}

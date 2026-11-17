@@ -2,9 +2,9 @@
 // Times are seconds from beat 0 of the song.
 
 import type { Chart, ChartNote, Difficulty, Grade } from '../api/types';
-import { RunScore, multiplierFor, type HitResult } from './score';
+import { CHARGE_FULL, OVERDRIVE_LENGTH, RunScore, multiplierFor, type HitResult } from './score';
 
-export { multiplierFor };
+export { multiplierFor, CHARGE_FULL, OVERDRIVE_LENGTH };
 
 export type Judgement = 'perfect' | 'great' | 'good' | 'miss';
 
@@ -13,7 +13,18 @@ const BASE_WINDOWS = { perfect: 0.045, great: 0.09, good: 0.14 };
 // Each difficulty a step up (Easy is what Medium was before Ultra, Ultra what Hard was).
 const LENIENCY: Record<Difficulty, number> = { easy: 1.12, medium: 1.08, hard: 1.04, ultra: 1 };
 // Points, combo and accuracy are main.Score's, the multiplier and holds the game's own (score.ts).
-const DRAIN: Record<Difficulty, number> = { easy: 0.075, medium: 0.083, hard: 0.091, ultra: 0.1 };
+// A miss costs about 1.5 times what it did, and hits give back about half: the signal is something
+// to keep, not a bar that refills by itself.
+const DRAIN: Record<Difficulty, number> = { easy: 0.11, medium: 0.12, hard: 0.135, ultra: 0.15 };
+/** Signal a hit gives back. */
+const GAIN: Record<Judgement, number> = { perfect: 0.011, great: 0.007, good: 0.003, miss: 0 };
+/**
+ * A stray press (a key that hit no tile) costs this much signal and some Overdrive charge
+ * (score.ts STRAY_CHARGE): mashing the keys can't clear a song. Not counted before the first tile
+ * is close or after the last has passed.
+ */
+export const STRAY_DRAIN = 0.03;
+const STRAY_QUIET = 1;
 /** A hold released this close to its end still counts as completed. */
 const HOLD_GRACE = 0.14;
 
@@ -47,6 +58,14 @@ export type GameEvent =
   | { type: 'holdStart'; note: LiveNote }
   | { type: 'holdEnd'; note: LiveNote; ok: boolean }
   | { type: 'comboBreak'; combo: number }
+  /** A key went down with no tile to hit: signal and charge drain. */
+  | { type: 'stray'; lane: number }
+  /** The charge just became full: Overdrive can be set off. */
+  | { type: 'charged' }
+  /** Overdrive was set off (or went up a level): its level now, 1..5. */
+  | { type: 'overdrive'; level: number }
+  /** Overdrive ran out. */
+  | { type: 'overdriveEnd' }
   | { type: 'fail' };
 
 export interface Stats {
@@ -105,7 +124,27 @@ export class Game {
   /** The run so far, for the server to replay through Score (score.ts). */
   get run() { return this.scoring.run; }
 
-  get multiplier() { return multiplierFor(this.stats.combo); }
+  /** The combo's multiplier plus the Overdrive level (×1 to ×10). */
+  get multiplier() { return this.scoring.multiplier; }
+  /** Overdrive's charge, 0..1. */
+  get charge() { return this.scoring.charge / CHARGE_FULL; }
+  get charged() { return this.scoring.charged; }
+  /** The Overdrive level, 0 (off) to 5. */
+  get overdriveLevel() { return this.scoring.overdrive; }
+  /** What is left of Overdrive, 0..1. */
+  get overdriveLeft() { return this.scoring.overdriveLeft / OVERDRIVE_LENGTH; }
+
+  /** The player set off Overdrive (Space): needs a full charge. */
+  overdrive(): GameEvent[] {
+    if (this.failed || this.finished || !this.scoring.startOverdrive()) return [];
+    return [{ type: 'overdrive', level: this.scoring.overdrive }];
+  }
+
+  /** After the score changed: tell when the charge filled up or Overdrive ran out. */
+  private scored(level: number, charged: boolean, out: GameEvent[]) {
+    if (level > 0 && this.scoring.overdrive === 0) out.push({ type: 'overdriveEnd' });
+    if (!charged && this.scoring.charged) out.push({ type: 'charged' });
+  }
 
   get finished() {
     return this.failed || (this.stats.judged === this.stats.total && this.active.every((a) => !a));
@@ -126,10 +165,12 @@ export class Game {
     } else {
       s.combo++;
       s.maxCombo = Math.max(s.maxCombo, s.combo);
-      s.health = Math.min(1, s.health + (j === 'perfect' ? 0.022 : j === 'great' ? 0.016 : 0.008));
+      s.health = Math.min(1, s.health + GAIN[j]);
     }
+    const level = this.scoring.overdrive, charged = this.scoring.charged;
     this.scoring.add(hitResultFor(j, delta));
     s.score = this.scoring.score;
+    this.scored(level, charged, out);
     out.push({ type: 'judge', note, judgement: j, delta });
   }
 
@@ -147,15 +188,17 @@ export class Game {
     const out: GameEvent[] = [];
     if (this.failed || lane < 0 || lane >= this.lanes || this.active[lane]) return out;
     const list = this.byLane[lane];
+    let hit = false;
     for (let i = this.next[lane]; i < list.length; i++) {
       const n = list[i];
       if (n.judged) continue;
       const d = t - n.time;
-      if (d < -this.windows.good) break; // too early for anything: ignore the press
+      if (d < -this.windows.good) break; // too early for anything: a stray press
       if (d > this.windows.good) continue; // update() will mark it missed
       const ad = Math.abs(d);
       const j: Judgement = ad <= this.windows.perfect ? 'perfect' : ad <= this.windows.great ? 'great' : 'good';
       this.judge(n, j, d, out);
+      hit = true;
       if (n.hold) {
         n.holding = true;
         this.active[lane] = n;
@@ -164,7 +207,22 @@ export class Game {
       this.advance(lane);
       break;
     }
+    if (!hit) this.stray(lane, t, out);
     return out;
+  }
+
+  /** Strays so far. */
+  strays = 0;
+
+  private stray(lane: number, t: number, out: GameEvent[]) {
+    const first = this.notes.length ? this.notes[0].time : 0;
+    if (t < first - STRAY_QUIET || t > this.endTime + STRAY_QUIET) return;
+    this.strays++;
+    const level = this.scoring.overdrive, charged = this.scoring.charged;
+    this.scoring.stray();
+    this.scored(level, charged, out);
+    out.push({ type: 'stray', lane });
+    this.hurt(STRAY_DRAIN, out);
   }
 
   /** A lane key came up at time t. */
@@ -181,6 +239,7 @@ export class Game {
     n.holdResult = ok ? 'done' : 'broken';
     this.active[n.lane] = null;
     const s = this.stats;
+    const level = this.scoring.overdrive, charged = this.scoring.charged;
     if (ok) {
       s.holdsDone++;
       this.scoring.holdDone(n.end - n.time);
@@ -191,6 +250,7 @@ export class Game {
       this.hurt(DRAIN[this.difficulty] * 0.6, out);
     }
     s.score = this.scoring.score;
+    this.scored(level, charged, out);
     out.push({ type: 'holdEnd', note: n, ok });
   }
 
@@ -234,15 +294,19 @@ export function starsFor(grade: Grade): number {
   return grade === 'S' || grade === 'A' ? 3 : grade === 'B' ? 2 : grade === 'C' ? 1 : 0;
 }
 
-/** Every difficulty plays on four lanes: D F J K (arrow keys and 1-4 work too). */
+/** Every difficulty plays on four lanes: D F J K by default (rebindable, src/lib/keys.ts; arrow keys and 1-4 work too). */
 export const KEYS = [
   { code: 'KeyD', label: 'D' }, { code: 'KeyF', label: 'F' }, { code: 'KeyJ', label: 'J' }, { code: 'KeyK', label: 'K' },
 ];
 const ALT: Record<string, number> = {
   ArrowLeft: 0, ArrowDown: 1, ArrowUp: 2, ArrowRight: 3, Digit1: 0, Digit2: 1, Digit3: 2, Digit4: 3,
 };
-export const laneForCode = (code: string, lanes = 4): number => {
-  const i = KEYS.findIndex((k) => k.code === code);
-  const lane = i >= 0 ? i : ALT[code] ?? -1;
+/**
+ * The lane a key plays, or -1. `bound`: the lane keys as set (the defaults otherwise); `taken`:
+ * keys bound to something else (the Overdrive key), which never play a lane by the alternates.
+ */
+export const laneForCode = (code: string, lanes = 4, bound: readonly string[] = KEYS.map((k) => k.code), taken: readonly string[] = []): number => {
+  const i = bound.indexOf(code);
+  const lane = i >= 0 ? i : taken.includes(code) ? -1 : ALT[code] ?? -1;
   return lane < lanes ? lane : -1;
 };

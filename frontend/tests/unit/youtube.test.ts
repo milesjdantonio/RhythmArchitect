@@ -4,7 +4,7 @@ import { FollowClock } from '../../src/audio/clock';
 import { Placer, chooseRecording, findTick, holesIn, missLimit, place, placeChunks, stretchesOf, type Mark } from '../../src/mapping/capture';
 import { computeLevels, decodeLevels, levelAt, levelsFromNotes } from '../../src/mapping/levels';
 import { beatGrid, fanNotes, fanSong, parseOsu } from '../../src/mapping/osu';
-import { setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchSet } from '../../mock-server/match';
+import { notSongReason, setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchSet } from '../../mock-server/match';
 import easyOsu from '../fixtures/osu/9000011.osu?raw';
 import hardOsu from '../fixtures/osu/9000012.osu?raw';
 
@@ -352,5 +352,31 @@ describe('a listen that missed too much of the song', () => {
   it('is refused past 5% of the song, at least 8 s', () => {
     expect(missLimit(60)).toBe(8);
     expect(missLimit(301)).toBeCloseTo(15.05, 2);
+  });
+});
+
+// The same cases are in backend MappingTests (Matching.notSongReason).
+describe('only songs: a video that is something else is refused', () => {
+  const song = (title: string, channel: string, seconds?: number, categoryId?: string, typed = '') => notSongReason({ title, channel, seconds, categoryId }, typed);
+  it('takes songs', () => {
+    expect(song('One Dance (feat. WizKid & Kyla) - Drake (Official Audio)', 'Drake Media', 174, '10')).toBeNull();
+    expect(song('One Dance', 'Drake - Topic', 174, '10')).toBeNull();
+    expect(song('Good News', 'Mac Miller - Topic', 342, '10')).toBeNull(); // a song called "News"
+    expect(song('Jack Johnson - Breakdown', 'jackjohnsonmusic')).toBeNull(); // no key: title and channel only
+    expect(song('Kendrick Lamar - HUMBLE.', 'KendrickLamarVEVO', 177, '24')).toBeNull(); // VEVO, filed under Entertainment
+  });
+  it('refuses what is not a song', () => {
+    expect(song('Drake - One Dance REACTION', 'Some Reactor', 600, '24')).toMatch(/reaction/);
+    expect(song('How to play One Dance on piano (tutorial)', 'Piano Guy')).toMatch(/tutorial|how to/);
+    expect(song('Drake - Views (Full Album)', 'Albums', 4900, '10')).toMatch(/full album/);
+    expect(song('One Dance 10 hours', 'Loops', 36000, '10')).toMatch(/long loop/);
+    expect(song('Minecraft gameplay part 3', 'Gamer', 1200, '20')).toMatch(/gameplay/);
+    expect(song('My morning routine', 'Vlogger', 480, '22')).toBe("YouTube doesn't list it as music");
+    expect(song('Movie trailer 2026', 'Studio')).toMatch(/trailer/);
+    expect(song('Ringtone', 'Tones', 20, '10')).toMatch(/20 seconds/);
+    expect(song('Ambient set', 'DJ', 3600, '10')).toMatch(/60 minutes/);
+  });
+  it('a word the player typed is allowed', () => {
+    expect(song('Tutorial (Official Audio)', 'Some Band - Topic', 200, '10', 'Tutorial Some Band')).toBeNull();
   });
 });

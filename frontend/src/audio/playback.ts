@@ -22,7 +22,7 @@ import { ORDER, cancelFrame, nextFrame } from '../lib/ticker';
 import { decodeLevels, levelAt, levelsFromNotes, type DecodedLevels } from '../mapping/levels';
 import { setAmbientVolume } from './ambient';
 import { checkTrack, forgetSync, syncedOffset } from './syncer';
-import { YT_STATE, ytCue, ytNudge, ytPause, ytPlayFrom, ytResume, ytResync, ytSetVolume, ytState, ytTime, ytWarm } from './youtube';
+import { YT_STATE, ytCue, ytNudge, ytPause, ytPlayFrom, ytResume, ytResync, ytSetRate, ytSetVolume, ytState, ytTime, ytWarm } from './youtube';
 
 let unlocked = false;
 let melody: Tone.PolySynth | null = null;
@@ -187,10 +187,14 @@ const outputLatency = () => {
   return (raw.outputLatency || 0) + (raw.baseLatency || 0);
 };
 
-/** Seconds since beat 0, as heard. */
+/** The speed the song plays at (1, or slower in practice). Song seconds per real second. */
+let rate = 1;
+export const playbackRate = () => rate;
+
+/** Seconds since beat 0, as heard (song seconds: slowed with the song in practice). */
 export function songTime(startAt: number) {
   if (follow && follow.beat0 === startAt) return followTime(follow);
-  return now() - startAt - outputLatency();
+  return (now() - startAt - outputLatency()) * rate;
 }
 
 // ---------------------------------------------------------------- YouTube songs
@@ -260,7 +264,7 @@ const HANDOFF_COAST = 0.25;
 
 function followTime(f: Follow): number {
   const adjust = -outputLatency();
-  if (f.coast) return f.coast.t + (now() - f.coast.at);
+  if (f.coast) return f.coast.t + (now() - f.coast.at) * rate;
   if (f.started) {
     const v = ytTime() - f.offset + adjust;
     const h = f.handoff;
@@ -274,7 +278,7 @@ function followTime(f: Follow): number {
 
 /** The clock before the video plays: the AudioContext's, held (or eased) at the video's start point. */
 function countInTime(f: Follow, adjust: number): number {
-  const est = now() - f.beat0 + adjust;
+  const est = (now() - f.beat0) * rate + adjust;
   if (!f.asked) return est;
   const hold = f.startPos - f.offset + adjust;
   if (est <= hold) return est;
@@ -385,6 +389,8 @@ interface StartOptions {
   autoMelody?: { t: number; pitch: string; len: number }[];
   /** Stop after this many beats (defaults to the song length). */
   beats?: number;
+  /** Playback speed (practice mode: 0.5 to 1). The song and its clock both run at it. */
+  rate?: number;
   onEnd?: () => void;
 }
 
@@ -406,8 +412,13 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
   if (buffer) checkTrack(song, buffer);
   const offset = syncedOffset(song);
   const transport = Tone.getTransport();
-  transport.bpm.value = song.bpm;
+  rate = Math.max(0.25, Math.min(1, opts.rate ?? 1));
+  if (video) rate = ytSetRate(rate);
+  // Slowed (practice), the transport runs slower too: its times are given in real seconds.
+  transport.bpm.value = song.bpm * rate;
   const spb = 60 / song.bpm;
+  /** Real seconds a beat takes at this speed. */
+  const spbR = spb / rate;
   const from = opts.fromBeat ?? 0;
   const meter = song.meter ?? 4;
   // A track with sound before beat 0 (an intro): the count-in finishes before that sound starts,
@@ -417,7 +428,7 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
   const early = counting ? Math.ceil(intro / spb - 1e-6) : 0;
   const leadIn = Math.max(opts.leadInBeats, counting ? early + 4 : 0);
   const startAt = Tone.now() + 0.15;
-  const beat0 = startAt + leadIn * spb - from * spb;
+  const beat0 = startAt + leadIn * spbR - from * spbR;
   const totalBeats = opts.beats !== undefined ? from + opts.beats : song.lengthBeats;
   const leadSteps = leadIn * 4;
   const draw = Tone.getDraw();
@@ -427,11 +438,12 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
     // The count-in clicks still come from here; everything else follows the video.
     if (counting) {
       for (let n = leadIn; n > early; n--) {
-        scheduled.push(transport.schedule((time) => click.triggerAttackRelease(n - early === 1 ? 'C6' : 'G5', 0.05, time, 0.6), (leadIn - n) * spb));
+        scheduled.push(transport.schedule((time) => click.triggerAttackRelease(n - early === 1 ? 'C6' : 'G5', 0.05, time, 0.6), (leadIn - n) * spbR));
       }
     }
-    const audioZero = beat0 - offset;
-    const startPos = Math.max(0, Tone.now() + 0.05 - audioZero);
+    // When video position 0 would play (real time), and where to start it.
+    const audioZero = beat0 - offset / rate;
+    const startPos = Math.max(0, (Tone.now() + 0.05 - audioZero) * rate);
     const marks: Follow['marks'] = [];
     (song.report?.sections ?? []).forEach((sec, index) => {
       if (sec.beat >= from && sec.beat < totalBeats) marks.push({ beat: sec.beat, fire: () => bus.emit('section', { label: sec.label, index }) });
@@ -441,7 +453,7 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
     }
     marks.sort((a, b) => a.beat - b.beat);
     const f: Follow = {
-      beat0, offset, spb, meter, from, totalBeats, startPos, playAt: audioZero + startPos - startLag,
+      beat0, offset, spb, meter, from, totalBeats, startPos, playAt: audioZero + startPos / rate - startLag,
       asked: false, askedAt: 0, started: false, coast: null, done: false, early, nextBeat: from - leadIn,
       marks, mark: 0, opts, levels: songLevels(song), raf: 0, handoff: null,
     };
@@ -454,7 +466,7 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
   if (buffer) {
     // Audio time 0 plays when beat 0 minus the track's offset comes round.
     track = { song, buffer, beat0 };
-    playTrack(buffer, beat0 - offset, Tone.now() + 0.05);
+    playTrack(buffer, beat0 - offset / rate, Tone.now() + 0.05);
   }
 
   scheduled.push(transport.scheduleRepeat((time) => {
@@ -489,7 +501,7 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
   }, '16n', 0));
 
   // Sections and cues from the map, on the beat, so the visuals react to this song's shape.
-  const at = (beat: number) => (leadIn + beat - from) * spb;
+  const at = (beat: number) => (leadIn + beat - from) * spbR;
   (song.report?.sections ?? []).forEach((sec, index) => {
     if (sec.beat < from || sec.beat >= totalBeats) return;
     scheduled.push(transport.schedule((time) => draw.schedule(() => bus.emit('section', { label: sec.label, index }), time), at(sec.beat)));
@@ -503,8 +515,8 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
     for (const n of opts.autoMelody) {
       if (n.t >= totalBeats || n.t < from) continue;
       scheduled.push(transport.schedule((time) => {
-        melody?.triggerAttackRelease(n.pitch, Math.max(0.1, n.len * spb), time, 0.75);
-      }, (leadIn + n.t - from) * spb));
+        melody?.triggerAttackRelease(n.pitch, Math.max(0.1, n.len * spbR), time, 0.75);
+      }, (leadIn + n.t - from) * spbR));
     }
   }
   transport.start(startAt);
@@ -514,12 +526,16 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
 /** The track song playing (resyncPlaying lines it up again). */
 let track: { song: Song; buffer: Tone.ToneAudioBuffer; beat0: number } | null = null;
 
-/** Plays a track so that its audio time 0 lands at context time `audioZero`, starting no sooner than `earliest`. */
+/**
+ * Plays a track so that its audio time 0 lands at context time `audioZero`, starting no sooner
+ * than `earliest`, at the song's speed (slowed in practice, so audio time runs at `rate`).
+ */
 function playTrack(buffer: Tone.ToneAudioBuffer, audioZero: number, earliest: number) {
   const at = Math.max(earliest, audioZero);
   const player = new Tone.Player(buffer).connect(trackBus);
   player.fadeOut = 0.4;
-  player.start(at, Math.max(0, at - audioZero));
+  player.playbackRate = rate;
+  player.start(at, Math.max(0, (at - audioZero) * rate));
   players.add(player);
   return { player, at };
 }
@@ -539,7 +555,7 @@ export function resyncPlaying() {
     const { song, buffer, beat0 } = track;
     const offset = checkTrack(song, buffer).offset;
     const old = [...players];
-    const { at } = playTrack(buffer, beat0 - offset, Tone.now() + 0.05);
+    const { at } = playTrack(buffer, beat0 - offset / rate, Tone.now() + 0.05);
     for (const p of old) {
       try { p.fadeOut = 0.02; p.stop(at); } catch { /* stopped */ }
       players.delete(p);
@@ -574,9 +590,9 @@ export function windDown(seconds: number) {
   const step = () => {
     if (ticket !== winding) return;
     const k = Math.min(1, (performance.now() - start) / 1000 / seconds);
-    const rate = Math.max(0.06, Math.pow(1 - k, 1.5));
-    for (const p of ps) { try { p.playbackRate = rate; } catch { /* stopped */ } }
-    if (transport.state === 'started') transport.bpm.value = bpm * rate;
+    const slow = Math.max(0.06, Math.pow(1 - k, 1.5));
+    for (const p of ps) { try { p.playbackRate = rate * slow; } catch { /* stopped */ } }
+    if (transport.state === 'started') transport.bpm.value = bpm * slow;
     if (follow) ytSetVolume(ytFrom * (1 - k));
     if (k < 1) requestAnimationFrame(step);
   };

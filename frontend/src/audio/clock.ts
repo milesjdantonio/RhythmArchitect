@@ -21,6 +21,8 @@ export class FollowClock {
   private rate = 1;
   /** Hard resyncs (a seek, a stall). */
   snaps = 0;
+  /** The video's playback speed (practice slows it): the clock runs on at this times real time. */
+  speed = 1;
 
   /** It never steps: it runs a little fast or slow until the error is gone (see SLEW_GAIN). */
   constructor(private readonly now: () => number = () => performance.now()) {}
@@ -48,7 +50,7 @@ export class FollowClock {
       this.last = raw;
       return raw;
     }
-    const pos = this.anchorPos + ((at - this.anchorAt) / 1000) * this.rate;
+    const pos = this.anchorPos + ((at - this.anchorAt) / 1000) * this.rate * this.speed;
     if (raw !== this.lastRaw) {
       this.lastRaw = raw;
       const err = raw - pos;

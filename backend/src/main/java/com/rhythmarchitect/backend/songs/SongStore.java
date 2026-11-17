@@ -16,6 +16,8 @@ import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -29,6 +31,12 @@ import tools.jackson.databind.node.ObjectNode;
  * .data/songs.json), seeded with the built-in songs the first time. Songs are kept as JSON trees,
  * so every field of the Song type (frontend/src/api/types.ts) survives as the app sent it.
  *
+ * With Supabase set up ({@link SupabaseSongs}: SUPABASE_URL and SUPABASE_SERVICE_KEY, see
+ * docs/supabase.md) the bank lives in its table instead, so it outlives the server's disk. The
+ * first time (an empty table) it takes in what the JSON file has, or the built-in songs. If
+ * Supabase can't be reached when the bank is first read, the JSON file is used for this run (and
+ * the log says so).
+ *
  * All access goes through {@link #read} and {@link #write}, one at a time.
  */
 @Component
@@ -38,11 +46,36 @@ public class SongStore {
 
     private final ObjectMapper json;
     private final Path file;
+    private final SupabaseSongs supabase;
+    /** The bank is in Supabase this run (set up, and reachable when first read). */
+    private boolean remote;
     private List<ObjectNode> songs;
 
-    public SongStore(ObjectMapper json, @Value("${rythm.songs-file}") String file) {
+    public SongStore(ObjectMapper json, @Value("${rythm.songs-file}") String file, SupabaseSongs supabase) {
         this.json = json;
         this.file = Path.of(file).toAbsolutePath();
+        this.supabase = supabase;
+    }
+
+    /** Where the bank is kept: "supabase" or "file". */
+    public synchronized String storage() {
+        load();
+        return remote ? "supabase" : "file";
+    }
+
+    /**
+     * Once the server is up, the bank is read in the background (the file, or Supabase over the
+     * network), so the first visitor doesn't wait for it. The server is ready before this ends.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void warm() {
+        Thread.ofVirtual().name("song-bank-warm").start(() -> {
+            try {
+                read(List::size);
+            } catch (RuntimeException e) {
+                log.warn("Couldn't read the song bank ahead of time; the first request will try again", e);
+            }
+        });
     }
 
     /** Reads the bank (a copy-free view: don't change what you get, use {@link #write}). */
@@ -81,6 +114,7 @@ public class SongStore {
 
     private List<ObjectNode> load() {
         if (songs != null) return songs;
+        if (supabase.enabled() && loadRemote()) return songs;
         try {
             if (Files.exists(file)) {
                 songs = parse(Files.readString(file));
@@ -99,6 +133,36 @@ public class SongStore {
             songs = new ArrayList<>();
         }
         return songs;
+    }
+
+    /** The bank from Supabase (filled from the JSON file or the seed the first time). False if it can't be reached. */
+    private boolean loadRemote() {
+        try {
+            List<ObjectNode> rows = supabase.load();
+            remote = true;
+            if (rows.isEmpty()) {
+                songs = Files.exists(file) ? parse(Files.readString(file)) : seed();
+                supabase.save(songs);
+                log.info("Started the song bank in Supabase at {} with {} songs (from {})", supabase.describe(), songs.size(),
+                    Files.exists(file) ? file : "the built-in songs");
+            } else {
+                songs = rows;
+                if (refreshBuiltIns()) supabase.save(songs);
+                log.info("Read {} songs from Supabase at {}", songs.size(), supabase.describe());
+            }
+            return true;
+        } catch (IOException | RuntimeException e) {
+            remote = false;
+            songs = null;
+            log.warn("Couldn't reach the song bank in Supabase at {}; using the JSON file {} for now", supabase.describe(), file, e);
+            return false;
+        }
+    }
+
+    private List<ObjectNode> seed() throws IOException {
+        try (InputStream in = new ClassPathResource("seed/songs.json").getInputStream()) {
+            return parse(new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
+        }
     }
 
     /**
@@ -135,6 +199,14 @@ public class SongStore {
     }
 
     private void save() {
+        if (remote) {
+            try {
+                supabase.save(songs);
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+            return;
+        }
         try {
             Files.createDirectories(file.getParent());
             ObjectNode root = json.createObjectNode();

@@ -17,10 +17,17 @@ export interface Settings {
   calm: boolean;
   /** The dev tools panel on the game screen is open. */
   devTools: boolean;
+  /** The lane keys, left to right, as `KeyboardEvent.code`s (src/lib/keys.ts). */
+  laneKeys: string[];
+  /** The key that sets off Overdrive. */
+  overdriveKey: string;
+  /** The backdrop's colours: 'dynamic' follows the song, or a fixed theme (src/background/themes.ts). */
+  backdrop: string;
 }
 
 const KEY = 'rythm-architect:settings';
-export const DEFAULTS: Settings = { volume: 0.8, backing: 0.6, noFail: false, calm: false, autoPreview: true, menuMusic: true, devTools: false };
+export const DEFAULTS: Settings = { volume: 0.8, backing: 0.6, noFail: false, calm: false, autoPreview: true, menuMusic: true, devTools: false,
+  laneKeys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], overdriveKey: 'Space', backdrop: 'dynamic' };
 
 const listeners = new Set<() => void>();
 let current: Settings = load();
@@ -43,6 +50,12 @@ export function setSettings(patch: Partial<Settings>) {
   current = { ...current, ...patch };
   try { localStorage.setItem(KEY, JSON.stringify(current)); } catch { /* private mode */ }
   listeners.forEach((l) => l());
+}
+
+/** Called after every change (outside React). Returns the unsubscribe. */
+export function onSettings(fn: () => void) {
+  listeners.add(fn);
+  return () => { listeners.delete(fn); };
 }
 
 export function useSettings(): Settings {

@@ -125,7 +125,8 @@ export interface BestScore {
    * multiplier and holds on top: frontend/src/game/score.ts, backend RunReplay). Missing on a best
    * from before, on the game's old points, which any such run replaces.
    */
-  rules?: 'score';
+  /** 'overdrive': counted by the current rules (×10 points, combo to ×5, Overdrive to ×10); anything else is from before and gives way to any new run. */
+  rules?: 'overdrive' | 'score';
 }
 
 export type Grade = 'S' | 'A' | 'B' | 'C' | 'D' | 'F';

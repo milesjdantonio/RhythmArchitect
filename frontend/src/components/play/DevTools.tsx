@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Difficulty, Song } from '../../api/types';
 import { audioLevels, resyncPlaying } from '../../audio/playback';
 import { syncStatus, syncedOffset } from '../../audio/syncer';
-import { KEYS, fallTime, type Game } from '../../game/engine';
+import { fallTime, type Game } from '../../game/engine';
+import { getBinds, keyLabel } from '../../lib/keys';
 import { laneHue } from '../../game/render';
 import { cuesFor } from '../../mapping/cues';
 import { downloadListenLog, lastListenLog } from '../../mapping/listenLog';
@@ -11,7 +12,7 @@ import { Icon } from '../Icon';
 
 import type { BotMode } from '../../game/autoplay';
 export type { BotMode };
-export type DevEffect = 'drop' | 'build' | 'flash' | 'milestone' | 'fever' | 'section' | 'miss' | 'climb';
+export type DevEffect = 'drop' | 'build' | 'flash' | 'milestone' | 'fever' | 'overdrive' | 'section' | 'miss' | 'climb';
 
 /** What the dev tools can read and do; the game screen provides it. */
 export interface DevProbe {
@@ -112,7 +113,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
           {next.length ? next.map((n) => (
             <li key={n.idx}>
               <span>+{Math.max(0, n.time - (t ?? 0)).toFixed(2)}s</span>
-              <span className="dev-lane" style={{ color: `hsl(${laneHue(n.lane, 4, song.hues)} 100% 75%)` }}>{KEYS[n.lane]?.label}</span>
+              <span className="dev-lane" style={{ color: `hsl(${laneHue(n.lane, 4, song.hues)} 100% 75%)` }}>{keyLabel(getBinds().lanes[n.lane] ?? '')}</span>
               <span>{n.hold ? `hold ${((n.end - n.time) / spb).toFixed(2)}b` : 'tap'}</span>
               <span className="muted">beat {(n.time / spb).toFixed(2)}</span>
             </li>
@@ -141,6 +142,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
           <div><dt>Miss</dt><dd className="j-miss">{g?.stats.counts.miss ?? 0}</dd></div>
           <div><dt>Accuracy</dt><dd>{g ? `${(g.accuracy * 100).toFixed(1)}%` : '–'}</dd></div>
           <div><dt>Combo</dt><dd>{g ? `${g.stats.combo} · ×${g.multiplier}` : '–'}</dd></div>
+          <div><dt>Overdrive</dt><dd>{g ? `${g.overdriveLevel ? `level ${g.overdriveLevel}, ${Math.round(g.overdriveLeft * 100)}% left` : 'off'} · charge ${Math.round(g.charge * 100)}%` : '–'}</dd></div>
           <div><dt>Health</dt><dd>{g ? `${Math.round(g.stats.health * 100)}%` : '–'}</dd></div>
           <div><dt>Mean</dt><dd>{mean !== null ? `${mean > 0 ? '+' : ''}${mean.toFixed(1)} ms` : '–'}</dd></div>
         </dl>
@@ -182,7 +184,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
       <section className="dev-sec">
         <h3 className="dev-title">Effects</h3>
         <div className="dev-fx">
-          {(['drop', 'build', 'flash', 'section', 'milestone', 'fever', 'miss', 'climb'] as DevEffect[]).map((k) => (
+          {(['drop', 'build', 'flash', 'section', 'milestone', 'fever', 'overdrive', 'miss', 'climb'] as DevEffect[]).map((k) => (
             <button key={k} type="button" className="btn btn-sm" onClick={() => probe.fx(k)}>{k}</button>
           ))}
         </div>
@@ -259,7 +261,7 @@ function drawQueue(c: HTMLCanvasElement | null, probe: DevProbe, hues: [number, 
   g.fillRect(0, line, w, 1.5);
   g.fillStyle = 'rgb(255 255 255 / 0.5)';
   g.font = '10px "JetBrains Mono", monospace';
-  KEYS.forEach((k, l) => g.fillText(k.label, l * laneW + laneW / 2 - 3, h - 1));
+  getBinds().lanes.forEach((code, l) => g.fillText(keyLabel(code), l * laneW + laneW / 2 - 3, h - 1));
 }
 
 /** Recent hits on an early-to-late bar, over the perfect/great/good windows. */

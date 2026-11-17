@@ -1,7 +1,25 @@
 # Database Decision and Migration Plan
 
-**Status:** Decision recorded; implementation has not started.  
+**Status:** Implemented (Nov 17): `SupabaseSongs` and `SongStore`; setup in [docs/supabase.md](docs/supabase.md). Not yet switched on on Render.  
 **Decision:** Use **Supabase PostgreSQL** as Rhythm Architect's database and keep the existing **Render** deployment for the Java Spring Boot backend.
+
+## 0. How it was built (Nov 17), and where it differs from the plan below
+
+- **Supabase's REST API (PostgREST) instead of a JDBC driver, a connection pool and Flyway.** The
+  backend calls `https://<project>.supabase.co/rest/v1/songs` with Java's own HTTP client and a
+  secret key kept in the backend's environment (`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`). Why: no new
+  dependencies, nothing extra to start when the server boots (a sleeping free Render service wakes
+  on the first visit, and a pool and migrations add to that), and it works over plain HTTPS, with
+  no IPv4 pooler settings to get right. The table is made once from
+  [docs/supabase.sql](docs/supabase.sql) in the SQL Editor (in place of a Flyway migration).
+- **The table follows section 4:** `id`, `title`, `artist`, `created_at`, `song_data` (jsonb: the
+  whole song as the app sends it), plus `sort_key` (the bank's order) and `updated_at`. Row Level
+  Security is on with no policies, so only the secret key can read or write.
+- **Migration (section 6, phase 4):** the first start against an empty table takes in the existing
+  JSON file (or the built-in songs). The file is left as it was (the backup). Saving sends only the
+  songs that changed and deletes removed ones.
+- **If Supabase can't be reached at start,** the backend logs it and uses the JSON file for that run.
+- **User accounts (phase 6) are dropped** from the plan.
 
 ## 1. Final decision
 

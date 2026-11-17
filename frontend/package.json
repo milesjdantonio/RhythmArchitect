@@ -16,7 +16,8 @@
     "rive:bake": "node tools/rive/bake.mjs",
     "map": "node tools/map-audio.mjs",
     "video": "node tools/video/record-video.mjs",
-    "video:listen": "node tools/video/record-listening.mjs"
+    "video:listen": "node tools/video/record-listening.mjs",
+    "video:overdrive": "node tools/video/record-overdrive.mjs"
   },
   "dependencies": {
     "@ensomi/runtime": "0.3.2",
