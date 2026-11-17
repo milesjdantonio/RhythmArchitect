@@ -9,7 +9,7 @@
       "type": "shell",
       "command": "./mvnw",
       "windows": { "command": ".\\mvnw.cmd" },
-      "args": ["test", "-Dtest=main.*Test"],
+      "args": ["test", "-Dtest='main.*Test'"],
       "options": { "cwd": "${workspaceFolder}/backend" },
       "group": { "kind": "test", "isDefault": true },
       "problemMatcher": []
