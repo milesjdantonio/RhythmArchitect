@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { attachMain, attachSky, workerSupported, type Backdrop } from './host';
-import { isQuiet, useQuiet } from '../lib/quiet';
+import { isStill, useStill } from '../lib/quiet';
 import { isCalm, useSettings } from '../lib/settings';
 import '../styles/background.css';
 
@@ -18,8 +18,8 @@ export function SynthBackground() {
   const { calm } = useSettings();
   // Behind the Generate dialog the sky holds still, as when calm: the dialog has its own light,
   // and the listening pass needs the graphics chip for the video and the capture (lib/quiet.ts).
-  const quiet = useQuiet();
-  const still = () => isCalm() || isQuiet();
+  const quiet = useStill();
+  const still = () => isCalm() || isStill();
   const gpu = workerSupported();
 
   useEffect(() => {

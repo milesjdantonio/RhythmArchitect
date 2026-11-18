@@ -12,12 +12,14 @@ import { fallbackNote, listenProblem, songFromListening, type Charted } from '..
 import { bus } from '../../lib/bus';
 import { href, navigate } from '../../lib/router';
 import { upsert, useSearch } from '../../library/songs';
+import { useVideoSearch } from '../../library/videos';
 import { enterRise } from '../../lib/entrance';
 import { FrameTrace } from '../FrameTrace';
 import { Icon } from '../Icon';
 import { SongRow } from '../SongRow';
 import type { ScopeHandle } from '../generate/ListenScope';
 import { GenerateDialog, type Flow } from '../generate/GenerateDialog';
+import { VideoResults } from './VideoResults';
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 /** A title's core: no brackets, no "feat." credits ("One Dance (feat. Wizkid & Kyla)" is "one dance"). */
@@ -25,7 +27,9 @@ const core = (s: string) => norm(s.replace(/\(.*?\)|\[.*?\]/g, ' ').replace(/\s(
 
 /**
  * Name a Song: the player types a title and an artist; every song the AI has mapped is searched
- * as they type. Pick a result to put it on stage, or generate a beatmap for what they typed.
+ * as they type. Pick a result to put it on stage. A song that isn't mapped yet: once the typing
+ * pauses, its videos on YouTube come up under the results (VideoResults), to preview and to choose
+ * the one to generate a beatmap from.
  */
 export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: string; difficulty: Difficulty; enterDelay?: number }) {
   const [title, setTitle] = useState('');
@@ -37,13 +41,17 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
   const abort = useRef<AbortController | null>(null);
   const artistRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const generateRef = useRef<HTMLButtonElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  /** The Generate button last used (focus goes back to it when the dialog closes). */
+  const lastGenerate = useRef<HTMLElement | null>(null);
   const scope = useRef<ScopeHandle>(null);
 
   const typed = title.trim() || artist.trim();
   // The song typed is already mapped: it comes up in the results, and Generate isn't offered.
   const want = core(title), by = norm(artist);
   const mapped = !!want && search.results.some((r) => core(r.title) === want && (!by || norm(r.artist).includes(by) || by.includes(norm(r.artist))));
+  // Not mapped yet: its videos on YouTube, once the typing pauses (each search costs quota).
+  const videos = useVideoSearch(title, artist, !!title.trim() && !mapped);
 
   const type = (field: 'title' | 'artist', v: string) => {
     if (field === 'title') setTitle(v); else setArtist(v);
@@ -58,8 +66,8 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
     ytPause();
     setFlow(null);
     bus.emit('intensity', 0.15);
-    // Back where the player was: the Generate button (enabled again once the dialog is gone).
-    setTimeout(() => generateRef.current?.focus({ preventScroll: true }), 50);
+    // Back where the player was: the Generate button they used (enabled again once the dialog is gone).
+    setTimeout(() => lastGenerate.current?.focus({ preventScroll: true }), 50);
   };
 
   async function finish(song: Song, linger = 900) {
@@ -95,27 +103,19 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
     }
   }
 
-  async function generate() {
-    const t = title.trim(), a = artist.trim();
-    if (!t || flow) return;
+  /** Generate beatmap, for the video the player chose (VideoResults): ready to listen to it. */
+  async function generate(video: VideoMatch, from: HTMLElement) {
+    if (flow) return;
+    lastGenerate.current = from;
     setError(null);
     unlockAudio().catch(() => {});
     // Whatever was previewing stops: the video is about to need the sound.
     stopSong();
-    const ctrl = new AbortController();
-    abort.current = ctrl;
-    setAsked({ title: t, artist: a });
-    setFlow({ step: 'find', progress: 0 });
+    abort.current = new AbortController();
+    setAsked({ title: video.songTitle, artist: video.songArtist });
     bus.emit('intensity', 0.6);
-    try {
-      const video = await api.findVideo(t, a, ctrl.signal);
-      if (ctrl.signal.aborted) return;
-      setAsked({ title: video.songTitle, artist: video.songArtist });
-      if (!canListen()) { await fromFanChart(video, fallbackNote(new ListenError('', 'unsupported'))); return; }
-      setFlow({ step: 'ready', video, progress: 0 });
-    } catch (e) {
-      failed(e);
-    }
+    if (!canListen()) { await fromFanChart(video, fallbackNote(new ListenError('', 'unsupported'))); return; }
+    setFlow({ step: 'ready', video, progress: 0 });
   }
 
   /** "Listen and map": straight from the click, because Chrome only shares a tab after one. */
@@ -243,15 +243,18 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
     }).catch((e) => { if (flow?.step === 'ready') failed(e); });
   }, [videoId]);
 
-  // Arrow keys move between the fields, the results and the Generate button.
+  // Arrow keys move between the fields, the mapped songs and the videos' buttons.
+  const navItems = () => [...(resultsRef.current?.querySelectorAll<HTMLButtonElement>('button.result, [data-nav]:not(:disabled)') ?? [])];
   const toList = (e: React.KeyboardEvent) => {
     if (e.key !== 'ArrowDown') return;
-    const first = listRef.current?.querySelector<HTMLButtonElement>('button.result') ?? generateRef.current;
+    const first = navItems()[0];
     if (first) { e.preventDefault(); first.focus(); }
   };
-  const inList = (e: React.KeyboardEvent<HTMLUListElement>) => {
-    const items = [...(listRef.current?.querySelectorAll<HTMLButtonElement>('button.result') ?? []), ...(generateRef.current ? [generateRef.current] : [])];
+  const inList = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const items = navItems();
     const i = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (i < 0) return;
     if (e.key === 'ArrowDown' && i < items.length - 1) { e.preventDefault(); items[i + 1].focus(); }
     if (e.key === 'ArrowUp') { e.preventDefault(); (i > 0 ? items[i - 1] : artistRef.current)?.focus(); }
   };
@@ -271,13 +274,13 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
           <input id="song-artist" ref={artistRef} value={artist} maxLength={120} autoComplete="off" spellCheck={false} disabled={!!flow}
             onChange={(e) => type('artist', e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); (listRef.current?.querySelector<HTMLButtonElement>('button.result') ?? generateRef.current)?.focus(); }
+              if (e.key === 'Enter') { e.preventDefault(); navItems()[0]?.focus(); }
               toList(e);
             }} />
         </label>
       </form>
 
-      <div className="search-results" aria-live="polite" aria-busy={search.status === 'searching'}>
+      <div className="search-results" ref={resultsRef} onKeyDown={inList} aria-live="polite" aria-busy={search.status === 'searching'}>
         {typed && search.status === 'error' && (
           <div className="results-note" role="alert">
             <p>{search.error}</p>
@@ -285,7 +288,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
           </div>
         )}
         {typed && search.results.length > 0 && (
-          <ul className="result-list" ref={listRef} onKeyDown={inList} aria-label="Mapped songs">
+          <ul className="result-list" ref={listRef} aria-label="Mapped songs">
             <AnimatePresence initial={false}>
               {search.results.map((r, i) => (
                 <SongRow key={r.id} song={r} index={i} on={r.id === onStage} onPick={() => pick(r)} />
@@ -299,15 +302,10 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
         {typed && search.status === 'done' && search.results.length === 0 && (
           <p className="results-hint muted">No beatmap for that yet.</p>
         )}
-        {typed && !mapped && (
-          <div className="generate">
-            <button ref={generateRef} type="button" className="btn btn-primary generate-btn" disabled={!title.trim() || !!flow} aria-busy={flow?.step === 'find'} onClick={generate}
-              title={title.trim() ? undefined : 'Add the title (or paste a YouTube link)'}
-              onKeyDown={(e) => { if (e.key === 'ArrowUp') { e.preventDefault(); const b = listRef.current?.querySelectorAll<HTMLButtonElement>('button.result'); (b?.[b.length - 1] ?? artistRef.current)?.focus(); } }}>
-              <Icon name="sparkle" size={16} /> Generate beatmap
-            </button>
-          </div>
-        )}
+        {/* Not mapped yet: the song's videos on YouTube, to preview and to map the one chosen. */}
+        {typed && !mapped && (title.trim()
+          ? <VideoResults search={videos} busy={!!flow} onStage={onStage} onGenerate={generate} />
+          : <p className="results-hint muted">Add the title (or paste a YouTube link) to find the song on YouTube.</p>)}
         <AnimatePresence>
           {error && (
             <motion.p className="form-error" role="alert" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>{error}</motion.p>

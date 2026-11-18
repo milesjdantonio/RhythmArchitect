@@ -1,8 +1,8 @@
 # Getting a YouTube Data API key
 
-**Generate beatmap** has to find the song's video on YouTube. Pasting a YouTube link into the
-Title field always works with no key. Typing a **title and artist** and letting the game find the
-video needs a free **YouTube Data API v3** key. The key is used only by the server (the mock, or
+To map a new song, the game lists its videos on YouTube for you to preview and choose from.
+Pasting a YouTube link into the Title field always works with no key. Typing a **title and artist**
+and letting the game find the videos needs a free **YouTube Data API v3** key. The key is used only by the server (the mock, or
 the Spring Boot backend) to search YouTube and read video details. It never downloads audio and
 never reaches the browser.
 
@@ -46,8 +46,9 @@ can paste a link instead).
 ## Limits
 
 The free quota is **10,000 units a day** per project. Each search by name costs about **101**
-(a search is 100, the video details 1), so roughly **95 name searches a day**. Pasted links use
-YouTube's oEmbed and cost nothing. The quota resets at midnight Pacific time. You can see use under
+(a search is 100, the video details 1), so roughly **95 name searches a day**. The game searches
+only when you stop typing a song that isn't mapped yet, and the server keeps each search's results
+for 6 hours (the same search again is free). Pasted links use YouTube's oEmbed and cost nothing. The quota resets at midnight Pacific time. You can see use under
 **APIs & Services → YouTube Data API v3 → Quotas**. If a search fails with "quota exceeded",
 paste links until it resets.
 

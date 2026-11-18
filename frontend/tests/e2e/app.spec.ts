@@ -186,6 +186,40 @@ test.describe('Rythm Architect', () => {
     await expect(page.getByText('No beatmap for that yet.')).toBeVisible();
   });
 
+  test("lists the song's videos on YouTube after the mapped songs, previews one, and maps the one chosen", async ({ page }) => {
+    await skipIntro(page);
+    await fakeYouTube(page);
+    // Two videos of the song: the player previews the second and maps that one, not the best match.
+    await page.route('**/api/youtube/search**', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ results: [
+      { videoId: 'e2eInkFury1', title: 'Choice Song (Official Video)', channel: 'Choice Artist', songTitle: 'Choice Song', songArtist: 'Choice Artist', seconds: 40 },
+      { videoId: 'e2eRestless', title: 'Choice Song (Live)', channel: 'Fan uploads', songTitle: 'Choice Song', songArtist: 'Choice Artist', seconds: 40 },
+    ] }) }));
+    await page.goto('/#/');
+    await title(page).fill('Choice Song');
+    await artist(page).fill('Choice Artist');
+    await expect(page.getByText('No beatmap for that yet.')).toBeVisible();
+    const rows = page.locator('.yt-row:not(.skeleton)');
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toContainText('best match');
+    type Yt = { __yt: { cued: () => string; state: () => number } };
+    // Preview the second: it plays in its own player, under its row.
+    await rows.nth(1).getByRole('button', { name: /^Preview/ }).click();
+    await expect(rows.nth(1).locator('.video-slot')).toHaveCount(1);
+    await expect.poll(() => page.evaluate(() => (window as unknown as Yt).__yt.cued())).toBe('e2eRestless');
+    await expect.poll(() => page.evaluate(() => (window as unknown as Yt).__yt.state())).toBe(1); // playing
+    await expect(page.locator('.yt-dock[data-shown="true"]')).toBeVisible();
+    await rows.nth(1).getByRole('button', { name: /^Stop/ }).click();
+    await expect(rows.nth(1).locator('.video-slot')).toHaveCount(0);
+    // Map that one: the dialog is ready to listen to the video chosen.
+    await rows.nth(1).getByRole('button', { name: /Generate beatmap/ }).click();
+    const dialog = page.getByRole('dialog', { name: 'Ready to listen' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText('Choice Song (Live)');
+    await expect.poll(() => page.evaluate(() => (window as unknown as Yt).__yt.cued())).toBe('e2eRestless');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   test('a video that blocks embedding says so', async ({ page }) => {
     await skipIntro(page);
     await fakeYouTube(page);
@@ -574,11 +608,11 @@ test.describe('Rythm Architect', () => {
     await title(page).fill('   ');
     await page.waitForTimeout(400); // the search runs as you type
     expect(await offered()).toBe(false);
-    // A misspelled or unknown song: the video search finds nothing; it says so and nothing opens.
+    // A misspelled or unknown song: the video search finds nothing; it says so, with nothing to map.
     await page.route('**/api/youtube**', (r) => r.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'No video found for that song. Check the spelling and try again.' }) }));
     await title(page).fill('Levitatinggg Dua Lipaa');
-    await page.getByRole('button', { name: 'Generate beatmap' }).click();
     await expect(page.getByRole('alert')).toContainText('Check the spelling');
+    await expect(page.getByRole('button', { name: 'Generate beatmap' })).toHaveCount(0);
     await expect(page.getByRole('dialog')).toHaveCount(0);
     await page.unroute('**/api/youtube**');
     // Bad links: no difficulty chosen, an unknown difficulty, a song that doesn't exist.

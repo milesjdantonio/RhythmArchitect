@@ -43,7 +43,7 @@ src/main/java/com/rhythmarchitect/backend/
             SongLists (search ranking, A to Z), NewSongCheck (what a mapped song must contain),
             SongModel (a song of the bank as the model's Song, written by SongWriter),
             RunReplay (a run checked against the chart's Queue of Notes, counted through GameScore)
-  sources/  SourceController (GET /api/youtube, POST /api/fan-chart), YouTubeService,
+  sources/  SourceController (GET /api/youtube, GET /api/youtube/search, POST /api/fan-chart), YouTubeService,
             FanChartService (osu! search and downloads), Http
   osu/      Osu: .osu parser and fan chart to song, a port of frontend/src/mapping/osu.ts
   match/    Text (how names are compared), Matching (which video / fan chart is the song)

@@ -38,8 +38,12 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 ## Layout (fixed by the user)
 
 - Left = title + AI. **Name a Song**: title + artist fields that search every mapped song as you
-  type, with the Generate beatmap button at the bottom of the results; no presets, no mapper notes.
-  Then the **Favorites** drop-down with its own search.
+  type; under the results, for a song not mapped yet, its videos **On YouTube** (best few, best
+  first: `src/components/menu/VideoResults.tsx`, `GET /api/youtube/search`), each with Preview (it
+  plays in its own player under its row) and Generate beatmap for that video, so the player chooses
+  what is mapped; no presets, no mapper notes. YouTube is searched only once the typing pauses
+  (`src/library/videos.ts`), never for a song already mapped, and each search is kept (quota: about
+  1% of a day's per search). Then the **Favorites** drop-down with its own search.
 - The **music bank** is its own screen (`src/screens/MusicBank.tsx`, `#/bank`, `GET /api/library`):
   every song A to Z with a search and a letter rail, opened by the Bank button (♫ icon) under the
   settings gear. The menu's song keeps playing there; a pick plays right there (the bank stays
@@ -106,9 +110,11 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 
 ## Generating a beatmap
 
-- No song generation: search pulls up mapped songs. Generate beatmap finds the song's YouTube
-  video (it plays in YouTube's embedded player, `src/audio/youtube.ts`, docked visibly, 200px+,
-  nothing over it; shown only while it plays, inert so players can't click it).
+- No song generation: search pulls up mapped songs. Generate beatmap maps the YouTube video the
+  player chose from the song's videos (it plays in YouTube's embedded player,
+  `src/audio/youtube.ts`, docked visibly, 200px+, nothing over it; shown only while it plays, inert
+  so players can't click it). A preview holds the menu's sound (`holdQuiet(..., { still: false })`:
+  the visuals carry on); the Generate dialog's hold keeps them still too.
 - The browser listens to it once through tab capture and `automap.ts` maps it
   (`src/mapping/listen.ts`, in `listen.worker.ts`). Before mapping, the worker runs the Beat This!
   beat tracker (`src/mapping/beats.ts`, model in `public/models/`). Its grid is used whenever its

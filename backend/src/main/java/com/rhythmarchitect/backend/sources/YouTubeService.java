@@ -7,6 +7,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,7 +21,11 @@ import com.rhythmarchitect.backend.web.ApiException;
 
 import tools.jackson.databind.JsonNode;
 
-/** Finds the YouTube video that plays a song (its audio is never fetched). */
+/**
+ * Finds the YouTube videos that play a song (their audio is never fetched): the best few, for the
+ * player to preview and choose from, or the best one. A search by name costs YouTube quota (about
+ * 1% of a day's), so its results are kept for a while: the same search again is free.
+ */
 @Service
 public class YouTubeService {
 
@@ -30,6 +35,16 @@ public class YouTubeService {
         String thumbnail) {
     }
 
+    /** How many videos a search offers. */
+    static final int OFFERED = 5;
+    /** How long a search's results are kept, and how many searches. */
+    private static final long KEEP_MS = 6 * 60 * 60 * 1000L;
+    private static final int KEEP_MAX = 300;
+
+    private record Kept(long at, List<VideoMatch> videos) {
+    }
+
+    private final Map<String, Kept> kept = new ConcurrentHashMap<>();
     private final Http http;
     private final String apiKey;
 
@@ -38,15 +53,34 @@ public class YouTubeService {
         this.apiKey = apiKey;
     }
 
+    /** The video that plays the song: the best of {@link #findAll}. */
     public VideoMatch find(String title, String artist) {
+        return findAll(title, artist).get(0);
+    }
+
+    /**
+     * The videos that play the song, best first (at most {@link #OFFERED}; never empty): every one
+     * a song that can be played outside YouTube. A pasted link is just that video.
+     */
+    public List<VideoMatch> findAll(String title, String artist) {
         String pasted = Text.videoIdIn(title);
         if (pasted == null) pasted = Text.videoIdIn(artist);
-        if (pasted != null) return pasted(pasted, title, artist);
+        if (pasted != null) return List.of(pasted(pasted, title, artist));
         if (apiKey == null || apiKey.isBlank()) {
             throw new ApiException(503, "Finding songs on YouTube by name needs a YouTube Data API key (YOUTUBE_API_KEY on the "
                 + "song server, then restart it). Or paste the song's YouTube link into Title.");
         }
-        return search(title, artist);
+        String key = (Text.norm(title) + "\n" + Text.norm(artist)).trim();
+        long now = System.currentTimeMillis();
+        Kept k = kept.get(key);
+        if (k != null && now - k.at() < KEEP_MS) return k.videos();
+        List<VideoMatch> found = search(title, artist);
+        if (kept.size() >= KEEP_MAX) {
+            kept.entrySet().removeIf(e -> now - e.getValue().at() >= KEEP_MS);
+            if (kept.size() >= KEEP_MAX) kept.clear();
+        }
+        kept.put(key, new Kept(now, found));
+        return found;
     }
 
     /** A pasted link: oEmbed needs no key and says whether the video can be embedded (401/403 when it can't). */
@@ -94,7 +128,7 @@ public class YouTubeService {
             "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg");
     }
 
-    private VideoMatch search(String title, String artist) {
+    private List<VideoMatch> search(String title, String artist) {
         String q = (artist + " " + title).trim();
         try {
             Map<String, String> sp = new LinkedHashMap<>();
@@ -132,13 +166,18 @@ public class YouTubeService {
                 if (Matching.notSongReason(vt, ch, secs, category, title + " " + artist) != null) continue;
                 ranked.add(new Ranked(i, vt, ch, secs, Matching.videoScore(vt, ch, secs, title, artist)));
             }
-            Ranked best = ranked.stream().max(Comparator.comparingDouble(Ranked::score)).orElseThrow(
-                () -> ApiException.notFound("None of YouTube's videos for “" + q + "” is a song that can be played outside YouTube. "
-                    + "Check the name, or paste the song's link."));
-            String thumb = best.item.path("snippet").path("thumbnails").path("medium").path("url").asString(null);
-            String songArtist = artist.isEmpty() ? Matching.songFromVideo(best.title, best.channel).artist() : artist;
-            return new VideoMatch(best.item.path("id").path("videoId").asString(), best.title, best.channel, title, songArtist,
-                best.seconds, thumb);
+            if (ranked.isEmpty()) {
+                throw ApiException.notFound("None of YouTube's videos for “" + q + "” is a song that can be played outside YouTube. "
+                    + "Check the name, or paste the song's link.");
+            }
+            ranked.sort(Comparator.comparingDouble(Ranked::score).reversed());
+            List<VideoMatch> out = new ArrayList<>();
+            for (Ranked r : ranked.subList(0, Math.min(OFFERED, ranked.size()))) {
+                String thumb = r.item.path("snippet").path("thumbnails").path("medium").path("url").asString(null);
+                String songArtist = artist.isEmpty() ? Matching.songFromVideo(r.title, r.channel).artist() : artist;
+                out.add(new VideoMatch(r.item.path("id").path("videoId").asString(), r.title, r.channel, title, songArtist, r.seconds, thumb));
+            }
+            return List.copyOf(out);
         } catch (Http.StatusException e) {
             throw new ApiException(502, "YouTube answered " + e.status + ". Try again.");
         } catch (IOException e) {

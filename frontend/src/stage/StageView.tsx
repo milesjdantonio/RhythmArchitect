@@ -3,7 +3,7 @@ import type { Difficulty, Song } from '../api/types';
 import { audioLevels, songTime } from '../audio/playback';
 import { TRAVEL } from '../game/engine';
 import { bus } from '../lib/bus';
-import { isQuiet, onQuiet } from '../lib/quiet';
+import { isStill, onQuiet } from '../lib/quiet';
 import { isCalm } from '../lib/settings';
 import { RiveAnim } from '../rive/RiveAnim';
 import { StageProxy } from './proxy';
@@ -52,7 +52,7 @@ export function StageView({ song, difficulty, previewBeat0 }: Props) {
     let visible = true;
     // Not while a dialog wants quiet (the Generate dialog listening and mapping: the video, the
     // capture and the mapper need the graphics chip and the processor; the stage is behind it).
-    const awake = () => !isCalm() && visible && !isQuiet();
+    const awake = () => !isCalm() && visible && !isStill();
     // A stage in a worker draws on its own frames: it's told when to stop (and start again).
     const proxy = s instanceof StageProxy ? s : null;
     let asleep = false;
