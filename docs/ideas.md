@@ -8,8 +8,9 @@ considered independently of the current MVP.
 - **Practice mode** (Nov 17): pick a part of a song on the start card, loop it, slow it to 50-100%;
   nothing is saved. See [README.md](../README.md#a-change-feature-not-in-the-mvp-practice-mode).
 - **Overdrive** (Nov 17): a charge earned by accurate hits; Space sets it off. It changes scoring:
-  +1 on the multiplier per level, stacked up to five levels (×10 with the combo's ×5), with its own
-  look per level. See [README.md](../README.md#idea-overdrive-a-power-up-you-earn).
+  +1 on the multiplier per level, stacked up to three levels (×8 with the combo's ×5), ended by any
+  miss (except in the 5 seconds after each press), with its own look per level (Neon, Eclipse,
+  Prism). See [README.md](../README.md#idea-overdrive-a-power-up-you-earn).
 - **Durable song storage** (Nov 17): the backend keeps the song bank in Supabase when it's set up,
   taking in the existing JSON songs the first time. See [supabase.md](supabase.md) and
   [DATABASE.md](../DATABASE.md).

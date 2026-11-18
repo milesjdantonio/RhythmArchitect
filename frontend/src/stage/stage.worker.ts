@@ -30,6 +30,8 @@ let notes: StageNote[] = [];
 let noteFrom = 0;
 let songT = -4;
 let sentAt = 0;
+/** Song seconds per real second (practice slows the song: the time carries on slower too). */
+let songRate = 1;
 let carry = true;
 let started = false;
 /** Showcase (the menu's preview): the stage plays its own ghost chart, not the page's notes. */
@@ -49,10 +51,10 @@ function loop(now: number) {
   // The frame's own time (when the display shows it), not when this callback happens to run:
   // callbacks run a few ms early or late, frames are shown on the beat of the screen.
   const wall = performance.timeOrigin + now;
-  const target = songT + (carry ? Math.min(MAX_CARRY, Math.max(0, (wall - sentAt) / 1000)) : 0);
+  const target = songT + (carry ? Math.min(MAX_CARRY, Math.max(0, (wall - sentAt) / 1000)) * songRate : 0);
   if (!carry || Number.isNaN(clock) || Math.abs(target - clock) > SNAP) clock = target;
   else {
-    clock += Math.max(0, Math.min(0.1, (wall - lastWall) / 1000));
+    clock += Math.max(0, Math.min(0.1, (wall - lastWall) / 1000)) * songRate;
     clock += (target - clock) * STEER;
   }
   lastWall = wall;
@@ -117,6 +119,7 @@ function handle(m: ToStage) {
         noteFrom = from;
         songT = m.frame.t;
         sentAt = m.frame.at;
+        songRate = m.frame.rate > 0 ? m.frame.rate : 1;
         carry = true;
         started = true;
       }

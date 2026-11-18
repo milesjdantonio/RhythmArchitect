@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { EASE_OUT } from '../../lib/motion';
 import { perf } from '../../lib/perf';
 import { ORDER, cancelFrame, nextFrame } from '../../lib/ticker';
-import { OVERDRIVE_LOOKS, overdriveHue } from '../../game/overdrive';
+import { OVERDRIVE_LOOKS, OVERDRIVE_ROMAN, overdriveSat, overdriveVars } from '../../game/overdrive';
 
 export interface Callout {
   id: number;
@@ -12,14 +12,14 @@ export interface Callout {
   value: number;
 }
 
-const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V'];
+const ROMAN = OVERDRIVE_ROMAN;
 /** The big text and the word under it. */
 const numText = (c: Callout) => (c.kind === 'combo' ? String(c.value) : c.kind === 'fever' ? 'Fever' : OVERDRIVE_LOOKS[c.value]?.name ?? 'Overdrive');
 const wordText = (c: Callout) => (c.kind === 'combo' ? (c.value % 100 === 0 ? 'Combo · streak' : 'Combo')
   : c.kind === 'fever' ? '×5 multiplier' : `Overdrive ${ROMAN[c.value] ?? c.value} · +${c.value}×`);
 const classOf = (c: Callout) => `callout callout-${c.kind}${c.kind === 'fever' || (c.kind === 'combo' && c.value % 100 === 0) ? ' is-gold' : ''}${c.kind === 'overdrive' ? ` od-${c.value}` : ''}`;
 /** Overdrive's callout takes its level's colour (--od, a hue). */
-const styleOf = (c: Callout) => (c.kind === 'overdrive' ? ({ '--od': overdriveHue(c.value, 1, 0) } as React.CSSProperties) : undefined);
+const styleOf = (c: Callout) => (c.kind === 'overdrive' ? (overdriveVars(c.value) as React.CSSProperties) : undefined);
 
 const SHARDS = [-70, -40, -12, 14, 40, 68, 160, 200];
 
@@ -67,7 +67,8 @@ export function ComboCallout({ callout, step }: { callout: Callout | null; step:
             <i /><i /><i />
             {SHARDS.map((a) => <b key={a} style={{ '--a': `${a}deg` } as React.CSSProperties} />)}
           </span>
-          <span className="callout-num">
+          {/* data-text: Overdrive's name splits into colours as it lands (game.css). */}
+          <span className="callout-num" data-text={callout.kind === 'overdrive' ? numText(callout) : undefined}>
             {callout.kind === 'combo' ? <CountUp from={Math.max(0, callout.value - step)} to={callout.value} /> : numText(callout)}
           </span>
           <span className="callout-word">{wordText(callout)}</span>
@@ -109,9 +110,11 @@ function LiteCallout({ callout }: { callout: Callout | null }) {
       return;
     }
     el.className = `${classOf(callout)} is-lite`;
-    el.style.setProperty('--od', callout.kind === 'overdrive' ? String(overdriveHue(callout.value, 1, 0)) : '');
+    el.style.setProperty('--od', callout.kind === 'overdrive' ? String(overdriveVars(callout.value)['--od']) : '');
+    el.style.setProperty('--ods', callout.kind === 'overdrive' ? `${overdriveSat(callout.value)}%` : '');
     const text = numText(callout);
     num.current!.firstChild!.textContent = text;
+    num.current!.dataset.text = callout.kind === 'overdrive' ? text : '';
     glow.current!.textContent = text;
     word.current!.textContent = wordText(callout);
     shown.current = true;

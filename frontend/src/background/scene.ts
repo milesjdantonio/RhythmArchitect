@@ -30,6 +30,7 @@
 
 import type { Levels } from '../audio/playback';
 import { frameGate } from '../lib/perf';
+import { OVERDRIVE_LOOKS } from '../game/overdrive';
 
 /** A 2D context on the page or on a worker's OffscreenCanvas (the drawing is the same). */
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -62,12 +63,14 @@ export interface SceneEnv {
 export interface SkyShapes {
   sand: number[]; ink: number[]; circles: number[];
   missFlash: number; dropFlash: number;
+  /** How far the colour is drained (0..1): Overdrive's Eclipse is white light on black. */
+  mono: number;
   hues: [number, number]; songHues: [number, number];
   pulse: number; pulseScale: number; baseScale: number; vignette: number;
   w: number; h: number;
 }
 export const emptyShapes = (): SkyShapes => ({
-  sand: [], ink: [], circles: [], missFlash: 0, dropFlash: 0, hues: [0, 0], songHues: [0, 0],
+  sand: [], ink: [], circles: [], missFlash: 0, dropFlash: 0, mono: 0, hues: [0, 0], songHues: [0, 0],
   pulse: 0, pulseScale: 1, baseScale: 1, vignette: 1, w: 1, h: 1,
 });
 
@@ -82,6 +85,8 @@ export type SceneEvent =
   | { type: 'hues'; hues: [number, number] | null }
   | { type: 'section'; index: number }
   | { type: 'cue'; kind: 'build' | 'drop' | 'break' | 'flash'; strength: number }
+  /** Overdrive up to `level` (1..5) or ended (0): the stars go to warp and stay fast while it runs. */
+  | { type: 'overdrive'; level: number }
   | { type: 'sky'; x: number; y: number; strength: number }
   | { type: 'pointermove'; x: number; y: number }
   | { type: 'pointerdown'; x: number; y: number }
@@ -108,7 +113,9 @@ function seeded(seed: number) {
   };
 }
 
-const hsl = (h: number, s: number, l: number, a = 1) => `hsl(${h.toFixed(1)} ${s}% ${l}% / ${a})`;
+/** How far the 2D canvases' colours are drained (Overdrive's Eclipse): set by the scene each frame. */
+let drained = 0;
+const hsl = (h: number, s: number, l: number, a = 1) => `hsl(${h.toFixed(1)} ${(s * (1 - drained)).toFixed(1)}% ${l}% / ${a})`;
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lerpHue = (a: number, b: number, t: number) => {
   const d = ((((b - a) % 360) + 540) % 360) - 180;
@@ -180,6 +187,12 @@ export class SynthScene {
   private sy = new Float32Array(0);
   private sz = new Float32Array(0);
   private warp = 0; // extra speed: drops, milestones, hits
+  private odWarp = 0; // Overdrive: the least warp while it runs, more each level
+  private odPower = 0;
+  /** Overdrive's Eclipse: the colour drains out of the sky (0..1), toward monoTarget. */
+  private mono = 0;
+  private monoTarget = 0;
+  private baseMono = 0;
   private rings: { age: number; strength: number }[] = [];
   private crystals: { x: number; y: number; size: number; rot: number; spin: number; age: number; life: number; hue: number; sides: number; active: boolean }[] =
     Array.from({ length: 28 }, () => ({ x: 0, y: 0, size: 0, rot: 0, spin: 0, age: 0, life: 1, hue: 0, sides: 4, active: false }));
@@ -220,6 +233,7 @@ export class SynthScene {
       case 'hues': this.targetHues = e.hues ? [...e.hues] : [...HOUSE]; this.shift = 0; this.drawBase(); break;
       case 'section': this.changeMode(); this.beatFlash = 1; if (e.index > 0) { this.shift = (this.shift + 34) % 360; this.drawBase(); } break;
       case 'cue': this.cue(e.kind, e.strength); break;
+      case 'overdrive': this.overdrive(e.level); break;
       case 'sky':
         // The sky behind the track: grains scatter from each burst; a storm shakes the whole plate.
         this.shock(e.x * this.w, e.y * this.h, lerpHue(this.hues[0], this.hues[1], this.rand()), Math.min(1.4, 0.35 + e.strength * 0.55));
@@ -339,6 +353,35 @@ export class SynthScene {
       this.warp = Math.max(this.warp, 0.9 * strength);
       this.shock(this.w * (0.25 + this.rand() * 0.5), this.h * (0.3 + this.rand() * 0.4), this.hues[1], 0.9 * strength);
     }
+  }
+
+  /**
+   * Overdrive: going up a level throws the stars into warp, floods the sky with colour and blasts
+   * the sand from the middle out, crystals flying; while it runs they never slow below a cruise
+   * that rises each level. Running out lets them coast back down.
+   */
+  private overdrive(level: number) {
+    const look = OVERDRIVE_LOOKS[Math.max(0, Math.min(OVERDRIVE_LOOKS.length - 1, level))];
+    const up = level > 0 && look.power > this.odPower;
+    this.odPower = level > 0 ? look.power : 0;
+    this.odWarp = level > 0 ? 0.35 + look.power * 0.22 : 0;
+    this.monoTarget = look.mono ? 1 : 0;
+    if (!up) { if (!level) this.shock(this.w / 2, this.h * 0.6, this.hues[0], 0.6); return; }
+    level = look.power;
+    this.warp = Math.max(this.warp, 2.2 + level * 0.35);
+    this.kick = Math.max(this.kick, 1.8);
+    this.beatFlash = 1;
+    this.dropFlash = Math.max(this.dropFlash, 0.7 + level * 0.08);
+    this.calmUntil = -1;
+    this.shock(this.w / 2, this.h * 0.55, this.hues[0], 1.3);
+    this.shock(this.w * 0.15, this.h * 0.75, this.hues[1], 0.9);
+    this.shock(this.w * 0.85, this.h * 0.75, this.hues[1], 0.9);
+    const n = Math.round(4 + level * 2);
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * PI * 2;
+      this.crystal(this.w / 2 + Math.cos(a) * this.w * 0.36, this.h * 0.5 + Math.sin(a) * this.h * 0.36, lerpHue(this.hues[0], this.hues[1], this.rand()), 1 + level * 0.1);
+    }
+    if (this.morph >= 1) this.changeMode();
   }
 
   /** Dev/tools: mean |field| of the grains within r px of (x, y): 0 means sitting on the lines. */
@@ -548,7 +591,13 @@ export class SynthScene {
     this.beatFlash *= Math.exp(-dt * 6);
     this.missFlash *= Math.exp(-dt * 4);
     this.dropFlash *= Math.exp(-dt * 2.2);
-    this.warp *= Math.exp(-dt * 1.4);
+    this.warp = Math.max(this.odWarp, this.warp * Math.exp(-dt * 1.4));
+    // Eclipse drains the colour (and brings it back) over about half a second; the deep-space base
+    // is repainted once it settles (it's dark either way).
+    this.mono += (this.monoTarget - this.mono) * Math.min(1, dt * 4);
+    if (Math.abs(this.mono - this.monoTarget) < 0.01) this.mono = this.monoTarget;
+    drained = this.mono;
+    if (this.mono === this.monoTarget && this.baseMono !== this.mono) { this.baseMono = this.mono; this.drawBase(); }
     this.fever += (this.feverTarget - this.fever) * Math.min(1, dt * 1.5);
     for (const r of this.rings) r.age += dt;
     this.rings = this.rings.filter((r) => r.age < 1.6);
@@ -810,6 +859,7 @@ export class SynthScene {
       const rad = 20 + ease(Math.min(1, k * 1.2)) * 300 * (0.6 + wv.strength);
       for (const [lw, a] of WAVE_FULL) out.circles.push(wv.x, wv.y, rad, lw, wv.hue, 90, 74, (1 - k) * a * wv.strength);
     }
+    out.mono = this.mono;
     out.missFlash = this.missFlash > 0.02 ? this.missFlash * 0.06 : 0;
     out.dropFlash = this.dropFlash > 0.02 ? this.dropFlash : 0;
     out.hues[0] = hA; out.hues[1] = hB;

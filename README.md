@@ -23,8 +23,8 @@ from YouTube (its video in its spot under the stage, then in the game's corner),
 hand-mapped test song played badly enough to show misses and the results.
 `npm run video:overdrive` records the Overdrive update to `docs/media/overdrive.webm` (with a still
 of each level): the Background and key settings, the start card's Practice picker, a run that
-climbs through all five Overdrive levels to ×10, mashing the keys (strays drain the signal), and a
-part of a song practised on a loop at 75%.
+climbs through the three Overdrive levels to ×8, mashing the keys (strays
+drain the signal), and a part of a song practised on a loop at 75%.
 
 ## Project 3: First prototype (Deliverable 3)
 
@@ -136,18 +136,31 @@ the mock: `cd backend && ./mvnw spring-boot:run`, and `VITE_API_BASE_URL=http://
 - **Overdrive.** Accurate hits fill a charge (shown under the multiplier). When it's full, press
   **Space** (or the key you bound, or the HUD's button on touch screens): Overdrive adds +1 to the
   multiplier for the next 48 tiles. Press again whenever the charge fills while it runs to stack it,
-  up to five levels: ×5 from the combo plus ×5 from Overdrive is **×10**. Each level takes the whole
-  field to its own colours (the tiles, pads, beams, walls, track, the world and the sky): *Surge*
-  (electric blue), *Plasma* (magenta), *Aurora* (green), *Inferno* (red-orange) and *Prism* (every
-  colour, turning across the lanes). Each level goes up with a bigger burst: light pours up both
-  sides of the track, rings sweep every lane, bands climb the walls, fireworks and comets fill the
-  sky, and the screen's edges glow in the level's colour. Every hit rings wider, light streams up
-  the sides, and every bar pulses in the level's colours. A miss costs 8 of the 48 tiles. When it
-  runs out, the colours flow back to the song's. The server checks every Overdrive in a saved run
-  (`GameScore.startOverdrive`).
-- **Practice.** On the start card, *Practice a part*: pick a section of the song (or a quarter, for
-  songs without sections) and a speed from 50% to 100%. The part loops (Loop 2, 3...) until you stop
-  it from the pause menu; nothing is saved and you can't fail. The song really slows down: the
+  up to three levels: ×5 from the combo plus ×3 from Overdrive is **×8**. At the top it can't be set
+  off again, and **a single miss ends it**, every level, except in its **grace**: for 5 seconds after
+  each press (time to get from the key back to the lanes) a miss costs its combo and signal but not
+  Overdrive, and a countdown beside the lanes shows it. Each level takes the whole field to its own
+  colours (the tiles, pads, beams, walls, track, the world and the sky): *Neon* (purple and pink),
+  *Eclipse* (white light on black: the sky's colour drains away) and *Prism* (every colour, turning
+  across the lanes). When the charge is full, beacons rise from both sides of the
+  hit line in the next level's colour and a cue beside the lanes names the key. Each level goes up
+  with a bigger burst: the camera lunges into a warp (streaks of light rush past outside the lanes,
+  the stars in the sky stream by, faster each level), every pad kicks, shockwaves cross the track,
+  light pours up both sides, the sky storms with fireworks and comets, the screen's edges flash, the
+  level's name lands on the right and the multiplier slams in. On built-in songs the song itself
+  whooshes (a quick filter sweep; YouTube's audio never reaches the page). While it runs, the warp
+  keeps rushing, the hit line throbs on the beat, every hit rings wider, light climbs the walls and
+  streams down the sides of the screen, and the HUD counts what this Overdrive has added. With a
+  quarter left the field flickers between its colours and the song's; it runs out (embers fall, the
+  colours drain back) or a miss breaks it (it shatters red), and the points it added are counted out
+  beside the lanes. The results show the highest level, how often it was set off and what it
+  added. The server checks every Overdrive in a saved run (`GameScore.startOverdrive`) and every
+  grace (no longer than the chart has tiles for in 5 seconds: `RunReplay.graceTiles`).
+- **Practice.** On the start card, switch *Play the song* to *Practice a part*, drag the loop's
+  start and end anywhere in the song (the sections show as ticks) and pick a speed: 50%, 75% or
+  100% (the speeds YouTube's player has, so a YouTube song and its tiles always move together); the
+  one button (or Enter) then says and starts what you chose, e.g. *Practise 0:20–0:30 · 75%*. It loops
+  (Loop 2, 3...) until you stop it from the pause menu; nothing is saved and you can't fail. The song really slows down: the
   track, the synth, or YouTube's own player (at the nearest speed it has).
 - **Settings.** Volume and backing in 1% steps; **keybinds** (click a lane or Overdrive, press the
   new key; keys swap rather than double up; every key shown in the game follows them); and
@@ -407,7 +420,7 @@ Each change says what the spec said, what we built, why, and what prompted it.
 | 11 | **Validation: AI fails or returns bad data** | `SongWriter` throws; the view says "Couldn't create song". | If the trained mapper fails (no model download, bad output), the song still gets charts from the on-device onset mapper, and the dev tools say why. A bad chart file makes `SongWriter` throw an `IllegalArgumentException` that names the problem, and the server turns down a mapped song or fan chart `SongWriter` can't take in. | Better a playable map than an error. | The e2e test "when the trained mapper fails". |
 | 12 | **Tests** | Tests for Node, Queue, Note, Song, SongWriter, Score and Main. | 44 JUnit tests for Node, Queue, Note, Song and SongWriter (`src/test/main/`, good and bad cases from the plan), 6 for GameScore; 16 backend tests; 113 frontend unit tests; 22 browser tests. Score and Main have none yet (not written). | | The test plan. |
 | 13 | **Scope** | JavaFX, then HTML/CSS (revised scope). | HTML, CSS and TypeScript (React, three.js for the 3D stage, Tone.js for sound), songs played through YouTube's embedded player. | We know the web better, and YouTube lets any song play without downloading its audio. | The revised scope and the GTA conversation. |
-| 14 | **Score** (rules on top) | `Score`: a Perfect 100, a Good 75, an Early or Late 50; a combo. | `Score` unchanged. `GameScore` on top: points ×10 (a Perfect is 1,000), a combo multiplier to ×5, and Overdrive (+1 per level, five levels: ×10 at most), checked and counted again on the server. Signal drains faster on a miss and refills slower on a hit. | Scores felt small and the run too forgiving; Overdrive (an idea in the last Next Steps) needed to matter. | Play-testing (Miles, Nov 17). |
+| 14 | **Score** (rules on top) | `Score`: a Perfect 100, a Good 75, an Early or Late 50; a combo. | `Score` unchanged. `GameScore` on top: points ×10 (a Perfect is 1,000), a combo multiplier to ×5, and Overdrive (+1 per level, three levels: ×8 at most; one miss ends it, except in the 5 seconds after each press), checked and counted again on the server. Signal drains faster on a miss and refills slower on a hit. | Scores felt small and the run too forgiving; Overdrive (an idea in the last Next Steps) needed to matter. Five stackable levels (×10, renewable at the top, a miss costing 8 tiles) were then too easy to keep: three levels, ended by any miss. Gold tiles (one in eight, triple on a Perfect) were tried and dropped; a grace after each press was added, because a hand on the Overdrive key can't be back on the lanes at once. | Play-testing (Miles, Nov 17). |
 
 ### Did the model really stand alone?
 
@@ -459,12 +472,12 @@ through `GameScore` (`Score` with the game's combo multiplier and held-note bonu
 
 ### A change feature not in the MVP: Practice mode
 
-Pick a section of a song (a verse, the drop) and play it on a loop, optionally slowed down, until
-you get it right. Nothing in the MVP plays part of a song or changes its speed.
+Pick a stretch of a song (a verse, the drop: any start and end) and play it on a loop, optionally
+slowed down, until you get it right. Nothing in the MVP plays part of a song or changes its speed.
 
 **Built (Nov 17).** How it turned out against the prediction below: `Song.getChartBetween` was added
-as predicted (with its test); the view plays the part on a loop at 50-100% (`playback.ts` runs the
-song and its clock at the speed, `Play.tsx` and the start card choose the part). `Main` wasn't
+as predicted (with its test); the view plays the part on a loop at 50%, 75% or 100% (`playback.ts` runs the
+song and its clock at the speed, `Play.tsx` and the start card choose the loop's start and end). `Main` wasn't
 changed (it isn't wired to play yet, and it's Darsh's), and `Score` needed no `isPractice()`:
 practice runs are simply never sent to the server.
 
@@ -485,11 +498,13 @@ practice runs are simply never sent to the server.
 ### Idea: Overdrive, a power-up you earn
 
 **Built (Nov 17).** The open questions, answered: it changes scoring (+1 on the multiplier per
-level, up to five levels, so ×10 with the combo's ×5); it lasts 48 tiles (a miss costs 8); a full
-charge while it runs raises the level and starts the 48 again; it can be set off any time the
-charge is full. `GameScore` (not `Score`, which stays Darsh's) has the charge and the levels
-(`getCharge`, `isCharged`, `startOverdrive`, `getOverdrive`); the run records it (`O`) and the server
-refuses an Overdrive the charge couldn't have paid for. `Main` is unchanged.
+level, up to three levels, so ×8 with the combo's ×5); it lasts 48 tiles and any miss ends it,
+except in its grace (the 5 seconds after each press); a full charge while it runs raises the level
+and starts the 48 again, except at the top level. `GameScore` (not `Score`, which stays Darsh's)
+has the charge, the levels and the grace (`getCharge`, `isCharged`, `startOverdrive`,
+`getOverdrive`, `isGrace`, `endGrace`); the run records them (`O`, `U` where the grace ends) and the
+server refuses an Overdrive the charge couldn't have paid for and a grace longer than the chart
+has tiles for in 5 seconds. `Main` is unchanged.
 
 The player builds up a **charge** by hitting tiles, faster the more accurate they are (a Perfect
 fills more than a Good; a miss drains some). When the meter is full, the game says so, and pressing
@@ -545,7 +560,7 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `EmptyQueueException` | Miles D'Antonio | Wrote it (GenAI-assisted). |
 | `SongWriter` | Miles D'Antonio | Wrote it (GenAI-assisted). |
 | `ModelDemo` (driver) | Miles D'Antonio | Wrote it (GenAI-assisted). |
-| `GameScore` | Miles D'Antonio | Wrote it (GenAI-assisted): `Score` with the game's ×10 points, combo multiplier (to ×5), held-note bonus, Overdrive (charge, levels, to ×10) and stray presses on top, `Score`'s own rules unchanged. |
+| `GameScore` | Miles D'Antonio | Wrote it (GenAI-assisted): `Score` with the game's ×10 points, combo multiplier (to ×5), held-note bonus, Overdrive (charge, three levels, to ×8, its grace) and stray presses on top, `Score`'s own rules unchanged. |
 | `Score`, `Main` | Darsh Sharma | Wrote both classes (GenAI-assisted). Implemented Score to track points, hits, misses, combos, and accuracy using HitResult. Implemented Main to handle player inputs, judge note timing, remove notes from the queue, track missed notes, and return upcoming notes.. |
 
 ### The backend (`backend/`, Java, Spring Boot)

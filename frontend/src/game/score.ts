@@ -10,17 +10,19 @@
 //               counting a miss, so it counts as one). A stray press (a key that hit no tile)
 //               scores nothing and takes STRAY_CHARGE off the Overdrive charge.
 //   Multiplier: the combo's (×1, then one more every 10 in a row, at most ×5) plus the Overdrive
-//               level (0-5): at most ×10.
+//               level (0-3): at most ×8.
 //   Overdrive:  accurate hits fill a charge (Perfect 5, Good 3, Early/Late 1, a hold held to its
 //               end 5; a miss takes 20). With a full charge (100) the player sets it off (Space):
-//               the charge empties, the level goes up one (at most 5) and it lasts the next
-//               OVERDRIVE_LENGTH tiles judged (a miss costs OVERDRIVE_MISS_COST of them). Set off
-//               again while it runs, it goes up again and starts its length again. When the length
-//               runs out, the level drops to 0.
+//               the charge empties, the level goes up one and it lasts the next OVERDRIVE_LENGTH
+//               tiles judged. Set off again while it runs, it goes up again and starts its length
+//               again, up to MAX_OVERDRIVE (at the top it can't be set off). One miss ends it,
+//               every level, except in its grace: the first OVERDRIVE_GRACE seconds after each
+//               press (getting back to the lanes from the key), when a miss doesn't. Otherwise it
+//               ends when the length runs out.
 //
 // The game counts with these as it plays (engine.ts) and records the run in order (`run`: P G E
-// L M for the hits and misses, H<ms>; for a hold held its length in milliseconds, B for a hold let
-// go, X for a stray press, O where Overdrive was set off). The server checks the run against the chart it was played on (the difficulty's Queue of
+// L M for the hits and misses, H<ms>; for a hold held its length in milliseconds, B for a hold
+// let go, X for a stray press, O where Overdrive was set off, U where its grace ended). The server checks the run against the chart it was played on (the difficulty's Queue of
 // Notes) and replays it through GameScore, and saves that (backend RunReplay.java); the mock
 // server does both here (runFits, replayRun). Free of browser APIs.
 
@@ -31,9 +33,10 @@ export type HitResult = 'PERFECT' | 'GOOD' | 'EARLY' | 'LATE' | 'MISS';
 
 const CODE: Record<HitResult, string> = { PERFECT: 'P', GOOD: 'G', EARLY: 'E', LATE: 'L', MISS: 'M' };
 export const CHARGE_FULL = 100;
-export const MAX_OVERDRIVE = 5;
+export const MAX_OVERDRIVE = 3;
 export const OVERDRIVE_LENGTH = 48;
-export const OVERDRIVE_MISS_COST = 8;
+/** Seconds after each press when a miss doesn't end Overdrive (the game ends the grace: U). */
+export const OVERDRIVE_GRACE = 5;
 export const MAX_COMBO_MULTIPLIER = 5;
 /** Score's points are worth this many (GameScore.POINT_SCALE). */
 export const POINT_SCALE = 10;
@@ -71,23 +74,45 @@ export class RunScore {
   overdrive = 0;
   /** Tiles judged before Overdrive ends. */
   overdriveLeft = 0;
+  /**
+   * For the results only (not part of the rules, so GameScore has no twin): the highest level
+   * reached, how many times it was set off, and the points the Overdrive levels added.
+   */
+  overdrivePeak = 0;
+  overdriveFired = 0;
+  overdriveBonus = 0;
+  /** Overdrive's grace: a miss doesn't end it (from each press until endGrace). */
+  grace = false;
 
   /** GameScore.getMultiplier(): the combo's plus the Overdrive level. */
   get multiplier() { return multiplierFor(this.combo) + this.overdrive; }
   get charged() { return this.charge >= CHARGE_FULL; }
 
-  /** Sets off Overdrive (needs a full charge). Whether it started. */
+  /** Whether Overdrive can be set off now: a full charge, and below the top level. */
+  get canOverdrive() { return this.charged && this.overdrive < MAX_OVERDRIVE; }
+
+  /** Sets off Overdrive (a full charge, below the top level). Whether it started. */
   startOverdrive(): boolean {
-    if (this.charge < CHARGE_FULL) return false;
+    if (!this.canOverdrive) return false;
     this.run += 'O';
     this.ignite();
+    this.overdriveFired++;
+    this.overdrivePeak = Math.max(this.overdrivePeak, this.overdrive);
     return true;
   }
 
   private ignite() {
     this.charge = 0;
-    this.overdrive = Math.min(MAX_OVERDRIVE, this.overdrive + 1);
+    this.overdrive++;
     this.overdriveLeft = OVERDRIVE_LENGTH;
+    this.grace = true;
+  }
+
+  /** GameScore.endGrace: the grace is over (recorded as U); a miss ends Overdrive again. */
+  endGrace() {
+    if (!this.grace) return;
+    this.run += 'U';
+    this.grace = false;
   }
 
   private fill(amount: number) { this.charge = Math.max(0, Math.min(CHARGE_FULL, this.charge + amount)); }
@@ -95,7 +120,7 @@ export class RunScore {
   private spend(tiles: number) {
     if (!this.overdrive) return;
     this.overdriveLeft -= tiles;
-    if (this.overdriveLeft <= 0) { this.overdrive = 0; this.overdriveLeft = 0; }
+    if (this.overdriveLeft <= 0) { this.overdrive = 0; this.overdriveLeft = 0; this.grace = false; }
   }
 
   add(r: HitResult) {
@@ -108,6 +133,7 @@ export class RunScore {
     const ms = Math.max(0, Math.round(seconds * 1000));
     this.run += `H${ms};`;
     this.score += holdBonus(ms / 1000) * POINT_SCALE * this.multiplier;
+    this.overdriveBonus += holdBonus(ms / 1000) * POINT_SCALE * this.overdrive;
     this.fill(5);
   }
 
@@ -128,7 +154,8 @@ export class RunScore {
       this.misses++;
       this.combo = 0;
       this.fill(-20);
-      this.spend(OVERDRIVE_MISS_COST);
+      // One miss ends Overdrive, every level (not in its grace).
+      if (!this.grace) { this.overdrive = 0; this.overdriveLeft = 0; }
       return;
     }
     const p = POINTS[r];
@@ -139,6 +166,7 @@ export class RunScore {
     this.combo++;
     this.maxCombo = Math.max(this.maxCombo, this.combo);
     this.score += p * POINT_SCALE * this.multiplier;
+    this.overdriveBonus += p * POINT_SCALE * this.overdrive;
     this.fill(CHARGE[r]);
     this.spend(1);
   }
@@ -154,16 +182,33 @@ export class RunScore {
 
 /** A recorded run counted again, or null when it isn't one. */
 export function replayRun(run: string): RunScore | null {
-  if (typeof run !== 'string' || run.length > 400_000 || !/^(?:[PGELMBOX]|H\d{1,7};)*$/.test(run)) return null;
+  if (typeof run !== 'string' || run.length > 400_000 || !/^(?:[PGELMBOXU]|H\d{1,7};)*$/.test(run)) return null;
   const s = new RunScore();
-  for (const m of run.matchAll(/[PGELMBOX]|H(\d+);/g)) {
+  for (const m of run.matchAll(/[PGELMBOXU]|H(\d+);/g)) {
     if (m[0] === 'O') { if (!s.startOverdrive()) return null; continue; }
+    if (m[0] === 'U') { if (!s.grace) return null; s.endGrace(); continue; }
     if (m[0] === 'X') { s.stray(); continue; }
     if (m[1] !== undefined) s.holdDone(Number(m[1]) / 1000);
     else if (m[0] === 'B') s.holdBroken();
     else s.add(FROM_CODE[m[0]]);
   }
   return s;
+}
+
+/**
+ * The most tiles a grace can judge on a chart (RunReplay.graceTiles): the most the chart has in
+ * any OVERDRIVE_GRACE seconds (and a little: a tile judged late, one early), plus two. `times`:
+ * the tiles' times in seconds.
+ */
+export function graceTiles(times: number[]): number {
+  const t = [...times].sort((a, b) => a - b);
+  const span = OVERDRIVE_GRACE + 0.6;
+  let most = 0;
+  for (let i = 0, j = 0; i < t.length; i++) {
+    while (t[i] - t[j] > span) j++;
+    most = Math.max(most, i - j + 1);
+  }
+  return most + 2;
 }
 
 /** How far a hold's recorded time may be off its length, in milliseconds (rounding). */
@@ -173,7 +218,8 @@ export const HOLD_SLACK_MS = 2;
  * Whether a run could have been played on the chart (backend RunReplay.fits, on the chart as the
  * model's Queue of Notes): every tile is judged once, so no more tiles judged than the chart has,
  * no more holds ended than it has, and the holds held to their end, longest first, each no longer
- * than the chart's holds, longest first. A run ended early (a fail) judges fewer.
+ * than the chart's holds, longest first; and no grace (O to U) longer than the chart allows
+ * (graceTiles). A run ended early (a fail) judges fewer.
  */
 export function runFits(run: string, chart: Chart, bpm: number): boolean {
   const spb = 60 / bpm;
@@ -181,8 +227,13 @@ export function runFits(run: string, chart: Chart, bpm: number): boolean {
   const held: number[] = [];
   let judged = 0;
   let ended = 0;
-  for (const m of run.matchAll(/[PGELMBOX]|H(\d+);/g)) {
-    if (m[0] === 'O' || m[0] === 'X') continue;
+  const graceMax = graceTiles(chart.notes.map((n) => n.t * spb));
+  let inGrace = false, graceJudged = 0;
+  for (const m of run.matchAll(/[PGELMBOXU]|H(\d+);/g)) {
+    if (m[0] === 'O') { inGrace = true; graceJudged = 0; continue; }
+    if (m[0] === 'U') { inGrace = false; continue; }
+    if (m[0] === 'X') continue;
+    if (m[1] === undefined && m[0] !== 'B' && inGrace && ++graceJudged > graceMax) return false;
     if (m[1] !== undefined) held.push(Number(m[1]));
     if (m[1] !== undefined || m[0] === 'B') ended++;
     else judged++;

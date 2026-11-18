@@ -46,6 +46,9 @@ export interface StageNote {
   holdResult?: 'done' | 'broken';
 }
 
+/** The top Overdrive level. */
+const MAX_OD = OVERDRIVE_LOOKS.length - 1;
+
 const LANES = 4;
 /** How long the signal takes to drop when a run fails (Play waits this long before the results). */
 export const FAIL_SECONDS = 1.8;
@@ -63,9 +66,11 @@ const MAX_SPARKS = 5000;
 const MAX_DPR = 1.75;
 const MAX_GLINTS = 48;
 const MAX_FLARES = 14;
-const MAX_RINGS = 20;
+const MAX_RINGS = 32;
 const MAX_SHELLS = 16;
 const MAX_BARS = 6;
+/** Overdrive's warp streaks: light rushing past outside the track, toward the camera. */
+const MAX_STREAKS = 72;
 /** Ease out with an overshoot (0..1 → 0..1, peaking a little past 1). */
 const backOut = (t: number) => { const c = 1.9; const u = t - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
 const WORLD_POINTS = 4200;
@@ -206,6 +211,26 @@ export class Stage3D {
   private odApplied = false;
   private odStream = 0;
   private odColors = [new THREE.Color(), new THREE.Color(), new THREE.Color(), new THREE.Color()];
+  /** Overdrive's camera lunge (1 on a level up, decaying; below 0 the exhale when it runs out). */
+  private odPunch = 0;
+  /** The charge is full: beacons call for the key in the next level's colour. */
+  private odReady = false;
+  private odReadyTick = 0;
+  private readyColor = new THREE.Color();
+  /** Overdrive is running out: its colours flicker against the song's. */
+  private odLow = false;
+  /** The hit line's blaze (a level up flares it; Overdrive keeps it up). */
+  private odLine = 0;
+  /** Warp streaks: one instanced draw, the live ones packed first each frame. */
+  private streaks!: THREE.InstancedMesh;
+  private st = {
+    x: new Float32Array(MAX_STREAKS), y: new Float32Array(MAX_STREAKS), z: new Float32Array(MAX_STREAKS), vz: new Float32Array(MAX_STREAKS),
+    len: new Float32Array(MAX_STREAKS), wid: new Float32Array(MAX_STREAKS), tilt: new Float32Array(MAX_STREAKS),
+    col: new Float32Array(MAX_STREAKS * 3), live: new Uint8Array(MAX_STREAKS), next: 0, tick: 0,
+  };
+  /** Eclipse (white and black): how far the world and the horizon have gone grey (0..1). */
+  private grey = new THREE.Color(0.5, 0.5, 0.52);
+  private basePillars: THREE.Color[] = [];
   private white = new THREE.Color(1, 1, 1);
   private red = new THREE.Color(1, 0.3, 0.38);
   private gold = new THREE.Color(1, 0.84, 0.5);
@@ -558,6 +583,16 @@ export class Stage3D {
       this.rings.push({ mesh, mat, age: 0, life: 1, grow: 1, delay: 0, active: false });
     }
 
+    // Overdrive's warp streaks: soft lines of light lying outside the lanes, rushing at the camera.
+    this.streaks = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      basicMat({ map: glow, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false }), MAX_STREAKS);
+    this.streaks.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.streaks.setColorAt(0, new THREE.Color());
+    this.streaks.count = 0;
+    this.streaks.frustumCulled = false;
+    this.streaks.renderOrder = 4;
+    this.world.add(this.streaks);
+
     this.setHues(opts.hues ?? this.hues);
     this.layoutForMode();
     this.resize();
@@ -579,7 +614,7 @@ export class Stage3D {
       this.scene.traverse((o) => { if ((o as THREE.Mesh).material === this.ribbonMat) ribbons.push(o); });
       HalfFx.assign(
         [this.form, ...ribbons, ...this.skyRings.map((r) => r.mesh), ...this.comets.map((c) => c.mesh), ...this.pillars],
-        [...this.beams, this.sparks, this.dust, ...this.glints.map((g) => g.sprite), ...this.flares.map((f) => f.sprite), ...this.shells.map((x) => x.mesh), ...this.bars.map((b) => b.mesh), ...this.rings.map((r) => r.mesh), this.headGlow],
+        [...this.beams, this.sparks, this.dust, ...this.glints.map((g) => g.sprite), ...this.flares.map((f) => f.sprite), ...this.shells.map((x) => x.mesh), ...this.bars.map((b) => b.mesh), ...this.rings.map((r) => r.mesh), this.headGlow, this.streaks],
         [this.heads, this.bodies],
         this.camera,
       );
@@ -704,6 +739,7 @@ export class Stage3D {
     (this.ribbonMat.uniforms.uHueA.value as THREE.Color).setHSL(a / 360, 1, 0.52);
     (this.ribbonMat.uniforms.uHueB.value as THREE.Color).setHSL(b / 360, 1, 0.55);
     this.pillarMats.forEach((m, i) => m.color.copy(ca).lerp(cb, (this.pillars[i].userData.f as number) ?? 0.5));
+    this.basePillars = this.pillarMats.map((m) => m.color.clone());
     this.baseColors = [0, 1, 2, 3].map((l) => ca.clone().lerp(cb, l / 3));
     this.laneColors = this.baseColors.map((c) => c.clone());
     this.baseForm = [(this.formMat.uniforms.uHueA.value as THREE.Color).clone(), (this.formMat.uniforms.uHueB.value as THREE.Color).clone()];
@@ -741,67 +777,216 @@ export class Stage3D {
   }
 
   /**
-   * Overdrive at a level (0 off, 1..5). Each level takes the field to its own palette (tiles,
-   * pads, beams, walls, track, the world) and goes up with a burst bigger than the last.
+   * Overdrive at a level (0 off, 1..MAX_OD). Each level takes the field to its own palette (tiles,
+   * pads, beams, walls, track, the world) and goes up with a burst bigger than the last. Ending
+   * (`broken`: a miss ended it), the colours drain back; broken, it shatters.
    */
-  setOverdrive(level: number) {
-    const next = Math.max(0, Math.min(5, Math.round(level)));
+  setOverdrive(level: number, again = false, broken = false) {
+    const next = Math.max(0, Math.min(MAX_OD, Math.round(level)));
     const prev = this.odLevel;
-    if (next === prev || this.failK >= 0) return;
+    if (this.failK >= 0) return;
+    if (next === prev) { if (again && next > 0) { this.odLow = false; this.odReady = false; this.overdriveBurst(next); } return; }
     this.odLevel = next;
+    this.odLow = false;
     if (next > 0) this.odShown = next;
-    if (next > prev) this.overdriveBurst(next);
-    else if (next === 0) this.overdriveFade();
+    if (next > prev) { this.odReady = false; this.overdriveBurst(next); }
+    else if (next === 0) this.overdriveFade(broken);
   }
 
-  /** A level's lane colours, `t` seconds in (level 5 turns), into odColors. */
+  /** How hard the shown level's effects hit (its look's power, 0 when none has shown). */
+  private get pw() { return OVERDRIVE_LOOKS[this.odShown]?.power ?? 0; }
+
+  /**
+   * The charge is full (or spent: off). Until the key is pressed, beacons of light rise from both
+   * sides of the hit line in the next level's colour; a ring crosses the line as it fills.
+   */
+  setOverdriveReady(on: boolean) {
+    if (on === this.odReady || this.failK >= 0) return;
+    this.odReady = on;
+    if (!on || this.mode !== 'play') return;
+    const c = this.nextLevelColor();
+    this.ring(0, 0, c, 6, 0.7);
+    this.ring(0, 0, this.white, 4, 0.5, 0.08);
+    for (const side of [-1, 1]) {
+      this.flare(side * EDGE, 0.5, 0, c, 2.4, 0.45);
+      this.emit(side * EDGE, 0.2, 0, 18, c, { speed: 1.4, up: 6, size: 1.1, life: 1, grav: 2, drag: 1.6, spin: side * 1.4, white: 0.4 });
+      for (let k = 0; k < 3; k++) this.glint(side * EDGE, 0.6, -k * 0.6, c, { size: 1.1, vx: side * 0.8, vy: 2.6, life: 1.2 });
+    }
+    this.odLine = Math.max(this.odLine, 0.6);
+  }
+
+  /** Overdrive is about to run out: its colours flicker against the song's until it's renewed or ends. */
+  setOverdriveLow(on: boolean) {
+    if (on === this.odLow || this.failK >= 0) return;
+    this.odLow = on && this.odLevel > 0;
+    if (this.odLow) this.ring(0, 0, this.laneColor(1), 7, 0.6);
+  }
+
+  /** The next level's colour (what the beacons show), into readyColor. */
+  private nextLevelColor() {
+    const next = Math.min(MAX_OD, this.odLevel + 1);
+    const look = OVERDRIVE_LOOKS[next];
+    return this.readyColor.setHSL(overdriveHue(next, 1, this.clock) / 360, look.sat, look.light);
+  }
+
+  /** A level's lane colours, `t` seconds in (Prism turns), into odColors. */
   private overdriveColors(level: number, t: number) {
-    const look = OVERDRIVE_LOOKS[Math.max(1, Math.min(5, level))];
+    const look = OVERDRIVE_LOOKS[Math.max(1, Math.min(MAX_OD, level))];
     for (let l = 0; l < 4; l++) this.odColors[l].setHSL(overdriveHue(level, l, t) / 360, look.sat, look.light);
     return this.odColors;
   }
 
-  /** Overdrive goes up a level: light pours up both sides, rings sweep every lane, the sky answers. */
+  /**
+   * Overdrive goes up a level: light pours up both sides, shockwaves cross the glass, the camera
+   * lunges into the warp, the sky storms. `P` (the look's power) sets how hard; Eclipse flashes the
+   * whole sky white; Prism goes supernova.
+   */
   private overdriveBurst(level: number) {
+    const look = OVERDRIVE_LOOKS[level];
+    const P = look.power;
     const c = this.overdriveColors(level, this.clock).map((x) => x.clone());
     for (const side of [-1, 1]) {
-      for (let k = 0; k < 1 + level; k++) {
-        this.emit(side * EDGE, 0.2, -k * 2.2, 26 + level * 8, c[side < 0 ? k % 2 : 3 - (k % 2)],
-          { speed: 2.6 + level * 0.3, up: 8 + level * 1.2, size: 1.3 + level * 0.08, life: 1.5 + level * 0.1, grav: 3, drag: 1.4, spin: side * (1.5 + level * 0.3), white: 0.35 });
+      for (let k = 0; k < 1 + Math.round(P); k++) {
+        this.emit(side * EDGE, 0.2, -k * 2.2, Math.round(26 + P * 8), c[side < 0 ? k % 2 : 3 - (k % 2)],
+          { speed: 2.6 + P * 0.3, up: 8 + P * 1.2, size: 1.3 + P * 0.08, life: 1.5 + P * 0.1, grav: 3, drag: 1.4, spin: side * (1.5 + P * 0.3), white: 0.35 });
       }
-      this.flare(side * EDGE, 0.6, 0, c[side < 0 ? 0 : 3], 3 + level * 0.8, 0.5);
+      this.flare(side * EDGE, 0.6, 0, c[side < 0 ? 0 : 3], 3 + P * 0.8, 0.5);
     }
-    for (let l = 0; l < LANES; l++) this.ring(laneX(l), 0, c[l], 3.5 + level * 0.6, 0.8 + level * 0.06, l * 0.05);
-    this.ring(0, 0, this.white, 11 + level * 2, 1.1);
-    this.ring(0, 0, c[1], 15 + level * 3, 1.4, 0.14);
-    if (level >= 3) this.ring(0, 0, c[2], 20 + level * 3, 1.7, 0.3);
-    for (let k = 0; k <= level; k++) this.climb(0, 1.1, { gold: 0, delay: k * 2.4, width: 1.2 + level * 0.06, speed: 36 + level * 3 });
-    this.lightWalls(1, 1.4 + level * 0.3);
-    this.skyPulse(c[2], 0.85, 52 + level * 6, 2.2);
+    for (let l = 0; l < LANES; l++) this.ring(laneX(l), 0, c[l], 3.5 + P * 0.6, 0.8 + P * 0.06, l * 0.05);
+    // Shockwaves across the glass from the hit line: more each level, each wider and later.
+    this.ring(0, 0, this.white, 11 + P * 2, 1.1);
+    for (let k = 0; k <= Math.round(P); k++) this.ring(0, 0, k % 2 ? this.white : c[(k + 1) % 4], 15 + P * 3 + k * 5, 1.3 + k * 0.14, 0.1 + k * 0.08);
+    for (let k = 0; k <= Math.round(P); k++) this.climb(0, 1.1, { gold: 0, delay: k * 2.4, width: 1.2 + P * 0.06, speed: 36 + P * 3 });
+    this.lightWalls(1, 1.4 + P * 0.3);
+    this.skyPulse(c[2], 0.85, 52 + P * 6, 2.2);
     this.skyPulse(this.white, 0.5, 38, 1.6, 0.14);
-    this.skyBurst(-26, 13, -64, c[0], 50 + level * 12, 0.9 + level * 0.06);
-    this.skyBurst(26, 13, -64, c[3], 50 + level * 12, 0.9 + level * 0.06);
-    if (level >= 2) this.skyBurst(0, 22, -84, c[1], 60 + level * 14, 1 + level * 0.08);
-    for (let k = 0; k < level - 1; k++) this.comet(1);
-    if (level >= 5) {
+    this.skyBurst(-26, 13, -64, c[0], Math.round(50 + P * 12), 0.9 + P * 0.06);
+    this.skyBurst(26, 13, -64, c[3], Math.round(50 + P * 12), 0.9 + P * 0.06);
+    if (P >= 2) this.skyBurst(0, 22, -84, c[1], Math.round(60 + P * 14), 1 + P * 0.08);
+    for (let k = 0; k < P - 1; k++) this.comet(1);
+    if (look.mono) {
+      // Eclipse: a white-out ring across the whole sky, then the colour drains (the sky's mono).
+      this.skyPulse(this.white, 1, 70, 1.8);
+      this.ring(0, 0, this.white, 26, 1.6, 0.16);
+    }
+    if (look.prism) {
       // Prism: a crown of fireworks in every colour across the sky.
       for (let k = 0; k < 6; k++) this.skyBurst(-40 + k * 16, 16 + (k % 2) * 8, -76, new THREE.Color().setHSL(k / 6, 1, 0.64), 70, 1.15);
+      this.ring(0, 0, this.white, 30, 2, 0.2);
+      for (let k = 0; k < 4; k++) this.climb(0, 1.3, { gold: 0.3, delay: k * 1.6, width: 1.6, speed: 44 });
     }
+    // Every pad ignites and kicks, and the hit line blazes (the light itself bursts from the
+    // sides above, so the lanes stay clear for the tiles).
+    for (let l = 0; l < LANES; l++) {
+      this.flash[l] = Math.max(this.flash[l], 0.6);
+      this.glow[l] = 1;
+      this.padV[l] += 12 + P * 2;
+    }
+    this.odLine = 1;
+    // The warp: a wall of streaks at once, then a steady rush while it runs (stepOverdrive).
+    for (let k = 0; k < 14 + P * 4; k++) this.streak(P, !!look.prism, c, true);
+    // The sky storms (fireworks chaining, comets), longer each level.
+    this.frenzy(0.32 + P * 0.12);
     this.kick = 1;
     this.pulse = 1;
     this.sweep = 0.001;
-    this.shake = Math.max(this.shake, 0.2 + level * 0.07);
+    this.odPunch = 1;
+    this.shake = Math.max(this.shake, 0.3 + P * 0.09);
   }
 
-  /** Overdrive runs out: a last ring, and the colours flow back to the song's. */
-  private overdriveFade() {
-    this.ring(0, 0, this.white, 10, 0.9);
-    for (const side of [-1, 1]) this.emit(side * EDGE, 0.4, -1, 18, this.laneColor(side < 0 ? 0 : 3), { speed: 2, up: 2, size: 1, life: 1, grav: 6, drag: 2, white: 0.3 });
-    this.pulse = Math.max(this.pulse, 0.5);
+  /**
+   * Overdrive ends. Run out: the colours drain back to the song's, embers fall from every lane,
+   * the camera exhales. Broken by a miss: it shatters, red sparks raining from every lane, a jolt.
+   */
+  private overdriveFade(broken = false) {
+    const c = this.overdriveColors(this.odShown, this.clock);
+    this.ring(0, 0, broken ? this.red : this.white, 10, 0.9);
+    this.ring(0, 0, c[1], 14, 1.2, 0.1);
+    for (const side of [-1, 1]) this.emit(side * EDGE, 0.4, -1, 22, c[side < 0 ? 0 : 3], { speed: 2, up: 3, size: 1.1, life: 1.2, grav: 6, drag: 2, white: 0.3 });
+    for (let l = 0; l < LANES; l++) {
+      this.emit(laneX(l), 1.2, -0.5, broken ? 16 : 10, broken && l % 2 ? this.red : c[l], { speed: broken ? 2.6 : 1.2, up: broken ? 2 : 0.5, size: 0.9, life: 1.3, grav: broken ? 9 : 4, drag: 1.2, white: 0.15 });
+      this.flash[l] = Math.max(this.flash[l], 0.5);
+    }
+    if (broken) {
+      for (const side of [-1, 1]) this.flare(side * EDGE, 0.5, 0, this.red, 3, 0.4);
+      this.missFx = 1;
+    }
+    this.skyPulse(broken ? this.red : c[2], 0.6, 46, 2);
+    this.lightWalls(0.7, 0.3);
+    this.odPunch = broken ? -1 : -0.6;
+    this.odLow = false;
+    this.pulse = Math.max(this.pulse, 0.6);
+    this.shake = Math.max(this.shake, broken ? 0.6 : 0.18);
+  }
+
+  /** One warp streak outside the lanes (`P`: the look's power; `near`: anywhere along the track, for a level up's wall of them). */
+  private streak(P: number, prism: boolean, c: THREE.Color[], near = false) {
+    const S = this.st;
+    const i = S.next;
+    S.next = (S.next + 1) % MAX_STREAKS;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const x = side * (EDGE + 0.35 + Math.pow(Math.random(), 1.6) * 8);
+    const y = 0.05 + Math.random() * 3.1;
+    S.x[i] = x; S.y[i] = y;
+    S.z[i] = near ? -Math.random() * (L + 6) : -L - 4 - Math.random() * 10;
+    S.vz[i] = this.speed * 1.4 + 24 + P * 7 + Math.random() * 14;
+    S.len[i] = 2.4 + Math.random() * 3.5 + P * 0.7;
+    S.wid[i] = 0.07 + Math.random() * 0.1 + P * 0.012;
+    // Turned about its length to face the camera (above and behind the hit line).
+    S.tilt[i] = Math.atan2(x, 4.3 - y);
+    const col = c[prism ? Math.floor(Math.random() * 4) : side < 0 ? Math.floor(Math.random() * 2) : 3 - Math.floor(Math.random() * 2)];
+    const w = Math.random() < 0.3 ? 0.65 : 0.25;
+    S.col[i * 3] = col.r + (1 - col.r) * w; S.col[i * 3 + 1] = col.g + (1 - col.g) * w; S.col[i * 3 + 2] = col.b + (1 - col.b) * w;
+    S.live[i] = 1;
+  }
+
+  private stepStreaks(dt: number) {
+    const S = this.st, m = this.tmp, col = this.tmpColor;
+    let n = 0;
+    for (let i = 0; i < MAX_STREAKS; i++) {
+      if (!S.live[i]) continue;
+      S.z[i] += S.vz[i] * dt;
+      if (S.z[i] > 9) { S.live[i] = 0; continue; }
+      // Fades in from the far end, brightest passing the hit line, gone behind the camera.
+      const z = S.z[i];
+      const a = Math.min(1, (z + L + 14) / 10) * Math.min(1, (9 - z) / 5);
+      m.position.set(S.x[i], S.y[i], z);
+      m.rotation.set(0, 0, S.tilt[i]);
+      m.scale.set(S.wid[i] * (1 + Math.abs(this.odPunch) * 0.6), 1, S.len[i] * (1 + Math.max(0, this.odPunch) * 1.4));
+      m.updateMatrix();
+      this.streaks.setMatrixAt(n, m.matrix);
+      // Additive: the colour carries the fade.
+      const k = a * 0.95;
+      col.setRGB(S.col[i * 3] * k, S.col[i * 3 + 1] * k, S.col[i * 3 + 2] * k);
+      this.streaks.setColorAt(n, col);
+      n++;
+    }
+    const was = this.streaks.count;
+    this.streaks.count = n;
+    if (n || was) {
+      this.streaks.instanceMatrix.needsUpdate = true;
+      if (this.streaks.instanceColor) this.streaks.instanceColor.needsUpdate = true;
+    }
   }
 
   /** Every frame: the colours move toward the level's (or back), and light streams up the sides while it runs. */
   private stepOverdrive(dt: number) {
+    this.odPunch *= Math.exp(-dt * (this.odPunch > 0 ? 2.4 : 3.5));
+    this.odLine *= Math.exp(-dt * 2.5);
+    this.stepStreaks(dt);
+    // Ready: beacons rise from both sides of the hit line in the next level's colour.
+    if (this.odReady && this.failK < 0 && this.mode === 'play') {
+      this.odReadyTick -= dt;
+      if (this.odReadyTick <= 0) {
+        this.odReadyTick = 0.5;
+        const c = this.nextLevelColor();
+        for (const side of [-1, 1]) {
+          this.emit(side * (EDGE + 0.1), 0.15, -0.2, 7, c, { speed: 0.6, up: 7, size: 1.15, life: 1.1, grav: -0.2, drag: 1.2, spin: side * 1.2, white: 0.35 });
+          this.flare(side * EDGE, 0.4, 0, c, 1.6, 0.35);
+        }
+        this.odLine = Math.max(this.odLine, 0.35);
+      }
+    }
     const on = this.odLevel > 0 && this.failK < 0;
     this.od += ((on ? 1 : 0) - this.od) * Math.min(1, dt * 3.2);
     if (!on && this.od < 0.003) {
@@ -810,28 +995,50 @@ export class Stage3D {
         for (let l = 0; l < 4; l++) this.laneColors[l].copy(this.baseColors[l]);
         this.applyLaneColors(0);
         this.odApplied = false;
+        if (this.failK < 0) this.setExposure(1.2);
       }
       return;
     }
     this.odApplied = true;
+    // Running out: the level's colours pulse against the song's, quickly, like a warning light.
+    const flicker = on && this.odLow ? 0.55 + 0.45 * (0.5 + 0.5 * Math.cos(this.clock * 14)) : 1;
+    const mix = this.od * flicker;
     const c = this.overdriveColors(this.odShown, this.clock);
-    for (let l = 0; l < 4; l++) this.laneColors[l].copy(this.baseColors[l]).lerp(c[l], this.od);
-    this.applyLaneColors(this.od);
+    for (let l = 0; l < 4; l++) this.laneColors[l].copy(this.baseColors[l]).lerp(c[l], mix);
+    this.applyLaneColors(mix);
+    // A touch brighter each level.
+    if (this.failK < 0) this.setExposure(1.2 * (1 + this.od * (0.02 + 0.014 * this.pw)));
     if (!on) return;
-    const level = this.odLevel;
+    const look = OVERDRIVE_LOOKS[this.odLevel];
+    const level = look.power;
     // The walls stay lit, brighter each level.
-    this.wallLit = Math.max(this.wallLit, 0.3 + level * 0.1);
+    this.wallLit = Math.max(this.wallLit, (0.3 + level * 0.1) * flicker);
     this.wallHold = Math.max(this.wallHold, 0.1);
+    this.odLine = Math.max(this.odLine, 0.18 + level * 0.05);
+    // The warp: streaks rushing past, more each level (fewer when it's running out).
+    this.st.tick -= dt * (this.odLow ? 0.5 : 1);
+    while (this.st.tick <= 0) {
+      this.st.tick += 1 / (9 + level * 9);
+      this.streak(level, !!look.prism, c);
+    }
     // Streams of light rising from both sides of the track (never across the lanes).
     this.odStream -= dt;
     if (this.odStream <= 0) {
-      this.odStream = Math.max(0.12, 0.42 - level * 0.06);
+      this.odStream = Math.max(0.1, 0.42 - level * 0.065);
       for (const side of [-1, 1]) {
         const lane = side < 0 ? Math.floor(Math.random() * 2) : 3 - Math.floor(Math.random() * 2);
-        this.emit(side * (EDGE + Math.random() * 0.5), 0.15, -Math.random() * 10, 2 + level, this.laneColor(lane),
+        this.emit(side * (EDGE + Math.random() * 0.5), 0.15, -Math.random() * 10, Math.round(2 + level), this.laneColor(lane),
           { speed: 0.8, up: 5 + level, size: 1 + level * 0.1, life: 1.1, grav: -0.6, drag: 1, spin: side * 0.8, white: 0.25 });
       }
+      // From level 3, sparks spiral up far out on both sides too, as if the track threw off light.
+      if (level >= 3) {
+        const side = Math.random() < 0.5 ? -1 : 1;
+        this.emit(side * (EDGE + 2 + Math.random() * 4), 0.1, -4 - Math.random() * 18, Math.round(4 + level), this.laneColor(side < 0 ? 0 : 3),
+          { speed: 1, up: 7 + level, size: 1.3, life: 1.4, grav: -0.4, drag: 0.9, spin: side * 1.6, white: 0.3 });
+      }
     }
+    // Prism: comets cross the sky the whole time.
+    if (look.prism && Math.random() < dt * 2.5) this.comet(0.9);
   }
 
   /** The lane colours onto everything that shows them; `od`: how far Overdrive's show (the world and ribbons follow). */
@@ -847,10 +1054,13 @@ export class Stage3D {
     (this.highwayMat.uniforms.uHueB.value as THREE.Color).copy(lc[3]);
     (this.hitLine.material as THREE.MeshBasicMaterial).color.copy(lc[0]).lerp(lc[3], 0.5).multiplyScalar(1.3);
     if (this.baseForm.length) {
-      (this.formMat.uniforms.uHueA.value as THREE.Color).copy(this.baseForm[0]).lerp(lc[0], od);
-      (this.formMat.uniforms.uHueB.value as THREE.Color).copy(this.baseForm[1]).lerp(lc[3], od);
-      (this.ribbonMat.uniforms.uHueA.value as THREE.Color).copy(this.baseRibbon[0]).lerp(lc[1], od);
-      (this.ribbonMat.uniforms.uHueB.value as THREE.Color).copy(this.baseRibbon[1]).lerp(lc[2], od);
+      // Eclipse (white and black): the world and the ribbons go grey, the horizon's columns too.
+      const mono = OVERDRIVE_LOOKS[this.odShown]?.mono;
+      (this.formMat.uniforms.uHueA.value as THREE.Color).copy(this.baseForm[0]).lerp(mono ? this.grey : lc[0], od);
+      (this.formMat.uniforms.uHueB.value as THREE.Color).copy(this.baseForm[1]).lerp(mono ? this.grey : lc[3], od);
+      (this.ribbonMat.uniforms.uHueA.value as THREE.Color).copy(this.baseRibbon[0]).lerp(mono ? this.grey : lc[1], od);
+      (this.ribbonMat.uniforms.uHueB.value as THREE.Color).copy(this.baseRibbon[1]).lerp(mono ? this.grey : lc[2], od);
+      if (this.basePillars.length) this.pillarMats.forEach((m, i) => m.color.copy(this.basePillars[i]).lerp(this.grey, mono ? od : 0));
     }
   }
 
@@ -1008,8 +1218,11 @@ export class Stage3D {
     this.pulse = Math.min(1, this.pulse + 0.12 * big);
     // Overdrive: every hit rings wider, and from level 3 throws glints, more each level.
     if (this.odLevel) {
-      this.ring(x, 0, c, 1.6 + this.odLevel * 0.4, 0.5);
-      for (let k = 0; k < this.odLevel - 2; k++) this.glint(x + (Math.random() - 0.5) * 0.8, 0.5, -0.2, c, { size: 0.9 });
+      const lv = this.pw;
+      this.ring(x, 0, c, 1.6 + lv * 0.4, 0.5);
+      this.emit(x, 0.3, 0, Math.round(4 + lv * 2), c, { speed: 4 + lv, up: 4 + lv * 0.6, size: 0.9, life: 0.5, grav: 6, drag: 3.5, white: 0.45 });
+      for (let k = 0; k < lv - 2; k++) this.glint(x + (Math.random() - 0.5) * 0.8, 0.5, -0.2, c, { size: 0.9 });
+      this.odLine = Math.max(this.odLine, 0.3 + big * 0.2);
     }
     // Every hit echoes far away in the sky, above its own side of the track.
     this.emit((lane - 1.5) * 9 + (Math.random() - 0.5) * 6, 10 + Math.random() * 7, -58 - Math.random() * 14, Math.round(5 + 9 * big), c,
@@ -1111,6 +1324,8 @@ export class Stage3D {
     this.laneDead = [false, false, false, false];
     this.feverTarget = 0;
     this.odLevel = 0;
+    this.odReady = false;
+    this.odLow = false;
     this.shake = 1;
     this.missFx = 1;
     this.ring(0, 0, this.red, 9, 0.9);
@@ -1123,6 +1338,12 @@ export class Stage3D {
     this.laneDead = [false, false, false, false];
     this.odLevel = 0;
     this.od = 0;
+    this.odReady = false;
+    this.odLow = false;
+    this.odPunch = 0;
+    this.odLine = 0;
+    this.st.live.fill(0);
+    this.streaks.count = 0;
     for (let l = 0; l < this.baseColors.length; l++) this.laneColors[l].copy(this.baseColors[l]);
     this.applyLaneColors(0);
     this.odApplied = false;
@@ -1288,10 +1509,24 @@ export class Stage3D {
     if (downbeat) this.skyPulse(this.fever > 0.5 ? this.gold : this.laneColor(Math.floor(this.clock * 2) % 4), 0.22 + this.levels.bass * 0.35 + this.fever * 0.15, 30, 1.6);
     if (downbeat) this.kick = Math.max(this.kick, 0.3);
     // Overdrive: every bar rings out in the level's colours; from level 4 the sky bursts too.
-    if (downbeat && this.odLevel) {
-      this.skyPulse(this.laneColor(Math.floor(Math.random() * 4)), 0.3 + this.odLevel * 0.08, 34 + this.odLevel * 4, 1.6);
-      if (this.odLevel >= 2) this.climb(0, 0.5 + this.odLevel * 0.08, { gold: 0, width: 1.1 });
-      if (this.odLevel >= 4) this.skyBurst((Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 26), 12 + Math.random() * 10, -66, this.laneColor(Math.floor(Math.random() * 4)), 30 + this.odLevel * 6);
+    if (this.odLevel && this.failK < 0) {
+      const lv = this.pw, prism = OVERDRIVE_LOOKS[this.odLevel].prism;
+      // Every beat the hit line throbs; from level 3 light climbs both walls on every beat.
+      this.odLine = Math.max(this.odLine, downbeat ? 0.7 : 0.45);
+      if (lv >= 3 && !downbeat) this.climb(0, 0.4 + lv * 0.05, { gold: 0, width: 0.9 });
+      if (prism && !downbeat) this.comet(0.7);
+      if (downbeat) {
+        this.skyPulse(this.laneColor(Math.floor(Math.random() * 4)), 0.3 + lv * 0.08, 34 + lv * 4, 1.6);
+        if (lv >= 2) this.climb(0, 0.5 + lv * 0.08, { gold: 0, width: 1.1 });
+        // Every bar the pads pulse together.
+        for (let l = 0; l < LANES; l++) this.flash[l] = Math.max(this.flash[l], 0.22 + lv * 0.04);
+        if (lv >= 3.5) this.skyBurst((Math.random() < 0.5 ? -1 : 1) * (18 + Math.random() * 26), 12 + Math.random() * 10, -66, this.laneColor(Math.floor(Math.random() * 4)), 30 + lv * 6);
+        if (prism) {
+          // Prism: a firework in a turning colour over the world every bar.
+          this.skyBurst((Math.random() - 0.5) * 30, 18 + Math.random() * 8, -80, this.tmpColor.setHSL((this.clock * 0.33) % 1, 1, 0.64), 60, 1.1);
+          this.ring(0, 0, this.laneColor(Math.floor(Math.random() * 4)), 9, 0.8);
+        }
+      }
     }
     // The climb answers accents only: a downbeat clearly louder than the recent music.
     const lv = this.levels.level;
@@ -1462,8 +1697,9 @@ export class Stage3D {
     }
     this.stepClimbs(dt);
     this.tileMat.uniforms.uFever.value = this.fever;
-    (this.hitLine.material as THREE.MeshBasicMaterial).opacity = 0.7 + this.beat * 0.3;
-    this.hitLine.scale.y = 0.7 + this.beat * 0.3;
+    (this.hitLine.material as THREE.MeshBasicMaterial).opacity = Math.min(1, 0.7 + this.beat * 0.3 + this.odLine * 0.3);
+    this.hitLine.scale.y = 0.7 + this.beat * 0.3 + this.odLine * 1.1;
+    this.hitLine.scale.x = 1 + this.odLine * 0.08;
 
     const f = this.formMat.uniforms;
     f.uTime.value = this.clock;
@@ -1473,7 +1709,7 @@ export class Stage3D {
     f.uHigh.value = this.levels.high;
     f.uPulse.value = this.pulse;
     f.uFever.value = this.fever;
-    f.uSpin.value = 0.045 + this.fever * 0.12 + this.build * 0.08 + this.od * this.odShown * 0.04;
+    f.uSpin.value = 0.045 + this.fever * 0.12 + this.build * 0.08 + this.od * this.pw * 0.04;
     f.uCalm.value = 1 - this.calm * 0.45;
 
     this.stepSky(dt);
@@ -1566,7 +1802,9 @@ export class Stage3D {
       this.heads.setColorAt(h, c);
       m.position.y = 0.02;
       m.rotation.set(0, 0, 0);
-      m.scale.set(1, 1, 1);
+      // Overdrive: each tile's glow on the glass spreads wider, more each level.
+      const gs = 1 + this.od * (0.1 + this.pw * 0.05) * (1 + this.beat * 0.3);
+      m.scale.set(gs, 1, gs);
       m.updateMatrix();
       this.headGlow.setMatrixAt(h, m.matrix);
       this.headGlow.setColorAt(h, missed ? c : this.tmpColor.copy(this.laneColor(n.lane)).multiplyScalar(0.85));
@@ -1766,15 +2004,20 @@ export class Stage3D {
     const bass = this.levels.bass;
     if (this.mode === 'play') {
       const sway = Math.sin(this.clock * 0.45) * 0.14 + Math.sin(this.clock * 0.17) * 0.08;
-      this.camera.position.set(sway + shakeX, (4.3 + shakeY + Math.sin(this.clock * 0.3) * 0.06) * back, 6.4 * back - this.kick * 0.28 - this.build * 0.35);
+      this.camera.position.set(sway + shakeX, (4.3 + shakeY + Math.sin(this.clock * 0.3) * 0.06) * back, 6.4 * back - this.kick * 0.28 - this.build * 0.35 + this.odPunch * 0.7);
       if (this.failK > 0) {
         // The signal drops: the camera sinks and tips forward, as if the stage lost its power.
         const f = 1 - Math.pow(1 - this.failK, 3);
         this.camera.position.y -= f * 1.1;
         this.camera.position.z += f * 0.8;
         this.camera.lookAt(sway * 0.4, -f * 1.4, -10);
-      } else this.camera.lookAt(sway * 0.4, 0, -10);
-      this.camera.fov = 52 - this.kick * 1.6 + bass * 0.6 + this.fever * 2 + this.od * this.odShown * 0.6;
+      } else {
+        this.camera.lookAt(sway * 0.4, 0, -10);
+        // Overdrive: the camera leans gently with the music, a little more each level.
+        if (this.od > 0.01) this.camera.rotateZ(Math.sin(this.clock * 0.7) * 0.004 * this.pw * this.od);
+      }
+      // Overdrive: wider (the warp's speed), with a lunge on each level up.
+      this.camera.fov = 52 - this.kick * 1.6 + bass * 0.6 + this.fever * 2 + this.od * this.pw * 0.9 + this.odPunch * (5 + this.pw);
     } else {
       // A broadcast angle: a little to the side and above, drifting slowly so it never sits still.
       const driftX = Math.sin(this.clock * 0.13) * 1.4;

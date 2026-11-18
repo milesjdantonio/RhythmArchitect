@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.startsWith;
@@ -29,7 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 class ApiTests {
     /** The Overdrive run shared with frontend score.test.ts and GameScoreTest. */
-    static final String OVERDRIVE_RUN = "PPPPPPPPPPPPPPPPPPPPOPPGMH1000;P";
+    static final String OVERDRIVE_RUN = "PPPPPPPPPPPPPPPPPPPPOPPGMUH1000;PM";
 
 
     static Path dir;
@@ -149,10 +150,13 @@ class ApiTests {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.best.ultra.score").value(47400))
             .andExpect(jsonPath("$.best.ultra.maxCombo").value(23))
-            .andExpect(jsonPath("$.best.ultra.accuracy").value(2375.0 / 2500));
+            .andExpect(jsonPath("$.best.ultra.accuracy").value(closeTo(2375.0 / 2600, 1e-12)));
 
-        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("PPPO")))
-            .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
+        // Refused: Overdrive without a full charge, a grace ended with none running, ended twice.
+        for (String bad : new String[] { "PPPO", "PU", "P".repeat(20) + "OUU" }) {
+            mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted(bad)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
+        }
 
         // Runs the Ultra chart couldn't have given: more tiles than it has, a hold held longer than
         // its longest, more holds than it has. Every tile judged once is fine.

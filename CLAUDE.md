@@ -76,13 +76,23 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   every song (`fallTime`).
 - Scoring is `main.Score`'s rules (Perfect 100, Good 75, Early/Late 50, accuracy, combo) with the
   game's on top: points ×10 (`POINT_SCALE`), the combo multiplier (×1-×5), the held-note bonus,
-  **Overdrive** (a charge from accurate hits; Space adds +1 per level for 48 tiles, up to five
-  levels: ×10) and stray presses (a key with no tile: signal and charge drain, no points):
-  `main.GameScore` (Score.java itself is Darsh's: add on top, don't edit it). The run records
-  `O` (Overdrive) and `X` (stray); the server refuses an Overdrive the charge couldn't pay for.
-  Each Overdrive level's look is `src/game/overdrive.ts` (Stage3D recolours on the CPU, no shader
-  change; the 2D fallback takes its hues). Fever is the combo's ×5. Practice mode (a part looped,
-  50-100% speed: `startSong`'s `rate`) is never saved. The browser counts with the same rules
+  **Overdrive** (a charge from accurate hits; Space adds +1 per level for 48 tiles, up to three
+  levels: ×8; not at the top; any miss ends it, except in its grace: `OVERDRIVE_GRACE`, 5 song
+  seconds after each press, timed by engine.ts) and stray presses (a key with no tile: signal and
+  charge drain, no points): `main.GameScore` (Score.java itself is Darsh's: add on top, don't edit
+  it). The run records `O` (Overdrive), `U` (its grace ended) and `X` (stray); the server refuses an
+  Overdrive the charge couldn't pay for and a grace longer than the chart allows (`graceTiles`,
+  RunReplay and score.ts). Gold tiles were tried and removed. The levels' looks are
+  `src/game/overdrive.ts`: Neon (purple-pink), Eclipse (white on black: `mono` drains the sky,
+  scene.ts/sky.ts, and greys the world) and Prism (rainbow); effect strength is each look's
+  `power` (Stage3D recolours on the CPU, no shader change; the 2D fallback takes its hues and
+  drains for Eclipse). Its effects: Stage3D (`setOverdrive`, `setOverdriveReady`,
+  `setOverdriveLow`: warp streaks, shockwaves, beacons, the flicker), the sky (`overdrive` scene
+  event: warp), `components/play/OverdriveFx.tsx` (the screen: an opacity-only flash, the ready cue,
+  the tally; keep DOM shockwaves and big glows out of it, they cost the page frames at the press),
+  and `overdriveSweep` in playback.ts (the song's whoosh, never YouTube). Fever is the combo's ×5. Practice mode (a part looped,
+  at 50%, 75% or 100%, the speeds YouTube has: `PRACTICE_SPEEDS`, `startSong`'s `rate`; the
+  stage worker carries its clock on at that rate) is never saved. The browser counts with the same rules
   (`src/game/score.ts`) and records the run; the server checks it against the difficulty's
   `Queue<Note>` (`RunReplay.fits`; the mock: `runFits`) and replays it through GameScore
   (`RunReplay`) before keeping a best. Change both together; `score.test.ts`, `GameScoreTest` and
@@ -91,8 +101,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   → `SongWriter.writeSong(..., tiles)` → `main.Song`); new songs and fan charts it can't take in are
   refused (`NewSongCheck`). The bank itself stays JSON.
 - Dev tools live on the game screen (` key): autoplay (it spends Overdrive when charged), the note
-  queue, clock, judgements, Overdrive, tuning, effects (Overdrive steps through the levels' looks),
-  map data. Keep them working when gameplay changes.
+  queue, clock, judgements, Overdrive, tuning, effects (Overdrive steps through the levels' looks;
+  od ready, od fading), map data. Keep them working when gameplay changes.
 
 ## Generating a beatmap
 

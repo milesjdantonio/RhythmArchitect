@@ -12,7 +12,9 @@ import { Icon } from '../Icon';
 
 import type { BotMode } from '../../game/autoplay';
 export type { BotMode };
-export type DevEffect = 'drop' | 'build' | 'flash' | 'milestone' | 'fever' | 'overdrive' | 'section' | 'miss' | 'climb';
+export type DevEffect = 'drop' | 'build' | 'flash' | 'milestone' | 'fever' | 'overdrive' | 'odReady' | 'odLow' | 'section' | 'miss' | 'climb';
+/** The effect buttons' names, where they differ from the effect's. */
+const FX_LABEL: Partial<Record<DevEffect, string>> = { odReady: 'od ready', odLow: 'od fading' };
 
 /** What the dev tools can read and do; the game screen provides it. */
 export interface DevProbe {
@@ -184,8 +186,8 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
       <section className="dev-sec">
         <h3 className="dev-title">Effects</h3>
         <div className="dev-fx">
-          {(['drop', 'build', 'flash', 'section', 'milestone', 'fever', 'overdrive', 'miss', 'climb'] as DevEffect[]).map((k) => (
-            <button key={k} type="button" className="btn btn-sm" onClick={() => probe.fx(k)}>{k}</button>
+          {(['drop', 'build', 'flash', 'section', 'milestone', 'fever', 'overdrive', 'odReady', 'odLow', 'miss', 'climb'] as DevEffect[]).map((k) => (
+            <button key={k} type="button" className="btn btn-sm" onClick={() => probe.fx(k)}>{FX_LABEL[k] ?? k}</button>
           ))}
         </div>
       </section>

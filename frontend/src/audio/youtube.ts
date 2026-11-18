@@ -22,6 +22,7 @@ interface YTPlayer {
   getCurrentTime(): number;
   setPlaybackRate?(rate: number): void;
   getPlaybackRate?(): number;
+  getAvailablePlaybackRates?(): number[];
   getDuration(): number;
   getPlayerState(): number;
   setVolume(v: number): void;
@@ -112,6 +113,8 @@ function getPlayer(): Promise<YTPlayer> {
             if (state === YT_STATE.PLAYING) playedSinceAsk = true;
             listeners.forEach((l) => l(state));
           },
+          // The speed it actually took (practice): the clock runs at that, whatever was asked.
+          onPlaybackRateChange: (e: { data: number }) => { if (e.data > 0) clock.speed = e.data; },
           onError: (e: { data: number }) => {
             let msg = ERRORS[e.data] ?? `YouTube couldn't play the video (error ${e.data}).`;
             // Label music refuses pages served from a bare IP address (127.0.0.1) but plays on localhost.
@@ -205,15 +208,22 @@ export function ytNudge() { if (intent === 'play') player?.playVideo(); }
 export function ytPause() { intent = 'pause'; player?.pauseVideo(); }
 export function ytResume() { intent = 'play'; player?.playVideo(); }
 
+/** The speeds YouTube's player offers (what it has said, or its usual list). */
+export const YT_RATES = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+
 /**
- * The video's speed (practice mode slows it). YouTube rounds to the speeds it has; the speed it
- * took is returned, and the clock runs at that.
+ * The video's speed (practice mode slows it): snapped to the nearest speed the player offers, and
+ * the clock runs at exactly that. (Reading the speed back right after setting it gives the old
+ * one: the player takes it a moment later. A clock at one speed and a video at another made the
+ * tiles drift and jump.)
  */
 export function ytSetRate(rate: number): number {
-  try { player?.setPlaybackRate?.(rate); } catch { /* not ready */ }
-  const got = Number(player?.getPlaybackRate?.()) || rate;
-  clock.speed = got > 0 ? got : 1;
-  return clock.speed;
+  let offered = YT_RATES;
+  try { const r = player?.getAvailablePlaybackRates?.(); if (r?.length) offered = r; } catch { /* not ready */ }
+  const snapped = offered.reduce((a, b) => (Math.abs(b - rate) < Math.abs(a - rate) ? b : a), 1);
+  try { player?.setPlaybackRate?.(snapped); } catch { /* not ready */ }
+  clock.speed = snapped;
+  return snapped;
 }
 
 /** The video's position in seconds, smoothed (see clock.ts). */

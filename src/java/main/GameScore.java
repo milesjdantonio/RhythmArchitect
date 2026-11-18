@@ -14,13 +14,15 @@ package main;
  * {@link #STRAY_CHARGE} off the Overdrive charge, so mashing the keys doesn't fill it.</p>
  *
  * <p>The multiplier is the combo's (x1, then one more every 10 in a row, at most x5) plus the
- * Overdrive level (0 to 5), so at most x10. Overdrive: accurate hits fill a charge (a PERFECT 5,
+ * Overdrive level (0 to 3), so at most x8. Overdrive: accurate hits fill a charge (a PERFECT 5,
  * a GOOD 3, an EARLY or a LATE 1, a hold held to its end 5; a miss takes 20 away). With a full
  * charge (100) the player sets it off ({@link #startOverdrive()}): the charge empties and the
- * level goes up one, for the next {@link #OVERDRIVE_LENGTH} tiles judged (a miss costs
- * {@link #OVERDRIVE_MISS_COST} of them). Setting it off again while it runs (the charge fills
- * again meanwhile) raises the level once more and starts the length again; at level 5 it only
- * starts the length again. When the length runs out the level drops back to 0.</p>
+ * level goes up one, for the next {@link #OVERDRIVE_LENGTH} tiles judged. Setting it off again
+ * while it runs (the charge fills again meanwhile) raises the level once more and starts the
+ * length again, up to {@link #MAX_OVERDRIVE}; at the top level it can't be set off. A single miss
+ * ends it (every level), except in its grace: from each press until the game ends the grace
+ * ({@link #endGrace()}, {@link #OVERDRIVE_GRACE} seconds later) a miss doesn't. Otherwise it ends
+ * when the length runs out.</p>
  *
  * <p>The browser game counts the same way (frontend/src/game/score.ts, overdrive.ts); the server
  * replays each run through this class before it keeps a best score.</p>
@@ -30,11 +32,11 @@ public class GameScore extends Score
     /** The charge Overdrive needs. */
     public static final int CHARGE_FULL = 100;
     /** The highest Overdrive level. */
-    public static final int MAX_OVERDRIVE = 5;
+    public static final int MAX_OVERDRIVE = 3;
     /** Tiles judged before Overdrive ends. */
     public static final int OVERDRIVE_LENGTH = 48;
-    /** What a miss takes off what is left of Overdrive. */
-    public static final int OVERDRIVE_MISS_COST = 8;
+    /** Seconds after each press when a miss doesn't end Overdrive (the game times it). */
+    public static final double OVERDRIVE_GRACE = 5;
     /** The highest combo multiplier. */
     public static final int MAX_COMBO_MULTIPLIER = 5;
     /** Score's points are worth this many in the game's score (a PERFECT is 1,000). */
@@ -46,6 +48,7 @@ public class GameScore extends Score
     private int charge;
     private int overdrive;
     private int overdriveLeft;
+    private boolean grace;
 
     /**
      * Creates a GameScore with all statistics set to zero.
@@ -136,14 +139,35 @@ public class GameScore extends Score
     }
 
     /**
-     * Records a miss as Score does: the combo ends, the charge drops and Overdrive runs down faster.
+     * Records a miss as Score does: the combo ends, the charge drops and Overdrive ends (every
+     * level), unless it is in its grace.
      */
     @Override
     public void addMiss()
     {
         super.addMiss();
         fill(-20);
-        spendOverdrive(OVERDRIVE_MISS_COST);
+        if(!grace)
+        {
+            overdrive = 0;
+            overdriveLeft = 0;
+        }
+    }
+
+    /**
+     * Overdrive's grace is over: a miss ends it again.
+     */
+    public void endGrace()
+    {
+        grace = false;
+    }
+
+    /**
+     * @return whether Overdrive is in its grace (set off a moment ago: a miss doesn't end it)
+     */
+    public boolean isGrace()
+    {
+        return grace;
     }
 
     /**
@@ -174,20 +198,21 @@ public class GameScore extends Score
     }
 
     /**
-     * Sets off Overdrive with a full charge: the level goes up one (at most 5) and it lasts
+     * Sets off Overdrive with a full charge: the level goes up one and it lasts
      * {@link #OVERDRIVE_LENGTH} tiles from now.
      *
-     * @return whether it started (false without a full charge)
+     * @return whether it started (false without a full charge, or at {@link #MAX_OVERDRIVE})
      */
     public boolean startOverdrive()
     {
-        if(charge < CHARGE_FULL)
+        if(charge < CHARGE_FULL || overdrive >= MAX_OVERDRIVE)
         {
             return false;
         }
         charge = 0;
-        overdrive = Math.min(MAX_OVERDRIVE, overdrive + 1);
+        overdrive++;
         overdriveLeft = OVERDRIVE_LENGTH;
+        grace = true;
         return true;
     }
 
@@ -207,6 +232,7 @@ public class GameScore extends Score
         {
             overdrive = 0;
             overdriveLeft = 0;
+            grace = false;
         }
     }
 
@@ -270,5 +296,6 @@ public class GameScore extends Score
         charge = 0;
         overdrive = 0;
         overdriveLeft = 0;
+        grace = false;
     }
 }

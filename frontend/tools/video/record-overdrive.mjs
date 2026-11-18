@@ -1,5 +1,5 @@
 // Records the Overdrive update into docs/media/overdrive.webm, with stills in docs/media
-// (settings, start card, each Overdrive level overdrive-1..5.png, strays, practice).
+// (settings, start card, each Overdrive level overdrive-1..3.png, strays, practice).
 //   npm run video:overdrive
 //
 // The video, in order:
@@ -7,11 +7,11 @@
 //      in 1% steps, and a lane key rebound (then the default keys again).
 //   2. The start card: the bound keys, the Overdrive line, the Practice picker opened.
 //   3. A real track on Ultra, played by a bot that hits every tile and sets off Overdrive (Space)
-//      each time its charge fills, a few seconds apart: Surge, Plasma, Aurora, Inferno, Prism
-//      (×10), kept going a little, then let run out (the colours flow back).
+//      each time its charge fills, a few seconds apart: Neon, Eclipse, Prism (×8), then let run
+//      out (the colours flow back).
 //   4. Mashing the keys on the test song: every press with no tile is a Stray, and the signal
 //      drains fast.
-//   5. Practice: one part of the song, slowed to 75%, played round twice (Loop 2).
+//   5. Practice: a loop from 0:20 to 0:30, slowed to 75%, played round twice (Loop 2).
 // Picture only (browsers can't capture their own audio here).
 //
 // Needs the dev server running (npm run dev) or APP_URL pointing at one. SONG and DIFFICULTY pick
@@ -37,15 +37,15 @@ const still = (page, name) => page.screenshot({ path: join(outDir, `${name}.png`
 
 /**
  * A perfect bot, inside the page. It follows whichever run is on (a practice loop starts a fresh
- * one). `overdrive`: set it off whenever the charge is full and GAP seconds have passed since the
- * last level; after level 5 keep it going `keep` more times, then stop so it runs out.
+ * one). `overdrive`: set it off whenever it can go up and GAP seconds have passed since the last
+ * level (at the top it can't, so it runs out).
  */
-async function bot(page, { overdrive = false, keep = 2 } = {}) {
+async function bot(page, { overdrive = false } = {}) {
   await page.waitForFunction(() => window.__rythm);
-  await page.evaluate(({ GAP, keep, overdrive }) => {
+  await page.evaluate(({ GAP, overdrive }) => {
     const codes = ['KeyD', 'KeyF', 'KeyJ', 'KeyK'];
     const key = (type, code) => dispatchEvent(new KeyboardEvent(type, { code, bubbles: true }));
-    let game = null, todo = [], last = -99, refreshes = 0, finished = false;
+    let game = null, todo = [], last = -99;
     window.__botOn = true;
     const tick = () => {
       if (!window.__botOn) return;
@@ -59,10 +59,7 @@ async function bot(page, { overdrive = false, keep = 2 } = {}) {
           if (s.down && !s.up && t >= upAt) { key('keyup', codes[s.n.lane]); s.up = true; }
         }
         const level = game.overdriveLevel;
-        // Kept going `keep` times at level 5: no more, so it runs out and the colours flow back.
-        if (level === 5 && refreshes >= keep) finished = true;
-        if (overdrive && !finished && game.charged && (t - last >= GAP || level === 0)) {
-          if (level === 5) refreshes++;
+        if (overdrive && game.canOverdrive && (t - last >= GAP || level === 0)) {
           key('keydown', 'Space'); key('keyup', 'Space');
           last = t;
         }
@@ -70,7 +67,7 @@ async function bot(page, { overdrive = false, keep = 2 } = {}) {
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
-  }, { GAP, keep, overdrive });
+  }, { GAP, overdrive });
 }
 const stopBot = (page) => page.evaluate(() => { window.__botOn = false; });
 const ready = (page) => page.waitForSelector('.overlay-card .btn-primary:not([disabled])', { timeout: 60000 });
@@ -130,15 +127,15 @@ await withBrowser(async (browser) => {
   await page.goto(`${base}/#/play/${song}/${difficulty}`);
   await ready(page);
   await page.waitForTimeout(1600);
-  await page.getByRole('button', { name: /Practice a part/ }).click();
+  await page.getByRole('radio', { name: 'Practice a part' }).click();
   await page.waitForTimeout(1800);
   await still(page, 'showcase-start');
-  await page.getByRole('button', { name: /Practice a part/ }).click();
+  await page.getByRole('radio', { name: 'Play the song' }).click();
   await page.waitForTimeout(600);
 
   // 3. Overdrive, every level.
   await page.keyboard.press('Enter');
-  await bot(page, { overdrive: true, keep: 2 });
+  await bot(page, { overdrive: true });
   const shot = new Set();
   const started = Date.now();
   let lapsed = false;
@@ -154,12 +151,12 @@ await withBrowser(async (browser) => {
       await still(page, `overdrive-${s.level}`);
       console.log(`level ${s.level} at ${s.t.toFixed(1)} s`);
     }
-    if (shot.has(5) && s.level === 0 && !lapsed) { lapsed = true; console.log(`ran out at ${s.t.toFixed(1)} s`); }
+    if (shot.has(3) && s.level === 0 && !lapsed) { lapsed = true; console.log(`ran out at ${s.t.toFixed(1)} s`); }
     if (lapsed) { await page.waitForTimeout(3500); break; }
     if (s.done) break;
     await page.waitForTimeout(150);
   }
-  if (shot.size < 5) console.log(`only reached level ${Math.max(0, ...shot)}: try a denser song (SONG=...) or a smaller GAP`);
+  if (shot.size < 3) console.log(`only reached level ${Math.max(0, ...shot)}: try a denser song (SONG=...) or a smaller GAP`);
   await stopBot(page);
 
   // 4. Strays: mashing every key on the test song drains the signal.
@@ -177,23 +174,22 @@ await withBrowser(async (browser) => {
   }
   await page.waitForTimeout(3500); // the signal drops
 
-  // 5. Practice: a part at 75%, round twice.
+  // 5. Practice: 0:20 to 0:30 at 75%, round twice.
   await page.goto(`${base}/#/play/${song}/${difficulty}`);
   await ready(page);
   await page.waitForTimeout(900);
-  await page.getByRole('button', { name: /Practice a part/ }).click();
+  await page.getByRole('radio', { name: 'Practice a part' }).click();
   await page.waitForTimeout(800);
-  // The shortest part (from the start times on the chips), so it comes round within the video.
-  const starts = await page.locator('.practice-part .mono').allTextContents();
-  const secs = starts.map((x) => { const [m, s] = x.split(':').map(Number); return m * 60 + s; });
-  let pick = 0;
-  for (let i = 1; i < secs.length - 1; i++) if (secs[i + 1] - secs[i] < secs[pick + 1] - secs[pick]) pick = i;
-  await page.locator('.practice-part').nth(pick).click();
+  // The loop's end out to 0:30, then its start in to 0:20 (a second a step), short enough to come round.
+  await page.getByRole('slider', { name: 'Loop end' }).focus();
+  for (let i = 0; i < 10; i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(40); }
+  await page.getByRole('slider', { name: 'Loop start' }).focus();
+  for (let i = 0; i < 20; i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(40); }
   await page.waitForTimeout(600);
-  const speed = page.locator('.practice-speed input');
-  await speed.focus();
-  for (let i = 0; i < 25; i++) { await page.keyboard.press('ArrowLeft'); await page.waitForTimeout(30); } // 75% → 50%
-  for (let i = 0; i < 25; i++) { await page.keyboard.press('ArrowRight'); await page.waitForTimeout(30); } // back to 75%
+  // The speeds YouTube has: 50%, then 75%.
+  await page.getByRole('radio', { name: '50%' }).click();
+  await page.waitForTimeout(600);
+  await page.getByRole('radio', { name: '75%' }).click();
   await page.waitForTimeout(700);
   await page.getByRole('button', { name: /^Practise / }).click();
   await bot(page);

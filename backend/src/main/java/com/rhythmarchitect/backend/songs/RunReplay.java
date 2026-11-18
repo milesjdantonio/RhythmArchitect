@@ -16,8 +16,9 @@ import main.Queue;
  * is kept. The run is the results in order, as the game recorded them (frontend/src/game/score.ts):
  * P, G, E, L for a PERFECT, GOOD, EARLY or LATE hit, M for a miss, H&lt;ms&gt;; for a held note held
  * its length in milliseconds, B for one let go early, X for a stray press (no tile), O where the
- * player set off Overdrive (the run
- * is refused if the charge wasn't full there: GameScore.startOverdrive).
+ * player set off Overdrive (the run is refused if the charge wasn't full there, or it was at its
+ * top level: GameScore.startOverdrive), U where its grace ended (refused outside one; a grace
+ * longer than the chart allows is refused by {@link #fits}: {@link #graceTiles}).
  *
  * <p>First the run is checked against the chart it was played on (the difficulty's
  * {@code Queue} of {@code Note}s, from {@link SongModel}): every tile is judged once, so a run
@@ -25,8 +26,8 @@ import main.Queue;
  * than the chart's holds last. A run ended early (a fail) judges fewer.</p>
  */
 public final class RunReplay {
-    private static final Pattern VALID = Pattern.compile("(?:[PGELMBOX]|H\\d{1,7};)*");
-    private static final Pattern TOKEN = Pattern.compile("[PGELMBOX]|H(\\d+);");
+    private static final Pattern VALID = Pattern.compile("(?:[PGELMBOXU]|H\\d{1,7};)*");
+    private static final Pattern TOKEN = Pattern.compile("[PGELMBOXU]|H(\\d+);");
     /** How far a hold's recorded time may be off its length, in milliseconds (rounding). */
     static final long HOLD_SLACK_MS = 2;
 
@@ -57,6 +58,10 @@ public final class RunReplay {
                 continue;
             }
             switch (m.group().charAt(0)) {
+                case 'U' -> {
+                    if (!s.isGrace()) return null;
+                    s.endGrace();
+                }
                 case 'P' -> s.addHit(HitResult.PERFECT);
                 case 'G' -> s.addHit(HitResult.GOOD);
                 case 'E' -> s.addHit(HitResult.EARLY);
@@ -73,24 +78,51 @@ public final class RunReplay {
     }
 
     /**
+     * The most tiles one grace can judge on a chart: the most the chart has in any
+     * {@link GameScore#OVERDRIVE_GRACE} seconds (and a little: a tile judged late, one early),
+     * plus two. `times`: the tiles' times in seconds.
+     */
+    static int graceTiles(List<Double> times) {
+        List<Double> t = new ArrayList<>(times);
+        t.sort(Comparator.naturalOrder());
+        double span = GameScore.OVERDRIVE_GRACE + 0.6;
+        int most = 0;
+        for (int i = 0, j = 0; i < t.size(); i++) {
+            while (t.get(i) - t.get(j) > span) j++;
+            most = Math.max(most, i - j + 1);
+        }
+        return most + 2;
+    }
+
+    /**
      * Whether the run could have been played on the chart: no more tiles judged than it has, no
-     * more holds ended than it has, and the holds held to their end, longest first, each no longer
-     * than the chart's holds, longest first.
+     * more holds ended than it has, the holds held to their end, longest first, each no longer
+     * than the chart's holds, longest first, and no grace (O to U) longer than the chart allows
+     * ({@link #graceTiles}).
      */
     static boolean fits(String run, Queue<Note> chart) {
         // Each note goes round the queue once (off the front, onto the back): the chart is left as it was.
         List<Long> holds = new ArrayList<>();
+        List<Double> times = new ArrayList<>();
         int tiles = chart.getSize();
         for (int i = 0; i < tiles; i++) {
             Note n = chart.dequeue();
             if (n.isHold()) holds.add(Math.round(n.getNoteLength() * 1000));
+            times.add(n.getTimeStamp());
             chart.enqueue(n);
         }
+        int graceMax = graceTiles(times);
+        boolean inGrace = false;
+        int graceJudged = 0;
         int judged = 0, ended = 0;
         List<Long> held = new ArrayList<>();
         Matcher m = TOKEN.matcher(run);
         while (m.find()) {
-            if (m.group().equals("O") || m.group().equals("X")) continue;
+            String g = m.group();
+            if (g.equals("O")) { inGrace = true; graceJudged = 0; continue; }
+            if (g.equals("U")) { inGrace = false; continue; }
+            if (g.equals("X")) continue;
+            if (m.group(1) == null && !g.equals("B") && inGrace && ++graceJudged > graceMax) return false;
             if (m.group(1) != null) held.add(Long.parseLong(m.group(1)));
             if (m.group(1) != null || m.group().equals("B")) ended++;
             else judged++;

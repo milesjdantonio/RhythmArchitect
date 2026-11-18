@@ -119,13 +119,14 @@
 .set-keys p { margin: 0; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .set-caps { display: inline-flex; gap: 6px; }
 /* Background: a swatch per theme (Dynamic: every colour); the chosen one is ringed. */
-.set-backdrop { display: flex; flex-wrap: wrap; gap: 10px; }
+.set-backdrop { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px 8px; }
+@media (max-width: 480px) { .set-backdrop { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 .backdrop-swatch { position: relative; display: grid; justify-items: center; gap: 6px; cursor: pointer; }
 .backdrop-swatch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
-.backdrop-chip { width: 44px; height: 30px; border-radius: 8px; border: 1px solid var(--hair-strong);
+.backdrop-chip { width: 100%; max-width: 46px; height: 30px; border-radius: 8px; border: 1px solid var(--hair-strong);
   background: radial-gradient(120% 140% at 20% 10%, hsl(var(--a) 90% 55% / 0.95), transparent 60%), radial-gradient(120% 140% at 85% 90%, hsl(var(--b) 90% 50% / 0.9), transparent 62%), rgb(4 6 16); }
 .backdrop-chip.is-dynamic { background: conic-gradient(from 200deg, hsl(196 90% 55%), hsl(272 90% 60%), hsl(330 90% 60%), hsl(30 90% 58%), hsl(150 85% 50%), hsl(196 90% 55%)); }
-.backdrop-name { font-size: 11px; letter-spacing: 0.06em; color: rgb(255 255 255 / 0.65); }
+.backdrop-name { font-size: 11px; letter-spacing: 0.04em; color: rgb(255 255 255 / 0.65); white-space: nowrap; }
 .backdrop-swatch.is-on .backdrop-chip { box-shadow: 0 0 0 2px rgb(6 9 22), 0 0 0 4px #fff, 0 0 18px -2px rgb(255 255 255 / 0.5); }
 .backdrop-swatch.is-on .backdrop-name { color: #fff; }
 .backdrop-swatch input:focus-visible + .backdrop-chip { outline: 2px solid var(--lightA); outline-offset: 3px; }

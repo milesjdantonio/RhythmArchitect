@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHARGE_FULL, OVERDRIVE_LENGTH, OVERDRIVE_MISS_COST, STRAY_CHARGE, RunScore, holdBonus, multiplierFor, replayRun, runFits } from '../../src/game/score';
+import { CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_LENGTH, STRAY_CHARGE, RunScore, graceTiles, holdBonus, multiplierFor, replayRun, runFits } from '../../src/game/score';
 import { Game, hitResultFor } from '../../src/game/engine';
 import type { Chart } from '../../src/api/types';
 
@@ -9,9 +9,9 @@ import type { Chart } from '../../src/api/types';
 // to its end (180 × 2), a miss, a Late (×1), a hold let go (a miss), a Perfect (×1).
 export const RUN = 'PPPPPPPPPPGEH1500;MLBP';
 // Overdrive (GameScoreTest, ApiTests): 20 Perfects fill the charge (x1, x2, then x3), O sets it off
-// (+1: x4), Perfect, Perfect, Good, a miss (the charge goes, Overdrive runs down 8), a 1 s hold at
-// x2 (combo x1 + 1), a Perfect at x2.
-export const OVERDRIVE_RUN = 'PPPPPPPPPPPPPPPPPPPPOPPGMH1000;P';
+// (+1: x4), Perfect, Perfect, Good, a miss in its grace (the charge goes, Overdrive stays), U (the
+// grace is over), a 1 s hold at x2 (combo x1 + 1), a Perfect at x2, then a miss, which ends it.
+export const OVERDRIVE_RUN = 'PPPPPPPPPPPPPPPPPPPPOPPGMUH1000;PM';
 
 describe("the score: main.Score's rules, the multiplier and holds on top", () => {
   it("counts a run as GameScore does", () => {
@@ -34,14 +34,14 @@ describe("the score: main.Score's rules, the multiplier and holds on top", () =>
     expect(replayRun('')!.accuracy).toBe(0);
   });
 
-  it('Overdrive: set off with a full charge, it adds its level to the multiplier', () => {
+  it('Overdrive: set off with a full charge, it adds its level to the multiplier; one miss ends it', () => {
     const s = replayRun(OVERDRIVE_RUN)!;
     expect(s.score).toBe((3200 + 400 + 400 + 300 + 240 + 200) * 10);
     expect(s.points).toBe(2375);
     expect(s.maxCombo).toBe(23);
-    expect(s.accuracy).toBeCloseTo(2375 / 2500, 10);
-    expect(s.overdrive).toBe(1);
-    expect(s.overdriveLeft).toBe(OVERDRIVE_LENGTH - 4 - OVERDRIVE_MISS_COST);
+    expect(s.accuracy).toBeCloseTo(2375 / 2600, 10);
+    expect(s.overdrive).toBe(0); // the last miss (after the grace) ended it
+    expect(s.overdriveLeft).toBe(0);
     expect(s.run).toBe(OVERDRIVE_RUN);
     expect(replayRun('PPPO')).toBeNull(); // not charged
     // Strays (X) score nothing but drain the charge: 20 Perfects and a stray can't set it off.
@@ -49,24 +49,43 @@ describe("the score: main.Score's rules, the multiplier and holds on top", () =>
     expect(replayRun('P'.repeat(20) + 'X')!.charge).toBe(CHARGE_FULL - STRAY_CHARGE);
     expect(replayRun('PX')!.score).toBe(replayRun('P')!.score);
     expect(runFits(OVERDRIVE_RUN, { difficulty: 'hard', lanes: 4, notes: [
-      ...Array.from({ length: 24 }, (_, t) => ({ t, lane: 0, pitch: 'C5', len: 0.25 })),
+      ...Array.from({ length: 26 }, (_, t) => ({ t, lane: 0, pitch: 'C5', len: 0.25 })),
       { t: 30, lane: 1, pitch: 'C5', len: 2, hold: true },
     ] }, 120)).toBe(true); // O isn't a tile
   });
 
-  it('Overdrive stacks to level 5 (x10 at most) and drops to 0 when it runs out', () => {
+  it('Overdrive stacks to level 3 (x8 at most), can\'t be set off at the top, and drops to 0 when it runs out', () => {
     const s = new RunScore();
-    for (let level = 1; level <= 6; level++) {
+    for (let level = 1; level <= MAX_OVERDRIVE; level++) {
       for (let i = 0; i < 20; i++) s.add('PERFECT');
       expect(s.charge).toBe(CHARGE_FULL);
       expect(s.startOverdrive()).toBe(true);
-      expect(s.overdrive).toBe(Math.min(5, level));
+      expect(s.overdrive).toBe(level);
     }
-    expect(s.multiplier).toBe(10);
-    for (let i = 0; i < OVERDRIVE_LENGTH; i++) s.add('PERFECT');
+    expect(s.multiplier).toBe(8);
+    for (let i = 0; i < 20; i++) s.add('PERFECT');
+    expect(s.charged).toBe(true);
+    expect(s.canOverdrive).toBe(false);
+    expect(s.startOverdrive()).toBe(false); // the top: no fourth level, no renewing
+    expect(replayRun(s.run + 'O')).toBeNull();
+    for (let i = 0; i < OVERDRIVE_LENGTH - 20; i++) s.add('PERFECT');
     expect(s.overdrive).toBe(0);
     expect(s.multiplier).toBe(5);
     expect(replayRun(s.run)!.score).toBe(s.score);
+  });
+
+  it("Overdrive's grace: a miss just after the press doesn't end it, one after U does, and no grace longer than the chart allows", () => {
+    const charged = 'P'.repeat(20) + 'O';
+    expect(replayRun(charged + 'M')!.overdrive).toBe(1); // in the grace
+    expect(replayRun(charged + 'UM')!.overdrive).toBe(0); // after it
+    expect(replayRun('PU')).toBeNull(); // no grace to end
+    expect(replayRun(charged + 'UU')).toBeNull();
+    // A tile every beat at 120 BPM: OVERDRIVE_GRACE (and 0.6 s) holds 12 of them, so a grace may judge 14.
+    const chart: Chart = { difficulty: 'hard', lanes: 4, notes: Array.from({ length: 60 }, (_, t) => ({ t, lane: 0, pitch: 'C5', len: 0.25 })) };
+    expect(graceTiles(chart.notes.map((n) => n.t * 0.5))).toBe(14);
+    expect(runFits(charged + 'P'.repeat(14) + 'U', chart, 120)).toBe(true);
+    expect(runFits(charged + 'P'.repeat(15) + 'U', chart, 120)).toBe(false);
+    expect(runFits(charged + 'P'.repeat(15), chart, 120)).toBe(false); // never ended
   });
 
   it('the game sets off Overdrive: events, and the run the server replays', () => {

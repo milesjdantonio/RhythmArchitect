@@ -7,12 +7,17 @@ import { fmtTime } from '../../lib/format';
 import { RiveAnim, type RiveHandle } from '../../rive/RiveAnim';
 import { Icon } from '../Icon';
 import { VideoSlot } from '../VideoSlot';
-import { OVERDRIVE_LOOKS, overdriveHue } from '../../game/overdrive';
+import { OVERDRIVE_LOOKS, OVERDRIVE_ROMAN, overdriveVars } from '../../game/overdrive';
+import { MAX_OVERDRIVE, OVERDRIVE_LENGTH, OVERDRIVE_LOW } from '../../game/engine';
 
 export interface HudState {
   score: number; combo: number; accuracy: number; health: number; multiplier: number; progress: number; counts: Record<Judgement, number>;
   /** Overdrive's charge (0..1), its level (0 off, 1..5) and what is left of it (0..1). */
   charge: number; overdrive: number; overdriveLeft: number;
+  /** The points this Overdrive has added so far (0 while it's off). */
+  odGain: number;
+  /** Seconds of Overdrive's grace left (a miss doesn't end it), 0 when it's over. */
+  odSafe: number;
 }
 
 const COUNTS: [Judgement, string][] = [['perfect', 'Perfect'], ['great', 'Great'], ['good', 'Good'], ['miss', 'Miss']];
@@ -87,7 +92,9 @@ export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, 
           </div>
           <div className="hud-stat">
             <span className="label">Multiplier</span>
-            <span className={`hud-mult mono ${hud.overdrive ? 'is-overdrive' : hud.multiplier >= 5 ? 'is-fever' : ''}`}>×{hud.multiplier}</span>
+            {/* Each Overdrive level slams the multiplier in. */}
+            <motion.span key={hud.overdrive} className={`hud-mult mono ${hud.overdrive ? 'is-overdrive' : hud.multiplier >= 5 ? 'is-fever' : ''}`}
+              initial={{ scale: hud.overdrive ? 2.2 : 1 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 520, damping: 14 }}>×{hud.multiplier}</motion.span>
           </div>
         </div>
         <div className="hud-stat hud-combo-block">
@@ -115,19 +122,26 @@ export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, 
 
 /**
  * Overdrive: the charge filling (a bar), then, full, a cue to press its key (a button too, for
- * touch). While it runs: its level as five pips in the level's colour, the bar showing what is left.
+ * touch). While it runs: its level as pips in the level's colour, the bar showing what is left. At
+ * the top level it can't go up, so there's no cue (the charge still shows, under the bar).
  */
 function Overdrive({ hud, keyName, onFire }: { hud: HudState; keyName: string; onFire: () => void }) {
   const level = hud.overdrive;
-  const ready = hud.charge >= 1;
+  const ready = hud.charge >= 1 && level < MAX_OVERDRIVE;
   const look = OVERDRIVE_LOOKS[level];
-  const hue = overdriveHue(level || 1, 1, 0);
-  const fill = level ? (ready ? 1 : hud.overdriveLeft) : hud.charge;
+  const fill = level ? hud.overdriveLeft : hud.charge;
+  const low = level > 0 && hud.overdriveLeft <= OVERDRIVE_LOW / OVERDRIVE_LENGTH;
+  const next = Math.min(MAX_OVERDRIVE, level + 1);
   return (
-    <div className={`hud-stat hud-od ${ready ? 'is-ready' : ''} ${level ? `is-on od-${level}` : ''}`} style={{ '--od': hue } as React.CSSProperties}>
+    <div className={`hud-stat hud-od ${ready ? 'is-ready' : ''} ${level ? `is-on od-${level}` : ''} ${low ? 'is-low' : ''}`}
+      style={{ ...overdriveVars(level || 1), ...overdriveVars(next, 1, 0, ['--odn', '--odns']) } as React.CSSProperties}>
       <div className="hud-od-head">
-        <span className="label">{level ? `Overdrive · ${look.name}` : 'Overdrive'}</span>
-        <span className="hud-od-pips" aria-label={`Level ${level} of 5`}>{[1, 2, 3, 4, 5].map((k) => <i key={k} className={k <= level ? 'is-lit' : ''} />)}</span>
+        <span className="hud-od-label">
+          <span className="label">{level ? `${look.name} · ${OVERDRIVE_ROMAN[level]}` : 'Overdrive'}</span>
+          {level > 0 && hud.odGain > 0 && <span className="hud-od-gain mono">+{hud.odGain.toLocaleString()}</span>}
+        </span>
+        {/* Keyed by the level, so the newest pip pops in each time. */}
+        <span key={level} className="hud-od-pips" aria-label={`Level ${level} of ${MAX_OVERDRIVE}`}>{OVERDRIVE_ROMAN.slice(1).map((_, i) => <i key={i} className={`${i < level ? 'is-lit' : ''} ${i + 1 === level ? 'is-new' : ''}`} />)}</span>
       </div>
       <div className="hud-od-bar" role="meter" aria-label={level ? 'Overdrive left' : 'Overdrive charge'} aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(fill * 100)}>
         <span style={{ transform: `scaleX(${fill})` }} />
@@ -135,7 +149,7 @@ function Overdrive({ hud, keyName, onFire }: { hud: HudState; keyName: string; o
       </div>
       {ready && (
         <button type="button" className="btn btn-sm hud-od-fire" onClick={onFire} onPointerDown={(e) => e.stopPropagation()}>
-          {level >= 5 ? 'Keep it going' : level ? `Overdrive ${level + 1}` : 'Overdrive ready'} <kbd>{keyName}</kbd>
+          {level ? `Overdrive ${OVERDRIVE_ROMAN[next]}` : 'Overdrive ready'} <kbd>{keyName}</kbd>
         </button>
       )}
     </div>

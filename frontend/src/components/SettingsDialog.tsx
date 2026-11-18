@@ -166,7 +166,6 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
               </label>
             ))}
           </div>
-          <p className="set-hint">{s.backdrop === 'dynamic' ? "Follows the song: its colours, a new palette each section, Overdrive's light." : "Holds these colours on the menu and in every song. The lanes keep the song's colours."}</p>
         </Group>
 
         <Group title="Controls">

@@ -2,9 +2,9 @@
 // Times are seconds from beat 0 of the song.
 
 import type { Chart, ChartNote, Difficulty, Grade } from '../api/types';
-import { CHARGE_FULL, OVERDRIVE_LENGTH, RunScore, multiplierFor, type HitResult } from './score';
+import { CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_GRACE, OVERDRIVE_LENGTH, RunScore, multiplierFor, type HitResult } from './score';
 
-export { multiplierFor, CHARGE_FULL, OVERDRIVE_LENGTH };
+export { multiplierFor, CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_GRACE, OVERDRIVE_LENGTH };
 
 export type Judgement = 'perfect' | 'great' | 'good' | 'miss';
 
@@ -24,6 +24,8 @@ const GAIN: Record<Judgement, number> = { perfect: 0.011, great: 0.007, good: 0.
  * is close or after the last has passed.
  */
 export const STRAY_DRAIN = 0.03;
+/** Overdrive is "running out" with this many tiles left (a quarter of its length). */
+export const OVERDRIVE_LOW = 12;
 const STRAY_QUIET = 1;
 /** A hold released this close to its end still counts as completed. */
 const HOLD_GRACE = 0.14;
@@ -62,10 +64,14 @@ export type GameEvent =
   | { type: 'stray'; lane: number }
   /** The charge just became full: Overdrive can be set off. */
   | { type: 'charged' }
-  /** Overdrive was set off (or went up a level): its level now, 1..5. */
+  /** Overdrive was set off (or went up a level): its level now, 1..MAX_OVERDRIVE. */
   | { type: 'overdrive'; level: number }
-  /** Overdrive ran out. */
-  | { type: 'overdriveEnd' }
+  /** Overdrive is about to run out (OVERDRIVE_LOW tiles left): once per level. */
+  | { type: 'overdriveLow' }
+  /** Overdrive ended: it ran its length, or a miss broke it (`broken`). */
+  | { type: 'overdriveEnd'; broken: boolean }
+  /** A miss in Overdrive's grace (just after a press): it didn't end it. */
+  | { type: 'overdriveHeld' }
   | { type: 'fail' };
 
 export interface Stats {
@@ -124,25 +130,59 @@ export class Game {
   /** The run so far, for the server to replay through Score (score.ts). */
   get run() { return this.scoring.run; }
 
-  /** The combo's multiplier plus the Overdrive level (×1 to ×10). */
+  /** The combo's multiplier plus the Overdrive level (×1 to ×8). */
   get multiplier() { return this.scoring.multiplier; }
   /** Overdrive's charge, 0..1. */
   get charge() { return this.scoring.charge / CHARGE_FULL; }
   get charged() { return this.scoring.charged; }
+  /** Whether Overdrive can be set off now: a full charge, below the top level. */
+  get canOverdrive() { return this.scoring.canOverdrive; }
+  /** Seconds of Overdrive's grace left at song time `t` (0 when it's over or off). */
+  graceLeft(t: number) { return this.scoring.grace ? Math.max(0, this.graceUntil - t) : 0; }
   /** The Overdrive level, 0 (off) to 5. */
   get overdriveLevel() { return this.scoring.overdrive; }
   /** What is left of Overdrive, 0..1. */
   get overdriveLeft() { return this.scoring.overdriveLeft / OVERDRIVE_LENGTH; }
 
-  /** The player set off Overdrive (Space): needs a full charge. */
-  overdrive(): GameEvent[] {
+  /** For the results: the highest Overdrive level, how often it was set off, the points it added. */
+  get overdriveStats() {
+    const s = this.scoring;
+    return { peak: s.overdrivePeak, fired: s.overdriveFired, bonus: s.overdriveBonus };
+  }
+
+  /**
+   * The player set off Overdrive (Space) at song time `at`: needs a full charge, below the top
+   * level. Its grace starts: for OVERDRIVE_GRACE seconds a miss doesn't end it (getting from the key
+   * back to the lanes).
+   */
+  overdrive(at = this.now): GameEvent[] {
     if (this.failed || this.finished || !this.scoring.startOverdrive()) return [];
+    this.warnedLow = false;
+    this.graceUntil = at + OVERDRIVE_GRACE;
     return [{ type: 'overdrive', level: this.scoring.overdrive }];
   }
 
-  /** After the score changed: tell when the charge filled up or Overdrive ran out. */
-  private scored(level: number, charged: boolean, out: GameEvent[]) {
-    if (level > 0 && this.scoring.overdrive === 0) out.push({ type: 'overdriveEnd' });
+  /** The latest song time the game has been told (presses, releases, frames). */
+  private now = 0;
+  /** When Overdrive's grace ends (song seconds). */
+  private graceUntil = -Infinity;
+  /** Time moved on to `t`: the grace ends once it's past (recorded in the run, U). */
+  private passTime(t: number) {
+    this.now = Math.max(this.now, t);
+    if (this.scoring.grace && t >= this.graceUntil) this.scoring.endGrace();
+  }
+
+  /** Whether this level's "running out" was told. */
+  private warnedLow = false;
+
+  /** After the score changed: tell when the charge filled up, Overdrive is running out, or ended (`missed`: by a miss). */
+  private scored(level: number, charged: boolean, out: GameEvent[], missed = false) {
+    if (level > 0 && this.scoring.overdrive === 0) out.push({ type: 'overdriveEnd', broken: missed });
+    else if (missed && level > 0) out.push({ type: 'overdriveHeld' });
+    else if (this.scoring.overdrive > 0 && !this.warnedLow && this.scoring.overdriveLeft <= OVERDRIVE_LOW) {
+      this.warnedLow = true;
+      out.push({ type: 'overdriveLow' });
+    }
     if (!charged && this.scoring.charged) out.push({ type: 'charged' });
   }
 
@@ -170,7 +210,7 @@ export class Game {
     const level = this.scoring.overdrive, charged = this.scoring.charged;
     this.scoring.add(hitResultFor(j, delta));
     s.score = this.scoring.score;
-    this.scored(level, charged, out);
+    this.scored(level, charged, out, j === 'miss');
     out.push({ type: 'judge', note, judgement: j, delta });
   }
 
@@ -187,6 +227,7 @@ export class Game {
   press(lane: number, t: number): GameEvent[] {
     const out: GameEvent[] = [];
     if (this.failed || lane < 0 || lane >= this.lanes || this.active[lane]) return out;
+    this.passTime(t);
     const list = this.byLane[lane];
     let hit = false;
     for (let i = this.next[lane]; i < list.length; i++) {
@@ -230,6 +271,7 @@ export class Game {
     const out: GameEvent[] = [];
     const n = this.active[lane];
     if (!n) return out;
+    this.passTime(t);
     this.finishHold(n, t >= n.end - HOLD_GRACE, out);
     return out;
   }
@@ -250,7 +292,7 @@ export class Game {
       this.hurt(DRAIN[this.difficulty] * 0.6, out);
     }
     s.score = this.scoring.score;
-    this.scored(level, charged, out);
+    this.scored(level, charged, out, !ok);
     out.push({ type: 'holdEnd', note: n, ok });
   }
 
@@ -269,6 +311,8 @@ export class Game {
         const n = list[i];
         if (n.time > t) break;
         if (!n.judged && t - n.time > this.windows.good) {
+          // (Missed when it left the window: a miss just inside the grace is in it, even judged late.)
+          this.passTime(n.time + this.windows.good);
           this.judge(n, 'miss', t - n.time, out);
           if (n.hold) n.holdResult = 'broken';
         }
@@ -277,6 +321,7 @@ export class Game {
       const a = this.active[lane];
       if (a && t >= a.end) this.finishHold(a, true, out);
     }
+    this.passTime(t);
     return out;
   }
 }

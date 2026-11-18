@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DIFFICULTIES, type Chart } from '../../src/api/types';
-import { Game, gradeFor, laneForCode, multiplierFor } from '../../src/game/engine';
+import { Game, OVERDRIVE_GRACE, OVERDRIVE_LOW, gradeFor, laneForCode, multiplierFor, type GameEvent } from '../../src/game/engine';
+import { OVERDRIVE_LENGTH, POINT_SCALE, replayRun } from '../../src/game/score';
 
 // 120 bpm: one beat = 0.5 s.
 const chart: Chart = {
@@ -78,6 +79,48 @@ describe('game engine', () => {
     for (let t = 0; t < 20 && !masher.failed; t += 0.1) for (let l = 0; l < 4; l++) { masher.press(l, t); masher.release(l, t + 0.05); masher.update(t); }
     expect(masher.failed).toBe(true);
     expect(masher.strays).toBeGreaterThan(20);
+  });
+
+  it('Overdrive tells once when it is running out, then that it ran out, and counts what it added', () => {
+    const long: Chart = { difficulty: 'hard', lanes: 4, notes: Array.from({ length: 90 }, (_, i) => ({ t: i, lane: i % 4, pitch: 'C5', len: 0.5 })) };
+    const g = new Game(long, 120, 'hard');
+    const events: GameEvent[] = [];
+    let i = 0;
+    const hit = () => { events.push(...g.press(i % 4, i * 0.5)); g.release(i % 4, i * 0.5 + 0.05); i++; };
+    while (!g.charged) hit();
+    expect(i).toBe(20); // 20 Perfects fill the charge
+    expect(g.overdrive()).toEqual([{ type: 'overdrive', level: 1 }]);
+    for (let k = 0; k < OVERDRIVE_LENGTH; k++) hit();
+    const kinds = events.map((e) => e.type);
+    expect(kinds.filter((k) => k === 'overdriveLow')).toHaveLength(1);
+    // Told with the hit that leaves OVERDRIVE_LOW tiles (just before its judgement), before it runs out on the last one.
+    expect(kinds.slice(0, kinds.indexOf('overdriveLow')).filter((k) => k === 'judge')).toHaveLength(20 + OVERDRIVE_LENGTH - OVERDRIVE_LOW - 1);
+    expect(kinds.indexOf('overdriveLow')).toBeLessThan(kinds.indexOf('overdriveEnd'));
+    expect(g.overdriveLevel).toBe(0);
+    expect(events.find((e) => e.type === 'overdriveEnd')).toEqual({ type: 'overdriveEnd', broken: false });
+    expect(g.overdriveStats).toEqual({ peak: 1, fired: 1, bonus: OVERDRIVE_LENGTH * 100 * POINT_SCALE });
+    expect(replayRun(g.run)!.score).toBe(g.stats.score);
+  });
+
+  it("Overdrive's grace: for OVERDRIVE_GRACE seconds after the press a miss doesn't end it; after that one does", () => {
+    const long: Chart = { difficulty: 'hard', lanes: 4, notes: Array.from({ length: 60 }, (_, i) => ({ t: i, lane: i % 4, pitch: 'C5', len: 0.5 })) };
+    const g = new Game(long, 120, 'hard');
+    let i = 0;
+    const press = () => { g.press(i % 4, i * 0.5); g.release(i % 4, i * 0.5 + 0.05); i++; };
+    while (!g.charged) press();
+    g.overdrive(9.6);
+    expect(g.graceLeft(9.6)).toBeCloseTo(OVERDRIVE_GRACE);
+    // The tile at 10 s slips past, in the grace: Overdrive holds.
+    i++;
+    expect(g.update(10.3)).toContainEqual({ type: 'overdriveHeld' });
+    expect(g.overdriveLevel).toBe(1);
+    while (i * 0.5 < 15) press();
+    expect(g.graceLeft(14.7)).toBe(0);
+    // The tile at 15 s slips past after the grace: Overdrive ends, broken.
+    i++;
+    expect(g.update(15.3)).toContainEqual({ type: 'overdriveEnd', broken: true });
+    expect(g.run).toMatch(/O.*M.*U.*M$/);
+    expect(replayRun(g.run)!.score).toBe(g.stats.score);
   });
 
   it('grades, multipliers and keys', () => {

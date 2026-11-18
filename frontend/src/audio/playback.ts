@@ -36,6 +36,8 @@ let clap: Tone.NoiseSynth;
 let hat: Tone.NoiseSynth;
 let bass: Tone.MonoSynth;
 let click: Tone.Synth;
+/** Overdrive's sweep: a low-pass at the very end of the chain, open (20 kHz) except for a moment. */
+let sweep: Tone.Filter | null = null;
 let trackBus: Tone.Gain;
 let analyser: Tone.Analyser | null = null;
 // Every player ever started and not yet stopped. Stopping stops all of them, so nothing can be
@@ -53,7 +55,8 @@ function build() {
   built = true;
   const ctx = Tone.getContext();
   ctx.lookAhead = 0.03;
-  const master = new Tone.Compressor({ threshold: -14, ratio: 3 }).toDestination();
+  sweep = new Tone.Filter({ type: 'lowpass', frequency: 20000, Q: 0.7 }).toDestination();
+  const master = new Tone.Compressor({ threshold: -14, ratio: 3 }).connect(sweep);
   const delay = new Tone.FeedbackDelay({ delayTime: '8n.', feedback: 0.28, wet: 1 });
   const reverb = new Tone.Reverb({ decay: 2.8, wet: 1 });
   spaceSend = new Tone.Gain(0.35);
@@ -65,7 +68,7 @@ function build() {
   melodyBus.connect(spaceSend);
 
   backingBus = new Tone.Gain(0.5).connect(master);
-  trackBus = new Tone.Gain(0.9).toDestination();
+  trackBus = new Tone.Gain(0.9).connect(sweep);
   // Everything audible also feeds an analyser, so the visuals can react to any song.
   analyser = new Tone.Analyser({ type: 'fft', size: 256, smoothing: 0.65 });
   master.connect(analyser);
@@ -82,6 +85,25 @@ function build() {
   }).connect(backingBus);
   click = new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.001, decay: 0.06, sustain: 0, release: 0.05 }, volume: -10 }).connect(master);
   applyVolumes();
+}
+
+/**
+ * Overdrive's whoosh, on the song itself (no sound of its own): a quick low-pass dip that opens
+ * back up, deeper and longer each level. The bass and the beat go through. Real tracks and synth
+ * songs only: a YouTube song's audio never reaches the page.
+ */
+export function overdriveSweep(level: number) {
+  if (!sweep || follow || Tone.getContext().state !== 'running') return;
+  const now = Tone.now();
+  const low = Math.max(360, 1300 - level * 180);
+  const open = 0.32 + level * 0.06;
+  const f = sweep.frequency, q = sweep.Q;
+  f.cancelAndHoldAtTime(now);
+  f.exponentialRampToValueAtTime(low, now + 0.05);
+  f.exponentialRampToValueAtTime(20000, now + 0.05 + open);
+  q.cancelAndHoldAtTime(now);
+  q.linearRampToValueAtTime(3 + level * 0.3, now + 0.05);
+  q.linearRampToValueAtTime(0.7, now + 0.05 + open);
 }
 
 /** Turns everything down (the end screen replays the song quietly); 1 is normal. */
@@ -389,7 +411,7 @@ interface StartOptions {
   autoMelody?: { t: number; pitch: string; len: number }[];
   /** Stop after this many beats (defaults to the song length). */
   beats?: number;
-  /** Playback speed (practice mode: 0.5 to 1). The song and its clock both run at it. */
+  /** Playback speed (practice mode: 0.5, 0.75 or 1). The song and its clock both run at it. */
   rate?: number;
   onEnd?: () => void;
 }

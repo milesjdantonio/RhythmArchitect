@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import type { Difficulty, Song } from '../../api/types';
 import { keyLabel, laneKeyList, useBinds } from '../../lib/keys';
@@ -11,36 +11,54 @@ import { EASE_OUT } from '../../lib/motion';
 const sourceNote = (song: Song) =>
   song.source.kind === 'stream' ? ' · real audio' : song.source.kind === 'youtube' ? ' · from YouTube' : song.source.standIn ? ' · stand-in audio' : '';
 
-/** Practice mode: a stretch of the song (beats), looped, at a speed (0.5..1). */
+/** Practice mode: a stretch of the song (beats), looped, at a speed (one of PRACTICE_SPEEDS). */
 export interface Practice { from: number; to: number; label: string; speed: number }
 
-/** The stretches a song can be practised in: its sections from the map, or its quarters. */
-export function practiceStretches(song: Song): { from: number; to: number; label: string }[] {
-  const end = song.lengthBeats;
-  const secs = (song.report?.sections ?? []).filter((x) => x.beat < end).sort((a, b) => a.beat - b.beat);
-  const out = secs.map((x, i) => ({ from: x.beat, to: secs[i + 1]?.beat ?? end, label: x.label || `Part ${i + 1}` }))
-    .filter((x) => x.to - x.from >= 4);
-  if (out.length >= 2) {
-    // The same name twice (verse, verse): numbered.
-    const seen = new Map<string, number>();
-    for (const x of out) { const n = (seen.get(x.label) ?? 0) + 1; seen.set(x.label, n); if (n > 1) x.label = `${x.label} ${n}`; }
-    return out;
-  }
-  const q = Math.max(4, Math.floor(end / 4));
-  return [0, 1, 2, 3].map((k) => ({ from: k * q, to: k === 3 ? end : (k + 1) * q, label: `Quarter ${k + 1}` })).filter((x) => x.to > x.from);
+/**
+ * The practice speeds: the ones YouTube's player has (between half and full speed), the same for
+ * every song, so a YouTube song plays at exactly the speed its tiles fall at.
+ */
+export const PRACTICE_SPEEDS = [0.5, 0.75, 1];
+
+/** The shortest loop, in seconds. */
+const MIN_LOOP = 3;
+
+/**
+ * A practice loop from `a` to `b` (seconds): the whole beats it covers (the start's beat to the
+ * end's), labelled by its times.
+ */
+export function practiceLoop(song: Song, a: number, b: number, speed: number): Practice {
+  const spb = 60 / song.bpm;
+  const from = Math.max(0, Math.floor(a / spb));
+  const to = Math.max(from + 1, Math.min(Math.ceil(song.lengthBeats), Math.ceil(b / spb)));
+  return { from, to, label: `${fmtTime(Math.round(a))}–${fmtTime(Math.round(b))}`, speed };
 }
 
-/** Before a run: the song, the four keys, how to play, Start (or practise a stretch). */
-export function StartCard({ song, difficulty, starting, milestone, onStart }: {
+/**
+ * Before a run: the song, the four keys, then a choice: play the song (how to play), or practise
+ * a part (which part, how fast). One button starts whichever is chosen, and says which (Enter does
+ * the same: `onChoose` tells the screen). Practice takes the place of the how-to-play text, so the
+ * card is the same height either way and fits without scrolling.
+ */
+export function StartCard({ song, difficulty, starting, milestone, onStart, onChoose }: {
   song: Song; difficulty: Difficulty; starting: boolean; milestone: number; onStart: (practice?: Practice) => void;
+  /** What Start would start now (null: the whole song). */
+  onChoose?: (practice: Practice | null) => void;
 }) {
   const binds = useBinds();
-  const stretches = useMemo(() => practiceStretches(song), [song]);
-  const [open, setOpen] = useState(false);
-  const [pick, setPick] = useState(0);
+  const [mode, setMode] = useState<'play' | 'practice'>('play');
   const [speed, setSpeed] = useState(0.75);
   const spb = 60 / song.bpm;
-  const chosen = stretches[Math.min(pick, stretches.length - 1)];
+  // The loop: a start and an end, in whole seconds, anywhere in the song (at least MIN_LOOP apart).
+  const length = Math.max(MIN_LOOP, Math.floor(song.lengthBeats * spb));
+  const [[a, b], setLoop] = useState<[number, number]>(() => [0, Math.min(length, 20)]);
+  const canPractise = length > MIN_LOOP;
+  const practice = useMemo<Practice | null>(() => (mode === 'practice' && canPractise ? practiceLoop(song, a, b, speed) : null), [mode, canPractise, song, a, b, speed]);
+  // Where the sections start, as ticks on the loop's track (orientation only).
+  const ticks = useMemo(() => (song.report?.sections ?? []).filter((x) => x.beat > 0 && x.beat * spb < length)
+    .map((x) => ({ at: (x.beat * spb) / length, label: x.label })), [song, spb, length]);
+  useEffect(() => { onChoose?.(practice); }, [practice, onChoose]);
+  const pct = Math.round(speed * 100);
   return (
     <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.4 } }}>
       <motion.div className="overlay-card" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6, ease: EASE_OUT }}>
@@ -52,39 +70,42 @@ export function StartCard({ song, difficulty, starting, milestone, onStart }: {
             <span key={k.code} className="lane-key" style={{ '--h': laneHue(i, 4, song.hues), '--i': i } as React.CSSProperties}><kbd>{k.label}</kbd></span>
           ))}
         </div>
-        <p className="overlay-help">Every tile is a note in the song. Hit it as you hear it; hold the long ones. Every {milestone} in a row lights up the stage, and ×5 starts fever. Accurate hits charge Overdrive: press <kbd>{keyLabel(binds.overdrive)}</kbd> when it's full, and again while it runs, up to five times for ×10.</p>
-        <button type="button" className="btn btn-primary" onClick={() => onStart()} autoFocus disabled={starting}>
-          <Icon name="play" /> {starting ? 'Starting' : 'Start'} <kbd>Enter</kbd>
-        </button>
-        <div className={`practice ${open ? 'is-open' : ''}`}>
-          <button type="button" className="btn btn-ghost btn-sm practice-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-            Practice a part {open ? '▴' : '▾'}
-          </button>
-          {open && chosen && (
+        {canPractise && (
+          <div className="start-mode" role="radiogroup" aria-label="Play or practise">
+            <button type="button" role="radio" aria-checked={mode === 'play'} className={mode === 'play' ? 'is-on' : ''} onClick={() => setMode('play')}>Play the song</button>
+            <button type="button" role="radio" aria-checked={mode === 'practice'} className={mode === 'practice' ? 'is-on' : ''} onClick={() => setMode('practice')}>Practice a part</button>
+          </div>
+        )}
+        {!practice ? (
+          <p className="overlay-help">Every tile is a note in the song. Hit it as you hear it; hold the long ones. Every {milestone} in a row lights up the stage, and ×5 starts fever. Accurate hits charge Overdrive: press <kbd>{keyLabel(binds.overdrive)}</kbd> when it's full, and again while it runs, up to three levels (×8). A miss ends it, except in the first few seconds after you press.</p>
+        ) : (
             <div className="practice-body">
-              <p className="practice-help muted">Loops one part until you stop it, slowed down if you like. Nothing is saved and you can't fail.</p>
-              <div className="practice-parts" role="radiogroup" aria-label="Part to practise">
-                {stretches.map((x, i) => (
-                  <button key={`${x.from}-${x.label}`} type="button" role="radio" aria-checked={i === pick}
-                    className={`practice-part ${i === pick ? 'is-on' : ''}`} onClick={() => setPick(i)}>
-                    {x.label} <span className="muted mono">{fmtTime(Math.round(x.from * spb))}</span>
-                  </button>
+              <p className="practice-help muted">Drag the start and the end of the loop, and pick a speed. It loops until you pause and stop; nothing is saved and you can't fail.</p>
+              <div className="practice-times">
+                <span>Start <output className="mono">{fmtTime(a)}</output></span>
+                <span className="muted mono">{b - a} s loop</span>
+                <span>End <output className="mono">{fmtTime(b)}</output></span>
+              </div>
+              {/* Two handles on one track: the start can't pass the end (MIN_LOOP between them). */}
+              <div className="dual-range" style={{ '--a': `${(a / length) * 100}%`, '--b': `${(b / length) * 100}%` } as React.CSSProperties}>
+                {ticks.map((x) => <i key={`${x.at}-${x.label}`} className="dual-range-tick" style={{ left: `${x.at * 100}%` }} title={x.label} />)}
+                <input type="range" aria-label="Loop start" min={0} max={length} step={1} value={a} aria-valuetext={fmtTime(a)}
+                  style={{ zIndex: a > length - MIN_LOOP * 3 ? 3 : 2 }} onChange={(e) => setLoop([Math.min(Number(e.target.value), b - MIN_LOOP), b])} />
+                <input type="range" aria-label="Loop end" min={0} max={length} step={1} value={b} aria-valuetext={fmtTime(b)}
+                  onChange={(e) => setLoop([a, Math.max(Number(e.target.value), a + MIN_LOOP)])} />
+              </div>
+              <div className="practice-speed" role="radiogroup" aria-label="Speed">
+                <span>Speed</span>
+                {PRACTICE_SPEEDS.map((v) => (
+                  <button key={v} type="button" role="radio" aria-checked={speed === v}
+                    className={`practice-part mono ${speed === v ? 'is-on' : ''}`} onClick={() => setSpeed(v)}>{Math.round(v * 100)}%</button>
                 ))}
               </div>
-              <label className="practice-speed">
-                <span>Speed</span>
-                <input type="range" min={0.5} max={1} step={0.01} value={speed} aria-valuetext={`${Math.round(speed * 100)}%`}
-                  style={{ '--p': `${((speed - 0.5) / 0.5) * 100}%` } as React.CSSProperties} onChange={(e) => setSpeed(Number(e.target.value))} />
-                <output className="mono">{Math.round(speed * 100)}%</output>
-              </label>
-              {song.source.kind === 'youtube' && speed < 1 && <p className="practice-help muted">YouTube plays at the nearest speed it has.</p>}
-              <button type="button" className="btn btn-sm" disabled={starting}
-                onClick={() => onStart({ from: chosen.from, to: chosen.to, label: chosen.label, speed })}>
-                <Icon name="retry" /> Practise {chosen.label}
-              </button>
             </div>
-          )}
-        </div>
+        )}
+        <button type="button" className="btn btn-primary" onClick={() => onStart(practice ?? undefined)} autoFocus disabled={starting}>
+          <Icon name={practice ? 'retry' : 'play'} /> {starting ? 'Starting' : practice ? `Practise ${practice.label} · ${pct}%` : 'Start'} <kbd>Enter</kbd>
+        </button>
         <a className="btn btn-ghost btn-sm" href={href.song(song.id, difficulty)}><Icon name="back" size={16} /> Back</a>
       </motion.div>
     </motion.div>
