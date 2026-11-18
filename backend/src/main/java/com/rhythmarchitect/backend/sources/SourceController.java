@@ -1,5 +1,7 @@
 package com.rhythmarchitect.backend.sources;
 
+import java.util.List;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,12 +40,27 @@ public class SourceController {
     /** The video that plays the song. {@code title} may be a YouTube link. */
     @GetMapping("/youtube")
     public YouTubeService.VideoMatch video(@RequestParam(defaultValue = "") String title, @RequestParam(defaultValue = "") String artist) {
+        checkFields(title, artist);
+        return youtube.find(title.trim(), artist.trim());
+    }
+
+    /** The videos for the player to choose from (and preview), best first. */
+    public record VideoResults(List<YouTubeService.VideoMatch> results) {
+    }
+
+    /** The videos that play the song, best first, for the player to choose from. {@code title} may be a YouTube link. */
+    @GetMapping("/youtube/search")
+    public VideoResults videos(@RequestParam(defaultValue = "") String title, @RequestParam(defaultValue = "") String artist) {
+        checkFields(title, artist);
+        return new VideoResults(youtube.findAll(title.trim(), artist.trim()));
+    }
+
+    private static void checkFields(String title, String artist) {
         String t = title.trim(), a = artist.trim();
         if (t.isEmpty()) throw ApiException.badRequest("Type the title of the song (or paste its YouTube link).");
         if (t.length() > 300 || a.length() > MAX_FIELD) {
             throw ApiException.badRequest("Keep the title and artist under " + MAX_FIELD + " characters each.");
         }
-        return youtube.find(t, a);
     }
 
     /** A fan-made osu! chart of the song, lined up with the video, saved. */

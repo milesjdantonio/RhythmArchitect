@@ -1,7 +1,7 @@
 // Typed client for the songs, search and mapper API. Point VITE_API_BASE_URL at the real
 // backend; when it is empty the app talks to the mock in mock-server/ on the same origin.
 
-import type { FanChartRequest, NewSong, ScoreSubmit, SearchResults, Song, SongList, SongPatch, SongSummary, VideoMatch } from './types';
+import type { FanChartRequest, NewSong, ScoreSubmit, SearchResults, Song, SongList, SongPatch, SongSummary, VideoMatch, VideoResults } from './types';
 import { upgradeSong, upgradeSummary } from './upgrade';
 
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -47,6 +47,10 @@ export const api = {
     request<SearchResults>(`/favorites?${new URLSearchParams({ q })}`, { signal }).then(listOf),
   findVideo: (title: string, artist: string, signal?: AbortSignal) =>
     request<VideoMatch>(`/youtube?${new URLSearchParams({ title, artist })}`, { signal }),
+  /** The song's YouTube videos, best first, to preview and choose from. */
+  searchVideos: (title: string, artist: string, signal?: AbortSignal): Promise<VideoMatch[]> =>
+    request<VideoResults>(`/youtube/search?${new URLSearchParams({ title, artist })}`, { signal })
+      .then((r) => (Array.isArray(r?.results) ? r.results.filter((v) => v && typeof v.videoId === 'string') : [])),
   fanChart: (req: FanChartRequest, signal?: AbortSignal) => song(request<Song>('/fan-chart', { method: 'POST', body: JSON.stringify(req), signal })),
   createSong: (s: NewSong) => song(request<Song>('/songs', { method: 'POST', body: JSON.stringify(s) })),
 };

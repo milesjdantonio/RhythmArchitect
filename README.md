@@ -86,8 +86,9 @@ To see something happen: click through the opening, type *ink* in **Name a Song*
 Fury* (a built-in song with its own audio), choose a difficulty and press **Play**; the keys are
 **D F J K**. The other built-ins are *One Dance* (it plays from YouTube), *The Restless Stacks* and
 *Neon Blueprint*. To map a new
-song, type one that isn't there and press **Generate beatmap** (desktop Chrome or Edge: the game
-listens to the song's YouTube video once through tab sharing). With the Java backend instead of
+song, type one that isn't there: its videos on YouTube come up under the results. Preview them,
+then press **Generate beatmap** on the one you want (desktop Chrome or Edge: the game listens to that
+video once through tab sharing). With the Java backend instead of
 the mock: `cd backend && ./mvnw spring-boot:run`, and `VITE_API_BASE_URL=http://localhost:8080` in
 `frontend/.env.local` (see [The backend](#the-backend)).
 
@@ -107,8 +108,11 @@ the mock: `cd backend && ./mvnw spring-boot:run`, and `VITE_API_BASE_URL=http://
   frames run slow).
   Without WebGL, a Rive orbit stands in. `?nointro` skips it.
 - **The workspace.** Left: the title and the AI. **Name a Song** has a title and an artist field;
-  every mapped song is searched as you type, and the **Generate beatmap** button sits at the bottom
-  of the results. Under it, **Favorites**: a drop-down of your starred songs with its own search,
+  every mapped song is searched as you type. For a song that isn't mapped yet, its videos **On
+  YouTube** come up under the results once you stop typing (the best few, best first, with their
+  thumbnail, channel and length): **Preview** plays one right there, in its own player under its
+  row (the menu's music waits), and **Generate beatmap** maps that video, so you choose which
+  upload is mapped rather than the search guessing. Under it, **Favorites**: a drop-down of your starred songs with its own search,
   which takes the rest of the column and scrolls.
   Each song shows its cover art, or a living Rive cover tinted to the song. Right: gameplay only.
   Before a song is picked, a waiting screen (a Rive loop of orbits over four lanes that answers your

@@ -218,6 +218,11 @@ export interface VideoMatch {
   thumbnail?: string;
 }
 
+/** GET /api/youtube/search: the videos that play the song, best first, for the player to choose from. */
+export interface VideoResults {
+  results: VideoMatch[];
+}
+
 /** Ask for a fan-made chart of a song, played from a YouTube video (POST /api/fan-chart). */
 export interface FanChartRequest {
   title: string;

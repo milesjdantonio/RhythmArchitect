@@ -13,6 +13,7 @@
 //   GET    /api/health                -> { ok: true }  (the app asks this when it opens: is the server up?)
 //   GET    /api/library               -> { results: SongSummary[] }  (every song, A to Z by title: the music bank)
 //   GET    /api/youtube?title=&artist= -> VideoMatch  (the YouTube video that plays the song)
+//   GET    /api/youtube/search?title=&artist= -> { results: VideoMatch[] }  (the videos to choose from, best first)
 //   POST   /api/fan-chart             FanChartRequest -> Song (201)  (an osu! fan chart, saved)
 //
 // The mock never makes up a song. A new song plays from YouTube; its tiles come from the browser
@@ -30,7 +31,7 @@ import { replayRun, runFits } from '../src/game/score';
 import { gradeFor } from '../src/game/engine';
 import { builtInSongs } from './songs/builtins';
 import { fanSong } from '../src/mapping/osu';
-import { findFanChart, findVideo, SourceError } from './sources';
+import { findFanChart, findVideo, findVideos, SourceError } from './sources';
 
 type Next = (err?: unknown) => void;
 
@@ -291,12 +292,13 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
         const artist = (url.searchParams.get('artist') ?? '').slice(0, MAX_FIELD);
         return send(res, 200, { results: searchSongs(load(), title, artist) });
       }
-      if (parts[0] === 'youtube' && parts.length === 1 && method === 'GET') {
+      if (parts[0] === 'youtube' && (parts.length === 1 || (parts.length === 2 && parts[1] === 'search')) && method === 'GET') {
         const title = (url.searchParams.get('title') ?? '').trim();
         const artist = (url.searchParams.get('artist') ?? '').trim();
         if (!title) return fail(res, 400, 'Type the title of the song (or paste its YouTube link).');
         if (title.length > 300 || artist.length > MAX_FIELD) return fail(res, 400, `Keep the title and artist under ${MAX_FIELD} characters each.`);
-        return send(res, 200, await findVideo(title, artist));
+        // The best video, or (search) the videos to choose from.
+        return send(res, 200, parts.length === 1 ? await findVideo(title, artist) : { results: await findVideos(title, artist) });
       }
       if (parts[0] === 'fan-chart' && parts.length === 1 && method === 'POST') {
         const body = (await readJson(req)) as FanChartRequest;

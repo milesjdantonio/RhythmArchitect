@@ -212,6 +212,12 @@ class ApiTests {
         mvc.perform(get("/api/youtube").param("title", "Mr. Brightside").param("artist", "The Killers"))
             .andExpect(status().isServiceUnavailable())
             .andExpect(jsonPath("$.error").value(startsWith("Finding songs on YouTube by name needs")));
+
+        // The list to choose from: the same rules.
+        mvc.perform(get("/api/youtube/search").param("title", " ")).andExpect(status().isBadRequest());
+        mvc.perform(get("/api/youtube/search").param("title", "Mr. Brightside").param("artist", "The Killers"))
+            .andExpect(status().isServiceUnavailable())
+            .andExpect(jsonPath("$.error").value(startsWith("Finding songs on YouTube by name needs")));
     }
 
     @Test

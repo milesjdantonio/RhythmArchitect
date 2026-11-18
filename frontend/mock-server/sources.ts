@@ -1,5 +1,8 @@
 // Where the mock backend finds songs it doesn't have yet:
-//   findVideo   — the YouTube video that plays the song (its audio is never fetched).
+//   findVideos  — the YouTube videos that play the song, best first, for the player to preview
+//                 and choose from (their audio is never fetched). A search by name costs YouTube
+//                 quota (about 1% of a day's), so its results are kept for a while.
+//   findVideo   — the best of them.
 //   findFanChart — a fan-made osu! chart of it, for when the browser can't listen to the video.
 //
 // Network rules: only metadata and chart text come over the wire (YouTube's search API or
@@ -42,48 +45,78 @@ const isoSeconds = (d: string) => {
 };
 const decode = (s: string) => s.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 
+/** How many videos a search offers (YouTubeService.OFFERED). */
+const OFFERED = 5;
+/** Searches kept (by what was typed), for KEEP_MS. */
+const KEEP_MS = 6 * 60 * 60 * 1000;
+const kept = new Map<string, { at: number; videos: VideoMatch[] }>();
+
+/** The video that plays the song: the best of findVideos. */
 export async function findVideo(title: string, artist: string): Promise<VideoMatch> {
+  return (await findVideos(title, artist))[0];
+}
+
+/**
+ * The videos that play the song, best first (at most OFFERED; never empty): every one a song that
+ * can be played outside YouTube. A pasted link is just that video.
+ */
+export async function findVideos(title: string, artist: string): Promise<VideoMatch[]> {
   const pasted = videoIdIn(title) ?? videoIdIn(artist);
   const fixture = process.env.MOCK_YT_VIDEO;
   if (fixture && !pasted) {
-    return { videoId: fixture, title: `${title}${artist ? ` - ${artist}` : ''} (test video)`, channel: 'Test channel', songTitle: title, songArtist: artist, seconds: Number(process.env.MOCK_YT_SECONDS) || undefined };
+    return [{ videoId: fixture, title: `${title}${artist ? ` - ${artist}` : ''} (test video)`, channel: 'Test channel', songTitle: title, songArtist: artist, seconds: Number(process.env.MOCK_YT_SECONDS) || undefined }];
   }
-  if (pasted) {
-    if (fixture) return { videoId: pasted, title: 'Pasted video', channel: 'Test channel', songTitle: 'Pasted video', songArtist: artist };
-    // oEmbed needs no key and says whether the video can be embedded (401/403 when it can't).
-    let info: { title: string; author_name: string };
-    try {
-      info = (await getJson(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${pasted}`)}`)) as typeof info;
-    } catch (e) {
-      const status = /answered (\d+)/.exec((e as Error).message)?.[1];
-      if (status === '401' || status === '403') throw new SourceError("That video can't be played outside YouTube (its owner turned embedding off). Try another upload of the song.", 422);
-      if (status === '404' || status === '400') throw new SourceError("YouTube doesn't know that video. Check the link.", 404);
-      throw new SourceError("Couldn't reach YouTube to check that link. Try again.", 502);
-    }
-    // Only songs: the title and channel, and with an API key the length and category too.
-    const typedTitle = videoIdIn(title) ? '' : title;
-    let seconds: number | undefined;
-    let categoryId: string | undefined;
-    const key = process.env.YOUTUBE_API_KEY;
-    if (key) {
-      try {
-        const d = ((await getJson(`https://www.googleapis.com/youtube/v3/videos?${new URLSearchParams({ part: 'snippet,contentDetails', id: pasted, key })}`)) as { items?: YtVideo[] }).items?.[0];
-        if (d) { seconds = isoSeconds(d.contentDetails.duration); categoryId = d.snippet?.categoryId; }
-      } catch { /* the title check still applies */ }
-    }
-    const why = notSongReason({ title: info.title, channel: info.author_name, seconds, categoryId }, `${typedTitle} ${videoIdIn(artist) ? '' : artist}`);
-    if (why) throw new SourceError(`That video isn't a song: ${why}. Paste the link to the song itself (its official audio or video).`, 422);
-    const guess = songFromVideo(info.title, info.author_name);
-    return {
-      videoId: pasted, title: info.title, channel: info.author_name,
-      songTitle: typedTitle || guess.title, songArtist: artist && !videoIdIn(artist) ? artist : guess.artist,
-      thumbnail: `https://i.ytimg.com/vi/${pasted}/mqdefault.jpg`, seconds,
-    };
-  }
+  if (pasted) return [await pastedVideo(pasted, title, artist, fixture)];
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) {
     throw new SourceError("Finding songs on YouTube by name needs a YouTube Data API key (YOUTUBE_API_KEY in .env.local, then restart the dev server). Or paste the song's YouTube link into Title.", 503);
   }
+  const q = `${bare(title)}\n${bare(artist)}`;
+  const was = kept.get(q);
+  if (was && Date.now() - was.at < KEEP_MS) return was.videos;
+  const videos = await searchVideos(title, artist, key);
+  if (kept.size >= 300) for (const [k, v] of kept) if (Date.now() - v.at >= KEEP_MS) kept.delete(k);
+  if (kept.size >= 300) kept.clear();
+  kept.set(q, { at: Date.now(), videos });
+  return videos;
+}
+
+/** A pasted link: oEmbed needs no key and says whether the video can be embedded (401/403 when it can't). */
+async function pastedVideo(pasted: string, title: string, artist: string, fixture?: string): Promise<VideoMatch> {
+  if (fixture) return { videoId: pasted, title: 'Pasted video', channel: 'Test channel', songTitle: 'Pasted video', songArtist: artist };
+  // oEmbed needs no key and says whether the video can be embedded (401/403 when it can't).
+  let info: { title: string; author_name: string };
+  try {
+    info = (await getJson(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${pasted}`)}`)) as typeof info;
+  } catch (e) {
+    const status = /answered (\d+)/.exec((e as Error).message)?.[1];
+    if (status === '401' || status === '403') throw new SourceError("That video can't be played outside YouTube (its owner turned embedding off). Try another upload of the song.", 422);
+    if (status === '404' || status === '400') throw new SourceError("YouTube doesn't know that video. Check the link.", 404);
+    throw new SourceError("Couldn't reach YouTube to check that link. Try again.", 502);
+  }
+  // Only songs: the title and channel, and with an API key the length and category too.
+  const typedTitle = videoIdIn(title) ? '' : title;
+  let seconds: number | undefined;
+  let categoryId: string | undefined;
+  const key = process.env.YOUTUBE_API_KEY;
+  if (key) {
+    try {
+      const d = ((await getJson(`https://www.googleapis.com/youtube/v3/videos?${new URLSearchParams({ part: 'snippet,contentDetails', id: pasted, key })}`)) as { items?: YtVideo[] }).items?.[0];
+      if (d) { seconds = isoSeconds(d.contentDetails.duration); categoryId = d.snippet?.categoryId; }
+    } catch { /* the title check still applies */ }
+  }
+  const why = notSongReason({ title: info.title, channel: info.author_name, seconds, categoryId }, `${typedTitle} ${videoIdIn(artist) ? '' : artist}`);
+  if (why) throw new SourceError(`That video isn't a song: ${why}. Paste the link to the song itself (its official audio or video).`, 422);
+  const guess = songFromVideo(info.title, info.author_name);
+  return {
+    videoId: pasted, title: info.title, channel: info.author_name,
+    songTitle: typedTitle || guess.title, songArtist: artist && !videoIdIn(artist) ? artist : guess.artist,
+    thumbnail: `https://i.ytimg.com/vi/${pasted}/mqdefault.jpg`, seconds,
+  };
+}
+
+/** YouTube's search (music only), ranked: the songs that can be played outside YouTube, best first. */
+async function searchVideos(title: string, artist: string, key: string): Promise<VideoMatch[]> {
   const q = `${artist} ${title}`.trim();
   const search = (await getJson(`https://www.googleapis.com/youtube/v3/search?${new URLSearchParams({
     // Music only (YouTube's Music category).
@@ -104,13 +137,12 @@ export async function findVideo(title: string, artist: string): Promise<VideoMat
     })
     .filter((x) => x.ok)
     .sort((a, b) => b.score - a.score);
-  const best = ranked[0];
-  if (!best) throw new SourceError(`None of YouTube's videos for “${q}” is a song that can be played outside YouTube. Check the name, or paste the song's link.`, 404);
-  return {
-    videoId: best.i.id.videoId, title: best.v.title, channel: best.v.channel,
-    songTitle: title, songArtist: artist || songFromVideo(best.v.title, best.v.channel).artist,
-    seconds: best.v.seconds, thumbnail: best.i.snippet.thumbnails?.medium?.url,
-  };
+  if (!ranked.length) throw new SourceError(`None of YouTube's videos for “${q}” is a song that can be played outside YouTube. Check the name, or paste the song's link.`, 404);
+  return ranked.slice(0, OFFERED).map((r) => ({
+    videoId: r.i.id.videoId, title: r.v.title, channel: r.v.channel,
+    songTitle: title, songArtist: artist || songFromVideo(r.v.title, r.v.channel).artist,
+    seconds: r.v.seconds, thumbnail: r.i.snippet.thumbnails?.medium?.url,
+  }));
 }
 
 // ---------------------------------------------------------------- osu!
