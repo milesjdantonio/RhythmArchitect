@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.startsWith;
@@ -28,6 +29,9 @@ import org.springframework.test.web.servlet.MockMvc;
 @SpringBootTest
 @AutoConfigureMockMvc
 class ApiTests {
+    /** The Overdrive run shared with frontend score.test.ts and GameScoreTest. */
+    static final String OVERDRIVE_RUN = "PPPPPPPPPPPPPPPPPPPPOPPGMUH1000;PM";
+
 
     static Path dir;
 
@@ -112,33 +116,47 @@ class ApiTests {
 
         mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("P")))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.best.ultra.score").value(100))
+            .andExpect(jsonPath("$.best.ultra.score").value(1000))
             .andExpect(jsonPath("$.best.ultra.maxCombo").value(1))
             .andExpect(jsonPath("$.best.ultra.accuracy").value(1.0))
             .andExpect(jsonPath("$.best.ultra.grade").value("S"))
-            .andExpect(jsonPath("$.best.ultra.rules").value("score"));
+            .andExpect(jsonPath("$.best.ultra.rules").value("overdrive"));
 
         mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("P")))
-            .andExpect(jsonPath("$.best.ultra.score").value(100));
+            .andExpect(jsonPath("$.best.ultra.score").value(1000));
 
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("PPX")))
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("PPZ")))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
 
         // A recorded Hard run is checked against the chart and counted again through main.GameScore.
         String recorded = "{\"difficulty\":\"hard\",\"score\":999999,\"accuracy\":1,\"maxCombo\":99,\"grade\":\"S\",\"run\":\"%s\"}";
 
         mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPPPPPPPPPGEH1500;MLBP")))
-            .andExpect(jsonPath("$.best.hard.score").value(1860))
+            .andExpect(jsonPath("$.best.hard.score").value(18600))
             .andExpect(jsonPath("$.best.hard.maxCombo").value(12))
             .andExpect(jsonPath("$.best.hard.accuracy").value(1275.0 / 1600))
             .andExpect(jsonPath("$.best.hard.grade").value("C"))
-            .andExpect(jsonPath("$.best.hard.rules").value("score"));
+            .andExpect(jsonPath("$.best.hard.rules").value("overdrive"));
 
         mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("P")))
-            .andExpect(jsonPath("$.best.hard.score").value(1860));
+            .andExpect(jsonPath("$.best.hard.score").value(18600));
 
-        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPX")))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPZ")))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
+
+        // Overdrive: the run in score.test.ts and GameScoreTest (20 Perfects fill the charge, O sets it
+        // off: +1 on the multiplier). Set off without a full charge, the run is refused.
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted(OVERDRIVE_RUN)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.best.ultra.score").value(47400))
+            .andExpect(jsonPath("$.best.ultra.maxCombo").value(23))
+            .andExpect(jsonPath("$.best.ultra.accuracy").value(closeTo(2375.0 / 2600, 1e-12)));
+
+        // Refused: Overdrive without a full charge, a grace ended with none running, ended twice.
+        for (String bad : new String[] { "PPPO", "PU", "P".repeat(20) + "OUU" }) {
+            mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted(bad)))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
+        }
 
         // Runs the Ultra chart couldn't have given: more tiles than it has, a hold held longer than
         // its longest, more holds than it has. Every tile judged once is fine.
@@ -152,7 +170,7 @@ class ApiTests {
         mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("P".repeat(98) + "H1810;")))
             .andExpect(status().isOk()).andExpect(jsonPath("$.best.ultra.maxCombo").value(98));
 
-        mvc.perform(get("/api/songs/" + scored)).andExpect(jsonPath("$.plays").value(5));
+        mvc.perform(get("/api/songs/" + scored)).andExpect(jsonPath("$.plays").value(6));
     }
 
     @Test

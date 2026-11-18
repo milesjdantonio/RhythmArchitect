@@ -93,6 +93,23 @@ class SongTest
     }
 
     @Test
+    void getChartBetweenKeepsOnlyTheStretchInOrderAndLeavesTheChart()
+    {
+        Song s = song();
+        s.setChart(Difficulty.HARD, chart(10)); // notes at 0, 0.5, ... 4.5 s
+        Queue<Note> part = s.getChartBetween(Difficulty.HARD, 1.0, 2.5);
+        assertEquals(3, part.getSize());
+        assertEquals(1.0, part.dequeue().getTimeStamp(), 1e-9);
+        assertEquals(1.5, part.dequeue().getTimeStamp(), 1e-9);
+        assertEquals(2.0, part.dequeue().getTimeStamp(), 1e-9);
+        assertEquals(10, s.getChart(Difficulty.HARD).getSize(), "the chart is left whole");
+        assertEquals(0.0, s.getChart(Difficulty.HARD).peek().getTimeStamp(), 1e-9);
+        assertTrue(s.getChartBetween(Difficulty.HARD, 20, 30).isEmpty(), "an empty stretch");
+        assertNull(s.getChartBetween(Difficulty.EASY, 0, 1));
+        assertThrows(IllegalArgumentException.class, () -> s.getChartBetween(Difficulty.HARD, 3, 1));
+    }
+
+    @Test
     void aChartPlaysInTheOrderItWasWritten()
     {
         Song s = song();

@@ -10,7 +10,7 @@
 // If the browser takes the graphics chip away from the stage (moving the window to a monitor on
 // another graphics adapter, a driver reset), the worker says so and the proxy starts a fresh
 // canvas and worker in its place, replaying what the stage keeps (colours, tempo, the notes, the
-// ghost chart, fever, sleeping): the game carries on. After MAX_RESTARTS in a minute it stops trying.
+// ghost chart, fever, Overdrive, sleeping): the game carries on. After MAX_RESTARTS in a minute it stops trying.
 
 import { perf } from '../lib/perf';
 import type { SceneEvent } from '../background/scene';
@@ -23,7 +23,8 @@ export type ToStage =
   | { type: 'size'; width: number; height: number; dpr: number }
   | { type: 'notes'; time: Float32Array; end: Float32Array; lane: Uint8Array; hold: Uint8Array }
   /** `frame.state`: the state of the notes from index `frame.from` on (the ones that can still change). */
-  | { type: 'batch'; calls: [string, unknown[]][]; frame?: { t: number; at: number; state: Uint8Array; from: number } }
+  /** `frame.rate`: song seconds per real second (practice slows it), for the worker to carry the time on at. */
+  | { type: 'batch'; calls: [string, unknown[]][]; frame?: { t: number; at: number; state: Uint8Array; from: number; rate: number } }
   | { type: 'hold' }
   | { type: 'sleep'; on: boolean }
   /** Dev and tests only: take the GPU away (see Stage3D.loseGpu). */
@@ -51,7 +52,7 @@ export function unpackNote(n: StageNote, b: number) {
 export const wallMs = () => performance.timeOrigin + performance.now();
 
 /** The calls whose effect lasts (replayed on a fresh stage after the GPU was lost). */
-const STICKY = new Set(['setTiming', 'setHues', 'setGhostChart', 'setFever']);
+const STICKY = new Set(['setTiming', 'setHues', 'setGhostChart', 'setFever', 'setOverdrive', 'setOverdriveReady', 'setOverdriveLow']);
 /** Fresh stages at most this many times a minute (then it stops: something is badly wrong). */
 const MAX_RESTARTS = 3;
 /**
@@ -175,7 +176,7 @@ export class StageProxy {
       queueMicrotask(() => { if (this.calls.length) this.flush(); this.flushing = false; });
     }
   }
-  private flush(frame?: { t: number; at: number; state: Uint8Array; from: number }) {
+  private flush(frame?: { t: number; at: number; state: Uint8Array; from: number; rate: number }) {
     const calls = this.calls;
     this.calls = [];
     this.post({ type: 'batch', calls, frame }, frame ? [frame.state.buffer] : []);
@@ -186,7 +187,7 @@ export class StageProxy {
    * each note that can still change). `at`: when the time was read (performance.now()), so the
    * worker carries it on from then.
    */
-  frame(t: number, notes?: StageNote[], at = performance.now()) {
+  frame(t: number, notes?: StageNote[], at = performance.now(), rate = 1) {
     // Showcase: no notes (the worker's stage plays its ghost chart).
     const list = notes ?? [];
     let all = false;
@@ -209,7 +210,7 @@ export class StageProxy {
     else while (to < list.length && list[to].time < t + AHEAD) to++;
     const state = new Uint8Array(to - from);
     for (let i = from; i < to; i++) state[i - from] = packNote(list[i]);
-    this.flush({ t, at: performance.timeOrigin + at, state, from: all ? 0 : this.from });
+    this.flush({ t, at: performance.timeOrigin + at, state, from: all ? 0 : this.from, rate });
   }
 
   /** Stop carrying the time on (the game paused). */
@@ -240,6 +241,9 @@ export class StageProxy {
   section(force = false) { this.call('section', force); }
   cue(kind: 'build' | 'drop' | 'break' | 'flash', strength = 1) { this.call('cue', kind, strength); }
   setFever(on: boolean) { this.call('setFever', on); }
+  setOverdrive(level: number, again = false, broken = false) { this.call('setOverdrive', level, again, broken); }
+  setOverdriveReady(on: boolean) { this.call('setOverdriveReady', on); }
+  setOverdriveLow(on: boolean) { this.call('setOverdriveLow', on); }
   setPressed(lane: number, down: boolean) { this.call('setPressed', lane, down); }
   onBeat(downbeat: boolean) { this.call('onBeat', downbeat); }
   clear(full: boolean) { this.call('clear', full); }

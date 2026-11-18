@@ -25,7 +25,10 @@ export function layoutFor(w: number, h: number, lanes: number, inset = 0): Layou
   return { w, h, left, laneW, lanes, hitY };
 }
 
-const hsl = (h: number, s: number, l: number, a = 1) => `hsl(${h.toFixed(1)} ${s}% ${l}% / ${a})`;
+const raw = (h: number, s: number, l: number, a = 1) => `hsl(${h.toFixed(1)} ${s}% ${l}% / ${a})`;
+/** How far the colour is drained this frame (Overdrive's Eclipse: white light). */
+let drained = 0;
+const hsl = (h: number, s: number, l: number, a = 1) => raw(h, s * (1 - drained), l, a);
 export const laneHue = (lane: number, lanes: number, [hA, hB]: [number, number]) => {
   const d = ((((hB - hA) % 360) + 540) % 360) - 180;
   return (hA + (d * lane) / Math.max(1, lanes - 1) + 360) % 360;
@@ -50,11 +53,14 @@ interface Frame {
   beatPulse: number;
   /** When bands of light started climbing the walls (seconds of song time), newest last. */
   climbs?: number[];
+  /** Overdrive's Eclipse: how far the colour is drained (0..1). */
+  mono?: number;
 }
 
 export function drawField(g: CanvasRenderingContext2D, L: Layout, f: Frame) {
   const { left, laneW, lanes, hitY, h } = L;
   const width = laneW * lanes;
+  drained = f.mono ?? 0;
   g.clearRect(0, 0, L.w, L.h);
 
   // Field glass.

@@ -64,10 +64,33 @@ public class YouTubeService {
             throw unreachable();
         }
         String videoTitle = info.path("title").asString(""), channel = info.path("author_name").asString("");
-        Matching.SongName guess = Matching.songFromVideo(videoTitle, channel);
         String typedTitle = Text.videoIdIn(title) != null ? "" : title;
+        // Only songs: the title and channel, and with an API key the length and category too.
+        Integer seconds = null;
+        String categoryId = null;
+        if (apiKey != null && !apiKey.isBlank()) {
+            try {
+                Map<String, String> dp = new LinkedHashMap<>();
+                dp.put("part", "snippet,contentDetails");
+                dp.put("id", id);
+                dp.put("key", apiKey);
+                JsonNode d = http.getJson("https://www.googleapis.com/youtube/v3/videos?" + Http.query(dp)).path("items").path(0);
+                if (!d.isMissingNode()) {
+                    seconds = isoSeconds(d.path("contentDetails").path("duration").asString(""));
+                    categoryId = d.path("snippet").path("categoryId").asString(null);
+                }
+            } catch (IOException e) {
+                // The title check still applies.
+            }
+        }
+        String typedArtist = Text.videoIdIn(artist) != null ? "" : artist;
+        String why = Matching.notSongReason(videoTitle, channel, seconds, categoryId, typedTitle + " " + typedArtist);
+        if (why != null) {
+            throw new ApiException(422, "That video isn't a song: " + why + ". Paste the link to the song itself (its official audio or video).");
+        }
+        Matching.SongName guess = Matching.songFromVideo(videoTitle, channel);
         String songArtist = !artist.isEmpty() && Text.videoIdIn(artist) == null ? artist : guess.artist();
-        return new VideoMatch(id, videoTitle, channel, typedTitle.isEmpty() ? guess.title() : typedTitle, songArtist, null,
+        return new VideoMatch(id, videoTitle, channel, typedTitle.isEmpty() ? guess.title() : typedTitle, songArtist, seconds,
             "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg");
     }
 
@@ -78,6 +101,7 @@ public class YouTubeService {
             sp.put("part", "snippet");
             sp.put("type", "video");
             sp.put("videoEmbeddable", "true");
+            sp.put("videoCategoryId", Matching.MUSIC_CATEGORY); // music only
             sp.put("maxResults", "10");
             sp.put("q", q);
             sp.put("key", apiKey);
@@ -87,7 +111,7 @@ public class YouTubeService {
             if (items.isEmpty()) throw ApiException.notFound("YouTube has nothing for “" + q + "”.");
 
             Map<String, String> dp = new LinkedHashMap<>();
-            dp.put("part", "contentDetails,status");
+            dp.put("part", "snippet,contentDetails,status");
             dp.put("id", String.join(",", items.stream().map(i -> i.path("id").path("videoId").asString()).toList()));
             dp.put("key", apiKey);
             Map<String, JsonNode> details = new HashMap<>();
@@ -104,10 +128,13 @@ public class YouTubeService {
                 String vt = decode(i.path("snippet").path("title").asString(""));
                 String ch = decode(i.path("snippet").path("channelTitle").asString(""));
                 Integer secs = d == null ? null : isoSeconds(d.path("contentDetails").path("duration").asString(""));
+                String category = d == null ? null : d.path("snippet").path("categoryId").asString(null);
+                if (Matching.notSongReason(vt, ch, secs, category, title + " " + artist) != null) continue;
                 ranked.add(new Ranked(i, vt, ch, secs, Matching.videoScore(vt, ch, secs, title, artist)));
             }
             Ranked best = ranked.stream().max(Comparator.comparingDouble(Ranked::score)).orElseThrow(
-                () -> ApiException.notFound("None of YouTube's videos for “" + q + "” can be played outside YouTube."));
+                () -> ApiException.notFound("None of YouTube's videos for “" + q + "” is a song that can be played outside YouTube. "
+                    + "Check the name, or paste the song's link."));
             String thumb = best.item.path("snippet").path("thumbnails").path("medium").path("url").asString(null);
             String songArtist = artist.isEmpty() ? Matching.songFromVideo(best.title, best.channel).artist() : artist;
             return new VideoMatch(best.item.path("id").path("videoId").asString(), best.title, best.channel, title, songArtist,

@@ -1,6 +1,6 @@
-// combo.riv: the score multiplier meter. Four thin slanted bars light up ice, rose, gold, lavender
-// as the multiplier climbs; at x4 they shimmer. The number itself is drawn by the app.
-// State machine "Combo": number `level` 0..4, trigger `bump` (a tile was hit),
+// combo.riv: the combo multiplier meter. Five thin slanted bars light up ice, rose, peach, gold,
+// lavender as the multiplier climbs; at x5 they shimmer. The number itself is drawn by the app.
+// State machine "Combo": number `level` 0..5, trigger `bump` (a tile was hit),
 // trigger `break` (combo lost: the meter shakes and flashes red).
 
 import { RivFile, EASE } from '../riv.mjs';
@@ -11,17 +11,18 @@ export default function build() {
   const W = 240, H = 64;
   const ab = f.artboard({ name: 'Combo', width: W, height: H });
   const meter = ab.node(null, { name: 'meter', x: W / 2, y: H / 2 });
-  const COLORS4 = [COLORS.cyan, COLORS.pink, COLORS.sun, COLORS.violet];
+  const COLORS5 = [COLORS.cyan, COLORS.pink, COLORS.orange, COLORS.sun, COLORS.violet];
+  const TOP = COLORS5.length;
   const DIM = COLORS.dim;
 
-  const segs = COLORS4.map((color, i) => {
-    const node = ab.node(meter, { name: `seg${i}`, x: -84 + i * 56 });
+  const segs = COLORS5.map((color, i) => {
+    const node = ab.node(meter, { name: `seg${i}`, x: -88 + i * 44 });
     const glowS = ab.shape(node);
-    ab.path(glowS, [[-22, 4], [-19, -4], [27, -4], [24, 4]], { radius: 1.5 });
+    ab.path(glowS, [[-17, 4], [-14, -4], [21, -4], [18, 4]], { radius: 1.5 });
     const glow = ab.fill(glowS, color, { alpha: 0 });
     ab.feather(glow, 12);
     const s = ab.shape(node);
-    ab.path(s, [[-22, 4], [-19, -4], [27, -4], [24, 4]], { radius: 1.5 });
+    ab.path(s, [[-17, 4], [-14, -4], [21, -4], [18, 4]], { radius: 1.5 });
     const fill = ab.fill(s, DIM);
     ab.stroke(s, '#ffffff', 1.2, { alpha: 0.18 });
     return { node, glow, fill, color };
@@ -34,7 +35,7 @@ export default function build() {
   ab.feather(redFill, 14);
 
   const pose = (k) => {
-    const loop = k === 4;
+    const loop = k === TOP;
     const a = ab.animation(`level-${k}`, { duration: loop ? 90 : 16, loop: loop ? 1 : 0 });
     segs.forEach((s, i) => {
       const on = i < k;
@@ -52,7 +53,7 @@ export default function build() {
     });
     return a;
   };
-  const levels = [0, 1, 2, 3, 4].map(pose);
+  const levels = [0, 1, 2, 3, 4, 5].map(pose);
 
   const rest = ab.animation('rest', { duration: 1 });
   rest.key(meter, 'scaleX', [[0, 1, 'hold']]);
@@ -76,7 +77,7 @@ export default function build() {
   ls.forEach((from, i) => ls.forEach((to, j) => {
     if (i === j) return;
     // Exactly one transition matches each level value.
-    lv.transition(from, to, { conditions: j === 4 ? [{ input: level, op: '>=', value: 4 }] : [{ input: level, op: '==', value: j }] });
+    lv.transition(from, to, { conditions: j === TOP ? [{ input: level, op: '>=', value: TOP }] : [{ input: level, op: '==', value: j }] });
   }));
   const fx = sm.layer('FX');
   const sRest = fx.state(rest), b1 = fx.state(bump), b2 = fx.state(bump), k1 = fx.state(brk);

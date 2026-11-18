@@ -67,6 +67,43 @@ public class Song
     }
 
     /**
+     * Practice mode: a new queue with only the notes of one stretch of a chart (those starting at
+     * or after {@code from} and before {@code to}, in seconds), in the order they are played. The
+     * chart itself is left as it was (each note goes round its queue once).
+     *
+     * @param difficulty which chart
+     * @param from       where the stretch starts (seconds)
+     * @param to         where it ends (seconds, after {@code from})
+     * @return the stretch's notes (empty when none fall in it), or null when the difficulty is
+     *         null or has no chart
+     * @throws IllegalArgumentException when {@code from} isn't before {@code to}
+     */
+    public Queue<Note> getChartBetween(Difficulty difficulty, double from, double to)
+    {
+        if(!(from < to))
+        {
+            throw new IllegalArgumentException("A stretch must start before it ends.");
+        }
+        Queue<Note> chart = getChart(difficulty);
+        if(chart == null)
+        {
+            return null;
+        }
+        Queue<Note> part = new Queue<Note>();
+        int size = chart.getSize();
+        for(int i = 0; i < size; i++)
+        {
+            Note n = chart.dequeue();
+            if(n.getTimeStamp() >= from && n.getTimeStamp() < to)
+            {
+                part.enqueue(n);
+            }
+            chart.enqueue(n);
+        }
+        return part;
+    }
+
+    /**
      * Assigns a note queue to the difficulty.
      *
      * @param difficulty which chart

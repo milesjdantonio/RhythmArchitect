@@ -10,6 +10,7 @@
 //   POST   /api/songs/:id/scores      ScoreSubmit -> Song  (counts a play, keeps the best)
 //   GET    /api/search?title=&artist= -> { results: SongSummary[] }  (best matches first, max 8)
 //   GET    /api/favorites?q=          -> { results: SongSummary[] }  (favourites, newest first; q filters title or artist)
+//   GET    /api/health                -> { ok: true }  (the app asks this when it opens: is the server up?)
 //   GET    /api/library               -> { results: SongSummary[] }  (every song, A to Z by title: the music bank)
 //   GET    /api/youtube?title=&artist= -> VideoMatch  (the YouTube video that plays the song)
 //   POST   /api/fan-chart             FanChartRequest -> Song (201)  (an osu! fan chart, saved)
@@ -269,15 +270,16 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           song.plays += 1;
           const prev = song.best[body.difficulty];
           const score = replayed ? replayed.score : Math.round(body.score);
-          if (!prev || (replayed && prev.rules !== 'score') || score > prev.score) {
+          if (!prev || (replayed && prev.rules !== 'overdrive') || score > prev.score) {
             song.best[body.difficulty] = replayed
-              ? { score, accuracy: replayed.accuracy, maxCombo: replayed.maxCombo, grade: gradeFor(replayed.accuracy, body.grade === 'F'), at: new Date().toISOString(), rules: 'score' }
+              ? { score, accuracy: replayed.accuracy, maxCombo: replayed.maxCombo, grade: gradeFor(replayed.accuracy, body.grade === 'F'), at: new Date().toISOString(), rules: 'overdrive' }
               : { score, accuracy: body.accuracy, maxCombo: body.maxCombo, grade: body.grade, at: new Date().toISOString() };
           }
           save(songs);
           return send(res, 200, song);
         }
       }
+      if (parts[0] === 'health' && parts.length === 1 && method === 'GET') return send(res, 200, { ok: true });
       if (parts[0] === 'library' && parts.length === 1 && method === 'GET') {
         return send(res, 200, { results: librarySongs(load()) });
       }

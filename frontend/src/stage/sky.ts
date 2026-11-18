@@ -353,11 +353,13 @@ export class SkyGL {
     this.sim.shapes(S);
     if (this.sim.baseVersion !== this.baseVersion) { this.baseVersion = this.sim.baseVersion; this.baseTex.needsUpdate = true; }
     const { w } = S;
+    // Overdrive's Eclipse drains the colour: every saturation scaled down (white light on black).
+    const sat = 1 - S.mono;
     const fill = (src: number[], n: number) => (i: number, [seg, col, wid]: Float32Array[]) => {
       const o = i * n;
       seg[i * 4] = src[o]; seg[i * 4 + 1] = src[o + 1]; seg[i * 4 + 2] = src[o + 2]; seg[i * 4 + 3] = src[o + 3];
       wid[i] = src[o + 4];
-      const [r, g, b] = hslRgb(src[o + 5], src[o + 6], src[o + 7]);
+      const [r, g, b] = hslRgb(src[o + 5], src[o + 6] * sat, src[o + 7]);
       col[i * 4] = r; col[i * 4 + 1] = g; col[i * 4 + 2] = b; col[i * 4 + 3] = src[o + 8];
     };
     this.sand.set(Math.min(SAND_MAX, S.sand.length / 9), fill(S.sand, 9));
@@ -365,7 +367,7 @@ export class SkyGL {
     this.circles.set(Math.min(CIRCLE_MAX, S.circles.length / 8), (i, [cir, col]) => {
       const o = i * 8;
       cir[i * 4] = S.circles[o]; cir[i * 4 + 1] = S.circles[o + 1]; cir[i * 4 + 2] = S.circles[o + 2]; cir[i * 4 + 3] = S.circles[o + 3];
-      const [r, g, b] = hslRgb(S.circles[o + 4], S.circles[o + 5], S.circles[o + 6]);
+      const [r, g, b] = hslRgb(S.circles[o + 4], S.circles[o + 5] * sat, S.circles[o + 6]);
       col[i * 4] = r; col[i * 4 + 1] = g; col[i * 4 + 2] = b; col[i * 4 + 3] = S.circles[o + 7];
     });
     this.segMat.uniforms.uPixel.value = w / this.sandRT.width;
@@ -374,15 +376,15 @@ export class SkyGL {
     this.circleMat.uniforms.uPixel.value = skyPx;
     this.baseMat.uniforms.uScale.value = S.baseScale;
     const [hA, hB] = S.songHues;
-    (this.pulseMat.uniforms.uA.value as THREE.Vector3).set(...hslRgb(hA, 100, 62));
-    (this.pulseMat.uniforms.uB.value as THREE.Vector3).set(...hslRgb(hB, 100, 60));
-    (this.pulseMat.uniforms.uC.value as THREE.Vector3).set(...hslRgb(hB, 100, 66));
+    (this.pulseMat.uniforms.uA.value as THREE.Vector3).set(...hslRgb(hA, 100 * sat, 62));
+    (this.pulseMat.uniforms.uB.value as THREE.Vector3).set(...hslRgb(hB, 100 * sat, 60));
+    (this.pulseMat.uniforms.uC.value as THREE.Vector3).set(...hslRgb(hB, 100 * sat, 66));
     this.pulseMat.uniforms.uOpacity.value = S.pulse;
     this.pulseMat.uniforms.uScale.value = S.pulseScale;
     this.flashMat.uniforms.uMiss.value = S.missFlash;
     this.flashMat.uniforms.uDrop.value = S.dropFlash;
-    (this.flashMat.uniforms.uA.value as THREE.Vector3).set(...hslRgb(S.hues[0], 100, 70));
-    (this.flashMat.uniforms.uB.value as THREE.Vector3).set(...hslRgb(S.hues[1], 100, 55));
+    (this.flashMat.uniforms.uA.value as THREE.Vector3).set(...hslRgb(S.hues[0], 100 * sat, 70));
+    (this.flashMat.uniforms.uB.value as THREE.Vector3).set(...hslRgb(S.hues[1], 100 * sat, 55));
     (this.flashMat.uniforms.uSize.value as THREE.Vector2).set(S.w, S.h);
     this.vigMat.uniforms.uOpacity.value = S.vignette;
     if (this.composeMat && this.finalMat) {

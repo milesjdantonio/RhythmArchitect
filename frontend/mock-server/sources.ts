@@ -11,7 +11,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { VideoMatch } from '../src/api/types';
 import { parseOsu, type OsuMap } from '../src/mapping/osu';
-import { bare, setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchBeatmap, type OsuSearchSet } from './match';
+import { bare, MUSIC_CATEGORY, notSongReason, setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchBeatmap, type OsuSearchSet } from './match';
 
 // Mirrors ask apps to name themselves (some refuse anything that looks like a bot or server).
 const UA = 'RythmArchitect/0.1 (private project)';
@@ -34,7 +34,7 @@ async function getText(url: string, timeoutMs = 12_000): Promise<string> {
 // ---------------------------------------------------------------- YouTube
 
 interface YtSearchItem { id: { videoId: string }; snippet: { title: string; channelTitle: string; thumbnails?: { medium?: { url: string } } } }
-interface YtVideo { id: string; contentDetails: { duration: string }; status?: { embeddable?: boolean } }
+interface YtVideo { id: string; contentDetails: { duration: string }; status?: { embeddable?: boolean }; snippet?: { categoryId?: string; title?: string; channelTitle?: string } }
 
 const isoSeconds = (d: string) => {
   const m = /P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/.exec(d);
@@ -60,12 +60,24 @@ export async function findVideo(title: string, artist: string): Promise<VideoMat
       if (status === '404' || status === '400') throw new SourceError("YouTube doesn't know that video. Check the link.", 404);
       throw new SourceError("Couldn't reach YouTube to check that link. Try again.", 502);
     }
-    const guess = songFromVideo(info.title, info.author_name);
+    // Only songs: the title and channel, and with an API key the length and category too.
     const typedTitle = videoIdIn(title) ? '' : title;
+    let seconds: number | undefined;
+    let categoryId: string | undefined;
+    const key = process.env.YOUTUBE_API_KEY;
+    if (key) {
+      try {
+        const d = ((await getJson(`https://www.googleapis.com/youtube/v3/videos?${new URLSearchParams({ part: 'snippet,contentDetails', id: pasted, key })}`)) as { items?: YtVideo[] }).items?.[0];
+        if (d) { seconds = isoSeconds(d.contentDetails.duration); categoryId = d.snippet?.categoryId; }
+      } catch { /* the title check still applies */ }
+    }
+    const why = notSongReason({ title: info.title, channel: info.author_name, seconds, categoryId }, `${typedTitle} ${videoIdIn(artist) ? '' : artist}`);
+    if (why) throw new SourceError(`That video isn't a song: ${why}. Paste the link to the song itself (its official audio or video).`, 422);
+    const guess = songFromVideo(info.title, info.author_name);
     return {
       videoId: pasted, title: info.title, channel: info.author_name,
       songTitle: typedTitle || guess.title, songArtist: artist && !videoIdIn(artist) ? artist : guess.artist,
-      thumbnail: `https://i.ytimg.com/vi/${pasted}/mqdefault.jpg`,
+      thumbnail: `https://i.ytimg.com/vi/${pasted}/mqdefault.jpg`, seconds,
     };
   }
   const key = process.env.YOUTUBE_API_KEY;
@@ -74,24 +86,26 @@ export async function findVideo(title: string, artist: string): Promise<VideoMat
   }
   const q = `${artist} ${title}`.trim();
   const search = (await getJson(`https://www.googleapis.com/youtube/v3/search?${new URLSearchParams({
-    part: 'snippet', type: 'video', videoEmbeddable: 'true', maxResults: '10', q, key,
+    // Music only (YouTube's Music category).
+    part: 'snippet', type: 'video', videoEmbeddable: 'true', videoCategoryId: MUSIC_CATEGORY, maxResults: '10', q, key,
   })}`)) as { items?: YtSearchItem[] };
   const items = (search.items ?? []).filter((i) => i.id?.videoId);
   if (!items.length) throw new SourceError(`YouTube has nothing for “${q}”.`, 404);
   const details = (await getJson(`https://www.googleapis.com/youtube/v3/videos?${new URLSearchParams({
-    part: 'contentDetails,status', id: items.map((i) => i.id.videoId).join(','), key,
+    part: 'snippet,contentDetails,status', id: items.map((i) => i.id.videoId).join(','), key,
   })}`)) as { items?: YtVideo[] };
   const byId = new Map((details.items ?? []).map((d) => [d.id, d]));
   const ranked = items
     .map((i) => {
       const d = byId.get(i.id.videoId);
       const v = { title: decode(i.snippet.title), channel: decode(i.snippet.channelTitle), seconds: d ? isoSeconds(d.contentDetails.duration) : undefined };
-      return { i, v, ok: d?.status?.embeddable !== false, score: videoScore(v, title, artist) };
+      const song = !notSongReason({ ...v, categoryId: d?.snippet?.categoryId }, `${title} ${artist}`);
+      return { i, v, ok: d?.status?.embeddable !== false && song, score: videoScore(v, title, artist) };
     })
     .filter((x) => x.ok)
     .sort((a, b) => b.score - a.score);
   const best = ranked[0];
-  if (!best) throw new SourceError(`None of YouTube's videos for “${q}” can be played outside YouTube.`, 404);
+  if (!best) throw new SourceError(`None of YouTube's videos for “${q}” is a song that can be played outside YouTube. Check the name, or paste the song's link.`, 404);
   return {
     videoId: best.i.id.videoId, title: best.v.title, channel: best.v.channel,
     songTitle: title, songArtist: artist || songFromVideo(best.v.title, best.v.channel).artist,

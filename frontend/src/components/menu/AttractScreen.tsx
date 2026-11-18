@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { KEYS } from '../../game/engine';
+import { laneKeyList, useBinds } from '../../lib/keys';
 import { bus } from '../../lib/bus';
 import { RiveAnim, type RiveHandle } from '../../rive/RiveAnim';
 import { FrameTrace } from '../FrameTrace';
@@ -13,6 +13,7 @@ export function AttractScreen({ state = 'idle' }: { state?: 'idle' | 'loading' |
   const rive = useRef<RiveHandle>(null);
   const [active, setActive] = useState(false);
   const [pulse, setPulse] = useState(0);
+  const binds = useBinds();
   useEffect(() => bus.on('typing', ({ length }) => {
     rive.current?.fire('pulse');
     setActive(length > 0);
@@ -35,11 +36,11 @@ export function AttractScreen({ state = 'idle' }: { state?: 'idle' | 'loading' |
         ) : (
           <>
             <p className="attract-title">Name a song to begin</p>
-            <p className="label">Four lanes · Easy, Medium, Hard</p>
+            <p className="label">Four lanes · Easy, Medium, Hard, Ultra</p>
           </>
         )}
         <div className="attract-keys" aria-label="Keys">
-          {KEYS.map((k, i) => <kbd key={k.code} style={{ '--i': i } as React.CSSProperties}>{k.label}</kbd>)}
+          {laneKeyList(binds).map((k, i) => <kbd key={k.code} style={{ '--i': i } as React.CSSProperties}>{k.label}</kbd>)}
         </div>
       </div>
     </div>

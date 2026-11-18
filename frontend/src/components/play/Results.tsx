@@ -9,6 +9,7 @@ import { Icon } from '../Icon';
 import { VideoSlot } from '../VideoSlot';
 import { fmtTime } from '../../lib/format';
 import { EASE_OUT } from '../../lib/motion';
+import { OVERDRIVE_LOOKS, OVERDRIVE_ROMAN, overdriveVars } from '../../game/overdrive';
 
 export interface RunResult {
   score: number;
@@ -24,6 +25,8 @@ export interface RunResult {
   assisted?: boolean;
   /** A failed run: how far into the song it got, and the song's length (seconds). */
   reached?: { at: number; of: number };
+  /** Overdrive: the highest level reached, how many times it was set off, the points it added. */
+  overdrive?: { peak: number; fired: number; bonus: number };
 }
 
 interface Props {
@@ -66,6 +69,7 @@ export function Results({ song, difficulty, result, previousBest, saving, onRetr
   const newBest = !result.failed && !result.assisted && (previousBest === undefined || result.score > previousBest);
   const timing = result.meanOffsetMs;
   const full = !result.failed && result.counts.miss === 0;
+  const od = result.overdrive;
 
   return (
     <motion.div className="results" role="dialog" aria-modal="true" aria-labelledby="results-title"
@@ -115,6 +119,17 @@ export function Results({ song, difficulty, result, previousBest, saving, onRetr
             <div key={j} className={`stat-${j}`}><dt>{LABEL[j]}</dt><dd className="mono">{result.counts[j]}</dd></div>
           ))}
         </motion.dl>
+        {/* Overdrive: how high it went, how often, and what it added (in the peak level's colour). */}
+        {od && od.fired > 0 && (
+          <motion.div className={`results-od od-${od.peak}`} style={overdriveVars(od.peak) as React.CSSProperties} {...rise(5)}>
+            <span className="results-od-pips" aria-hidden>{OVERDRIVE_ROMAN.slice(1).map((_, i) => <i key={i} className={i < od.peak ? 'is-lit' : ''} />)}</span>
+            <span className="results-od-text">
+              <span className="label">Overdrive</span>
+              <span>Peak {OVERDRIVE_ROMAN[od.peak]} · {OVERDRIVE_LOOKS[od.peak].name} · set off {od.fired} {od.fired === 1 ? 'time' : 'times'}</span>
+            </span>
+            <span className="results-od-bonus mono">+{Math.round(od.bonus).toLocaleString()}</span>
+          </motion.div>
+        )}
         {timing !== null && Math.abs(timing) >= 15 && !result.assisted && (
           <p className="muted small">You hit {Math.abs(Math.round(timing))} ms {timing < 0 ? 'early' : 'late'} on average. If that feels wrong, adjust the audio offset in Settings.</p>
         )}
@@ -122,7 +137,7 @@ export function Results({ song, difficulty, result, previousBest, saving, onRetr
           {saving === 'skipped' ? 'Autoplay run: not saved.' : saving === 'saving' ? 'Saving your score' : saving === 'saved' ? 'Score saved.' : "Couldn't save this score."}
         </p>
 
-        <motion.div className="results-actions" {...rise(5)}>
+        <motion.div className="results-actions" {...rise(6)}>
           <button type="button" className="btn btn-primary" onClick={onRetry} autoFocus><Icon name="retry" /> Play again <kbd>R</kbd></button>
           <a className="btn" href={href.song(song.id, difficulty)}><Icon name="back" size={16} /> Return to main menu <kbd>Esc</kbd></a>
         </motion.div>

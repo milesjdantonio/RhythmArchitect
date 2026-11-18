@@ -25,6 +25,15 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   true when things change. `Main` (the controller) and `Score` are Darsh's: don't write them.
   No AI runs on the server. Its built-in songs are `src/main/resources/seed/songs.json` (`node tools/export-seed.mjs` from
   `frontend/` after they change). Run `./mvnw test` there after changing it.
+- The song bank is a JSON file, or Supabase when `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set
+  (`SupabaseSongs`: its REST API with Java's own HTTP client, no driver or pool, so boots stay
+  fast; `docs/supabase.md`, `docs/supabase.sql`). The browser never talks to Supabase. Keep the
+  backend's boot quick (a sleeping free server wakes on the first visit): no startup work beyond
+  Spring's own (the bank is read in the background, `SongStore.warm`), and the Docker image keeps
+  its AOT cache step. The app shows `BootScreen` while `/api/health` doesn't answer
+  (`src/lib/server.ts`).
+- YouTube videos must be songs (`notSongReason` in `mock-server/match.ts`, `Matching` in the
+  backend: the same rules and the same test cases). Setting up the API key: `docs/youtube-api.md`.
 
 ## Layout (fixed by the user)
 
@@ -56,7 +65,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   16ths, not to one side); where a song's beat drifts off one straight grid they keep their own
   times (snapping there put tiles up to 35 ms off). "On the beat" checks allow 20 ms for that. No sound on key
   presses: the song is the sound; synth songs play every chart note themselves.
-- Every difficulty has 4 lanes, keys D F J K. Difficulty is density, holds, chords and speed. Four
+- Every difficulty has 4 lanes, keys D F J K by default (rebindable: `src/lib/keys.ts`; anything
+  that shows or reads a key uses the player's binds, never a hard-coded D F J K). Difficulty is density, holds, chords and speed. Four
   steps, each about half again the last: Easy (one at a time), Medium (closer), Hard (chords of two,
   taps under holds), Ultra (the whole chart). The same ladder everywhere: `thin.ts` `KEEP` (trained
   mapper), `charts.ts` `RULES` (onset mapper), `osu.ts`/`Osu.java` (fan charts), `engine.ts`
@@ -65,8 +75,24 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   speed is fixed, not a setting: `NOTE_SPEED` (0.85) in `src/game/engine.ts`, the same fall time on
   every song (`fallTime`).
 - Scoring is `main.Score`'s rules (Perfect 100, Good 75, Early/Late 50, accuracy, combo) with the
-  game's combo multiplier (×1-×4) and held-note bonus on top: `main.GameScore` (Score.java itself is
-  Darsh's: add on top, don't edit it). The browser counts with the same rules
+  game's on top: points ×10 (`POINT_SCALE`), the combo multiplier (×1-×5), the held-note bonus,
+  **Overdrive** (a charge from accurate hits; Space adds +1 per level for 48 tiles, up to three
+  levels: ×8; not at the top; any miss ends it, except in its grace: `OVERDRIVE_GRACE`, 5 song
+  seconds after each press, timed by engine.ts) and stray presses (a key with no tile: signal and
+  charge drain, no points): `main.GameScore` (Score.java itself is Darsh's: add on top, don't edit
+  it). The run records `O` (Overdrive), `U` (its grace ended) and `X` (stray); the server refuses an
+  Overdrive the charge couldn't pay for and a grace longer than the chart allows (`graceTiles`,
+  RunReplay and score.ts). Gold tiles were tried and removed. The levels' looks are
+  `src/game/overdrive.ts`: Neon (purple-pink), Eclipse (white on black: `mono` drains the sky,
+  scene.ts/sky.ts, and greys the world) and Prism (rainbow); effect strength is each look's
+  `power` (Stage3D recolours on the CPU, no shader change; the 2D fallback takes its hues and
+  drains for Eclipse). Its effects: Stage3D (`setOverdrive`, `setOverdriveReady`,
+  `setOverdriveLow`: warp streaks, shockwaves, beacons, the flicker), the sky (`overdrive` scene
+  event: warp), `components/play/OverdriveFx.tsx` (the screen: an opacity-only flash, the ready cue,
+  the tally; keep DOM shockwaves and big glows out of it, they cost the page frames at the press),
+  and `overdriveSweep` in playback.ts (the song's whoosh, never YouTube). Fever is the combo's ×5. Practice mode (a part looped,
+  at 50%, 75% or 100%, the speeds YouTube has: `PRACTICE_SPEEDS`, `startSong`'s `rate`; the
+  stage worker carries its clock on at that rate) is never saved. The browser counts with the same rules
   (`src/game/score.ts`) and records the run; the server checks it against the difficulty's
   `Queue<Note>` (`RunReplay.fits`; the mock: `runFits`) and replays it through GameScore
   (`RunReplay`) before keeping a best. Change both together; `score.test.ts`, `GameScoreTest` and
@@ -74,8 +100,9 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 - The server takes every song into the model (`backend/.../songs/SongModel.java`: the bank's JSON
   → `SongWriter.writeSong(..., tiles)` → `main.Song`); new songs and fan charts it can't take in are
   refused (`NewSongCheck`). The bank itself stays JSON.
-- Dev tools live on the game screen (` key): autoplay, the note queue, clock, judgements, tuning,
-  effects, map data. Keep them working when gameplay changes.
+- Dev tools live on the game screen (` key): autoplay (it spends Overdrive when charged), the note
+  queue, clock, judgements, Overdrive, tuning, effects (Overdrive steps through the levels' looks;
+  od ready, od fading), map data. Keep them working when gameplay changes.
 
 ## Generating a beatmap
 
@@ -168,6 +195,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   centred on the screen (the 2D lanes narrow to clear the panel).
 - A failed run plays out before the results (`Stage3D.fail`, `windDown` in `src/audio/playback.ts`,
   the "Signal lost" overlay).
+- Settings → Background: Dynamic (follows the song) or a fixed theme (`src/background/themes.ts`),
+  applied in `forward()` (`background/host.ts`) for the menu's backdrop and the game's sky alike.
 - The backdrop (`src/background/scene.ts`) reacts to the song on the menu and in play: cymatic
   sand, stars streaming toward you, beat rings, crystals on hits/typing, a colour bloom, a palette
   per section. No synthwave sun/grid, no blueprint drafting. Keep it cheap: the user found an
@@ -201,5 +230,7 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 
 - After changing `src/mapping/automap.ts` or `charts.ts`, run `npm run map`. The band benchmark (`tests/unit/automap-band.test.ts`) must keep finding the notes (legato ones too).
 - Before finishing (in `frontend/`): `npx tsc -b`, `npm test`, `npm run test:e2e`, `npm run build`.
+  On this Windows box run vitest from a path that starts with an upper-case `C:` (a lower-case
+  `c:` working directory makes it load twice and every suite fails with "reading 'config'").
 - Windows dev box: write multi-line scripts with the file tool, not shell heredocs (they break on
   quotes).

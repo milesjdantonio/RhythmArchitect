@@ -42,6 +42,52 @@ export function videoScore(v: { title: string; channel: string; seconds?: number
   return s;
 }
 
+/** Words in a video's title that say it isn't a song, whatever else it says (unless the player typed them). */
+export const NOT_A_SONG = ['reaction', 'reacts', 'tutorial', 'how to', 'lesson', 'podcast', 'gameplay', 'walkthrough', 'let s play',
+  'unboxing', 'full album', 'compilation', 'playlist', 'hours', '1 hour', 'livestream', 'live stream', 'asmr', 'prank', 'speedrun',
+  'stream highlights'];
+/** Words that say it probably isn't, unless something marks it as music (songs are called "Breakdown" or "Good News" too). */
+export const MAYBE_NOT_A_SONG = ['review', 'interview', 'vlog', 'trailer', 'teaser', 'documentary', 'explained', 'breakdown',
+  'behind the scenes', 'highlights', 'episode', 'meme', 'analysis', 'news', 'podcast clip'];
+/** Signs a video is a song: how song uploads are titled. */
+const MUSIC_SIGNS = /\b(official (music )?video|official audio|official lyric video|lyric video|lyrics|visuali[sz]er|audio|ft|feat|prod)\b/;
+/** YouTube's Music category. */
+export const MUSIC_CATEGORY = '10';
+/** Songs are between these lengths (seconds). */
+export const SONG_SECONDS = { min: 45, max: 900 };
+
+const has = (t: string, w: string) => new RegExp(`\\b${w}\\b`).test(t);
+const what = (w: string) => (w === 'hours' || w === '1 hour' ? 'long loop' : w === 'let s play' ? "let's play" : w.replace(/s$/, ''));
+
+/**
+ * Why a video isn't a song, or null when it is one. What's known decides: the title and channel
+ * always (a pasted link without an API key has only these), the length and YouTube's category when
+ * the API gave them.
+ * - A title that says it's something else (a reaction, a tutorial, a full album, ten hours of it)
+ *   is never a song, unless the player typed that word.
+ * - A length outside SONG_SECONDS isn't either.
+ * - Something marks it as music: YouTube's Music category, a "- Topic" or VEVO channel, or a song
+ *   upload's title ("Official Audio", "Lyrics", "ft.", "Artist - Title"). Without any of that, a
+ *   title like a review, a trailer or the news isn't a song, and with the category known (not
+ *   Music) nothing else is either.
+ */
+export function notSongReason(v: { title: string; channel: string; seconds?: number; categoryId?: string }, typed = ''): string | null {
+  const t = norm(v.title), ch = norm(v.channel), asked = norm(typed);
+  for (const w of NOT_A_SONG) if (has(t, w) && !asked.includes(w)) return `it looks like a ${what(w)} video, not a song`;
+  if (v.seconds !== undefined && v.seconds > 0) {
+    if (v.seconds < SONG_SECONDS.min) return `it's only ${v.seconds} seconds long`;
+    if (v.seconds > SONG_SECONDS.max) return `it's ${Math.round(v.seconds / 60)} minutes long (a song is under ${SONG_SECONDS.max / 60})`;
+  }
+  const channelSays = / topic$/.test(ch) || /vevo$/.test(ch);
+  const titleSays = MUSIC_SIGNS.test(t) || /\s[-–|]\s/.test(v.title);
+  const music = v.categoryId === MUSIC_CATEGORY || channelSays || titleSays;
+  if (!music) {
+    for (const w of MAYBE_NOT_A_SONG) if (has(t, w) && !asked.includes(w)) return `it looks like a ${what(w)} video, not a song`;
+    if (v.categoryId !== undefined) return "YouTube doesn't list it as music";
+  }
+  return null;
+}
+
 export interface OsuSearchBeatmap { id: number; mode_int: number; cs: number; version: string; difficulty_rating: number; total_length: number }
 export interface OsuSearchSet { id: number; title: string; artist: string; creator: string; status: string; play_count: number; beatmaps: OsuSearchBeatmap[] }
 

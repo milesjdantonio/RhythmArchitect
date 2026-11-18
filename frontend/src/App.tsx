@@ -3,6 +3,8 @@ import { AnimatePresence, MotionConfig, motion } from 'motion/react';
 import { SynthBackground } from './background/SynthBackground';
 import { Intro, shouldShowIntro } from './intro/Intro';
 import { Loader } from './components/Loader';
+import { BootScreen } from './components/BootScreen';
+import { useServer } from './lib/server';
 import { SettingsDialog } from './components/SettingsDialog';
 import { Workspace } from './screens/Workspace';
 // The music bank loads with the menu, not on demand: the menu's song plays on into it, and a
@@ -27,7 +29,12 @@ export function App() {
   const playing = route.name === 'play';
   // Behind the intro the menu is already mounted, hidden, so the hand-off has nothing to load.
   // The game screen is not: it would start playing.
-  const showMain = stage !== 'wait' || !playing;
+  // The song server. The screens open at once (an awake server answers within QUICK_MS); if it
+  // doesn't, they give way to BootScreen while it wakes and open fresh once it's up, so none is left
+  // showing a request that never came back.
+  const server = useServer();
+  const waking = server.state === 'waking' || server.state === 'down';
+  const showMain = !waking && (stage !== 'wait' || !playing);
   // Picking songs happens inside one workspace, so moving between them doesn't remount it.
   const key = route.name === 'play' ? `play-${route.songId}-${route.difficulty}` : route.name === 'bank' ? 'bank' : 'workspace';
 
@@ -71,6 +78,11 @@ export function App() {
           </motion.main>}
         </AnimatePresence>
       </EntranceContext.Provider>
+      <AnimatePresence>
+        {stage === 'done' && waking && (
+          <BootScreen key="boot" state={server.state} since={server.since} onRetry={server.retry} />
+        )}
+      </AnimatePresence>
       <SettingsDialog open={settings} onClose={() => setSettings(false)} />
     </MotionConfig>
   );

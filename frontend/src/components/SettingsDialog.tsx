@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { applyVolumes, resyncPlaying } from '../audio/playback';
 import { DEFAULTS, setSettings, useSettings, type Settings } from '../lib/settings';
-import { KEYS, NOTE_SPEED } from '../game/engine';
+import { NOTE_SPEED } from '../game/engine';
+import { DEFAULT_LANE_KEYS, DEFAULT_OVERDRIVE_KEY, keyLabel, rebind, useBinds } from '../lib/keys';
 import { Icon } from './Icon';
+import { BACKDROP_THEMES } from '../background/themes';
 
 /** A slider that fills with light up to its value (the fill is a CSS variable, --p, 0..100%). */
 function Slider({ id, label, value, min, max, step, show, hint, onChange, children }: {
@@ -34,6 +36,55 @@ function Switch({ label, hint, checked, onChange }: { label: string; hint: strin
       <input type="checkbox" role="switch" checked={checked} onChange={(e) => onChange(e.target.checked)} />
       <span className="switch" aria-hidden />
     </label>
+  );
+}
+
+/**
+ * The keys: a button per lane and one for Overdrive. Click one, then press the key it should be
+ * (Esc cancels). A key bound elsewhere swaps places, so none is ever bound twice.
+ */
+function KeyBinds() {
+  const binds = useBinds();
+  const [listening, setListening] = useState<number | 'overdrive' | null>(null);
+  const [note, setNote] = useState('');
+  useEffect(() => {
+    if (listening === null) return;
+    const down = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === 'Escape') { setListening(null); setNote(''); return; }
+      const next = rebind(binds, listening, e.code);
+      if (!next) { setNote(`${keyLabel(e.code)} is kept for the game (pause, start, dev tools). Pick another key.`); return; }
+      setSettings({ laneKeys: next.lanes, overdriveKey: next.overdrive });
+      setNote('');
+      setListening(null);
+    };
+    // Capture: the dialog's own Esc (closing it) waits while a key is being set.
+    addEventListener('keydown', down, true);
+    return () => removeEventListener('keydown', down, true);
+  }, [listening, binds]);
+  const slot = (key: number | 'overdrive', code: string, name: string) => (
+    <button key={String(key)} type="button" className={`btn btn-sm keybind ${listening === key ? 'is-listening' : ''}`}
+      aria-label={`${name}: ${keyLabel(code) || 'none'}. Change`} onClick={() => setListening(listening === key ? null : key)}>
+      <span className="keybind-name">{name}</span>
+      <kbd>{listening === key ? 'Press a key' : keyLabel(code) || '—'}</kbd>
+    </button>
+  );
+  const isDefault = binds.lanes.join() === DEFAULT_LANE_KEYS.join() && binds.overdrive === DEFAULT_OVERDRIVE_KEY;
+  return (
+    <div className="set-keys">
+      <div className="keybind-row" role="group" aria-label="Lane keys">
+        {binds.lanes.map((code, l) => slot(l, code, `Lane ${l + 1}`))}
+      </div>
+      <div className="keybind-row" role="group" aria-label="Overdrive key">
+        {slot('overdrive', binds.overdrive, 'Overdrive')}
+        {!isDefault && (
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSettings({ laneKeys: DEFAULT_LANE_KEYS, overdriveKey: DEFAULT_OVERDRIVE_KEY })}>Default keys</button>
+        )}
+      </div>
+      <p className="muted" aria-live="polite">{note || (listening !== null ? 'Press the new key, or Esc to cancel.' : 'Click a key to change it. Arrow keys and 1–4 play the lanes too. On touch screens, tap the lanes.')}</p>
+      <p><span className="muted">Pause</span> <kbd>Esc</kbd> <span className="muted">Dev tools in a game</span> <kbd>`</kbd></p>
+    </div>
   );
 }
 
@@ -81,8 +132,8 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
 
       <div className="settings-body">
         <Group title="Sound">
-          <Slider id="set-volume" label="Volume" value={s.volume} min={0} max={1} step={0.05} show={pct(s.volume)} onChange={(v) => change({ volume: v })} />
-          <Slider id="set-backing" label="Backing groove" value={s.backing} min={0} max={1} step={0.05} show={pct(s.backing)}
+          <Slider id="set-volume" label="Volume" value={s.volume} min={0} max={1} step={0.01} show={pct(s.volume)} onChange={(v) => change({ volume: v })} />
+          <Slider id="set-backing" label="Backing groove" value={s.backing} min={0} max={1} step={0.01} show={pct(s.backing)}
             hint="The drums and bass under songs whose notes the game plays itself." onChange={(v) => change({ backing: v })} />
           <Switch label="Menu music" hint="A calm piece while no song is playing." checked={s.menuMusic} onChange={(v) => change({ menuMusic: v })} />
           <Switch label="Play previews by themselves" hint="The song on stage plays with its ghost run." checked={s.autoPreview} onChange={(v) => change({ autoPreview: v })} />
@@ -104,12 +155,21 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
           <Switch label="Calm visuals" hint="A still background and fewer effects. Also on when your system asks for less motion." checked={s.calm} onChange={(v) => change({ calm: v })} />
         </Group>
 
-        <Group title="Controls">
-          <div className="set-keys">
-            <p><span className="muted">Lanes</span> <span className="set-caps">{KEYS.map((k) => <kbd key={k.code}>{k.label}</kbd>)}</span></p>
-            <p className="muted">Arrow keys and 1–4 work too. On touch screens, tap the lanes.</p>
-            <p><span className="muted">Pause</span> <kbd>Esc</kbd> <span className="muted">Dev tools in a game</span> <kbd>`</kbd></p>
+        <Group title="Background">
+          <div className="set-row set-backdrop" role="radiogroup" aria-label="Background colours">
+            {BACKDROP_THEMES.map((t) => (
+              <label key={t.id} className={`backdrop-swatch ${s.backdrop === t.id ? 'is-on' : ''}`} title={t.name}>
+                <input type="radio" name="backdrop" value={t.id} checked={s.backdrop === t.id} onChange={() => change({ backdrop: t.id })} />
+                <span className={`backdrop-chip ${t.hues ? '' : 'is-dynamic'}`} aria-hidden
+                  style={t.hues ? ({ '--a': t.hues[0], '--b': t.hues[1] } as React.CSSProperties) : undefined} />
+                <span className="backdrop-name">{t.name}</span>
+              </label>
+            ))}
           </div>
+        </Group>
+
+        <Group title="Controls">
+          <KeyBinds />
         </Group>
       </div>
 
