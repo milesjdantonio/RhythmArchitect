@@ -63,10 +63,22 @@ delete it in **API Keys** and make a new one.
 
 ## If something goes wrong
 
-- **The log says "Couldn't reach the song bank in Supabase ... using the JSON file":** the next
-  lines say why. `401`/`403`: the key is wrong, or it's the publishable/anon key. `404` with
-  "relation ... does not exist": step 2 wasn't run (or `SUPABASE_TABLE` names another table).
-  A connection error: check the URL (it ends in `.supabase.co`, with no `/rest/v1`).
+- **Check it from a browser:** open `https://<your backend>/api/health`. It answers at once:
+  - `"database": "connected"` and `"storage": "supabase"`: songs and scores are saved in Supabase.
+  - `"database": "failing"`, with a `"problem"` in plain words. Fix that problem; the backend tries
+    Supabase again every minute, and the songs it kept in its own file meanwhile go up when it
+    answers.
+  - `"storage": "starting"`: the bank hasn't been read yet (a moment after the server wakes).
+- **What the problems mean:**
+  - "the publishable (anon) key": `SUPABASE_SERVICE_KEY` must be the secret key (`sb_secret_...`)
+    or the legacy `service_role` key. The publishable key can't get past Row Level Security, so it
+    reads an empty table and can't write.
+  - "the songs table isn't there": step 2 wasn't run (or `SUPABASE_TABLE` names another table).
+  - "permission denied": run all of `docs/supabase.sql` again (its `grant` lines). Projects set up
+    not to expose new tables to the Data API need them.
+  - "refused the key": the key is mistyped, deleted, or from another project.
+  - "Couldn't connect": check the URL. It is `https://<ref>.supabase.co` (a URL pasted with
+    `/rest/v1` on the end works too, but not the dashboard's URL).
 - **Starting over:** in the SQL Editor run `truncate public.songs;`. The next start fills it again
   from the JSON file or the built-in songs.
 - **Free projects pause after a week without use.** Open the dashboard and click **Restore**. Until

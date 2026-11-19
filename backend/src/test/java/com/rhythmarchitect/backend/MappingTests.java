@@ -53,6 +53,15 @@ class MappingTests {
         assertEquals(new Matching.SongName("Mr. Brightside", "The Killers"),
             Matching.songFromVideo("The Killers - Mr. Brightside (Official Music Video)", "The Killers"));
         assertEquals(new Matching.SongName("Halo", "Beyoncé"), Matching.songFromVideo("Halo", "Beyoncé - Topic"));
+        // The cases in frontend tests/unit/youtube.test.ts: "Title - Artist" too.
+        assertEquals(new Matching.SongName("Blinding Lights", "The Weeknd"), Matching.songFromVideo("Blinding Lights - The Weeknd (Lyrics)", "7clouds", "Blinding Lights"));
+        assertEquals(new Matching.SongName("Blinding Lights", "The Weeknd"), Matching.songFromVideo("The Weeknd - Blinding Lights (Official Video)", "TheWeekndVEVO", ""));
+        assertEquals(new Matching.SongName("Levitating", "Dua Lipa"), Matching.songFromVideo("Levitating - Dua Lipa (Lyrics)", "Pop Mage", "levitating"));
+        assertEquals(new Matching.SongName("Mr. Brightside", "The Killers"), Matching.songFromVideo("Mr. Brightside - The Killers", "Rock Classics", "Mr Brightside"));
+        assertEquals(new Matching.SongName("About Damn Time", "Lizzo"), Matching.songFromVideo("About Damn Time (Lyrics) - Lizzo", "The Vibe Guide", "About Damn Time"));
+        assertEquals(new Matching.SongName("About Damn Time", "Lizzo"), Matching.songFromVideo("Lizzo - About Damn Time (Lyrics)", "The Vibe Guide", ""));
+        assertEquals(new Matching.SongName("Lucid Dreams", "Juice WRLD"), Matching.songFromVideo("Juice WRLD \"Lucid Dreams\" (Official Music Video)", "Juice WRLD", ""));
+        assertEquals(new Matching.SongName("Kill Bill", "SZA"), Matching.songFromVideo("Kill Bill", "SZA", ""));
     }
 
     /** A small osu!mania 4K file: 64 taps on the beat at 120 BPM, with two holds and a kiai. */

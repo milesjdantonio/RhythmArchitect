@@ -8,9 +8,13 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 
 import org.slf4j.Logger;
@@ -34,8 +38,9 @@ import tools.jackson.databind.node.ObjectNode;
  * With Supabase set up ({@link SupabaseSongs}: SUPABASE_URL and SUPABASE_SERVICE_KEY, see
  * docs/supabase.md) the bank lives in its table instead, so it outlives the server's disk. The
  * first time (an empty table) it takes in what the JSON file has, or the built-in songs. If
- * Supabase can't be reached when the bank is first read, the JSON file is used for this run (and
- * the log says so).
+ * Supabase can't be reached (or refuses), the JSON file is used meanwhile and Supabase is tried
+ * again every {@link #RETRY_MS}; once it answers, the songs kept in the file meanwhile are added to
+ * it. What went wrong is kept for {@code /api/health} ({@link #status}) and the log.
  *
  * All access goes through {@link #read} and {@link #write}, one at a time.
  */
@@ -43,13 +48,20 @@ import tools.jackson.databind.node.ObjectNode;
 public class SongStore {
 
     private static final Logger log = LoggerFactory.getLogger(SongStore.class);
+    /** How often Supabase is tried again while the file stands in for it. */
+    static final long RETRY_MS = 60_000;
+    private long retryMs = RETRY_MS;
 
     private final ObjectMapper json;
     private final Path file;
     private final SupabaseSongs supabase;
-    /** The bank is in Supabase this run (set up, and reachable when first read). */
-    private boolean remote;
+    /** The bank is in Supabase right now (set up, and it answered). */
+    private volatile boolean remote;
     private List<ObjectNode> songs;
+    /** What last went wrong with Supabase (null when nothing), and when to try it again. */
+    private volatile String problem;
+    private long retryAt;
+    private volatile boolean loaded;
 
     public SongStore(ObjectMapper json, @Value("${rythm.songs-file}") String file, SupabaseSongs supabase) {
         this.json = json;
@@ -57,10 +69,31 @@ public class SongStore {
         this.supabase = supabase;
     }
 
+    /** Tests: how soon Supabase is tried again while the file stands in (RETRY_MS normally). */
+    public synchronized void retryAfter(long ms) {
+        retryMs = ms;
+        retryAt = Math.min(retryAt, System.currentTimeMillis() + ms);
+    }
+
     /** Where the bank is kept: "supabase" or "file". */
     public synchronized String storage() {
         load();
         return remote ? "supabase" : "file";
+    }
+
+    /**
+     * Where the bank is and what went wrong, without waiting for anything (for /api/health):
+     * storage is "supabase", "file" or "starting" (not read yet); database is "not set up",
+     * "connected" or "failing" (with the problem, in words; never the key).
+     */
+    public Map<String, Object> status() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("storage", !loaded ? "starting" : remote ? "supabase" : "file");
+        String wrong = supabase.settingsProblem();
+        String p = problem != null ? problem : wrong;
+        out.put("database", !supabase.enabled() ? "not set up" : p != null ? "failing" : remote ? "connected" : "starting");
+        if (supabase.enabled() && p != null) out.put("problem", p);
+        return out;
     }
 
     /**
@@ -113,8 +146,13 @@ public class SongStore {
     }
 
     private List<ObjectNode> load() {
-        if (songs != null) return songs;
-        if (supabase.enabled() && loadRemote()) return songs;
+        if (songs != null) {
+            // Standing in for Supabase: try it again now and then, bringing what the file has.
+            if (!remote && supabase.enabled() && System.currentTimeMillis() >= retryAt) loadRemote(songs);
+            return songs;
+        }
+        loaded = true;
+        if (supabase.enabled() && loadRemote(null)) return songs;
         try {
             if (Files.exists(file)) {
                 songs = parse(Files.readString(file));
@@ -135,26 +173,47 @@ public class SongStore {
         return songs;
     }
 
-    /** The bank from Supabase (filled from the JSON file or the seed the first time). False if it can't be reached. */
-    private boolean loadRemote() {
+    /**
+     * The bank from Supabase (filled from the JSON file or the seed the first time). `carry`: the
+     * songs the file kept while Supabase was out, added to it (the ones it doesn't have). False if
+     * it can't be reached or refuses: the file carries on, and it's tried again after RETRY_MS.
+     */
+    private boolean loadRemote(List<ObjectNode> carry) {
         try {
             List<ObjectNode> rows = supabase.load();
-            remote = true;
+            List<ObjectNode> next;
             if (rows.isEmpty()) {
-                songs = Files.exists(file) ? parse(Files.readString(file)) : seed();
-                supabase.save(songs);
-                log.info("Started the song bank in Supabase at {} with {} songs (from {})", supabase.describe(), songs.size(),
-                    Files.exists(file) ? file : "the built-in songs");
+                next = carry != null ? carry : Files.exists(file) ? parse(Files.readString(file)) : seed();
+                supabase.save(next);
+                log.info("Started the song bank in Supabase at {} with {} songs", supabase.describe(), next.size());
             } else {
-                songs = rows;
-                if (refreshBuiltIns()) supabase.save(songs);
-                log.info("Read {} songs from Supabase at {}", songs.size(), supabase.describe());
+                next = rows;
+                boolean added = false;
+                if (carry != null) {
+                    Set<String> have = new HashSet<>();
+                    rows.forEach(r -> have.add(r.path("id").asString("")));
+                    for (int i = carry.size() - 1; i >= 0; i--) {
+                        ObjectNode s = carry.get(i);
+                        if (!have.contains(s.path("id").asString(""))) { next.addFirst(s); added = true; }
+                    }
+                }
+                List<ObjectNode> before = songs;
+                songs = next;
+                boolean refreshed = refreshBuiltIns();
+                songs = before;
+                if (added || refreshed) supabase.save(next);
+                log.info("Read {} songs from Supabase at {}", next.size(), supabase.describe());
             }
+            songs = next;
+            remote = true;
+            problem = null;
             return true;
         } catch (IOException | RuntimeException e) {
             remote = false;
-            songs = null;
-            log.warn("Couldn't reach the song bank in Supabase at {}; using the JSON file {} for now", supabase.describe(), file, e);
+            if (carry == null) songs = null;
+            problem = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            retryAt = System.currentTimeMillis() + retryMs;
+            log.warn("The song bank in Supabase at {} isn't working ({}); using the JSON file {} meanwhile", supabase.describe(), problem, file);
             return false;
         }
     }
@@ -202,7 +261,10 @@ public class SongStore {
         if (remote) {
             try {
                 supabase.save(songs);
+                problem = null;
             } catch (IOException e) {
+                problem = e.getMessage();
+                log.warn("Couldn't save to the song bank in Supabase: {}", problem);
                 throw new UncheckedIOException(e);
             }
             return;

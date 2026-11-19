@@ -280,7 +280,7 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           return send(res, 200, song);
         }
       }
-      if (parts[0] === 'health' && parts.length === 1 && method === 'GET') return send(res, 200, { ok: true });
+      if (parts[0] === 'health' && parts.length === 1 && method === 'GET') return send(res, 200, { ok: true, storage: 'file', database: 'not set up' });
       if (parts[0] === 'library' && parts.length === 1 && method === 'GET') {
         return send(res, 200, { results: librarySongs(load()) });
       }

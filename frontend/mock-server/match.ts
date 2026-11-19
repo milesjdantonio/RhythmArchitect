@@ -14,14 +14,39 @@ export function videoIdIn(text: string): string | null {
 const JUNK = /\b(official\s+(music\s+)?video|official\s+audio|official\s+lyric\s+video|lyric(s)?\s+video|lyrics?|audio|visuali[sz]er|hd|hq|4k|explicit|clean)\b/gi;
 const tidy = (s: string) => s.replace(/[([][^)\]]*(official|audio|video|lyric|visuali|explicit|hd|hq)[^)\]]*[)\]]/gi, '').replace(JUNK, '').replace(/\s{2,}/g, ' ').replace(/[\s\-–|]+$/, '').trim();
 
-/** Title and artist from a video's title and channel ("Artist - Title", "Title - Artist", "Artist - Topic"). */
-export function songFromVideo(videoTitle: string, channel: string): { title: string; artist: string } {
-  const ch = channel.replace(/\s*-\s*Topic$/i, '').replace(/VEVO$/i, '').replace(/\s*Media$/i, '').trim();
-  const parts = videoTitle.split(/\s+[-–|]\s+/);
-  if (/ - Topic$/i.test(channel) || parts.length < 2) return { title: tidy(videoTitle), artist: ch };
-  const [a, b] = parts;
-  if (norm(b).includes(norm(ch)) && norm(ch)) return { title: tidy(a), artist: tidy(b) };
-  return { title: tidy(parts.slice(1).join(' - ')), artist: tidy(a) };
+/**
+ * Title and artist from a video's title and channel: "Artist - Title", "Title - Artist" (lyric and
+ * fan channels post both), `Artist "Title"`, and "Artist - Topic" channels. Which side of the dash
+ * is the title: the one that matches what the player typed as the title (`typedTitle`), else the
+ * other side of the one that matches the channel, else the first is the artist (the usual way).
+ * (Assuming "Artist - Title" filed "Blinding Lights - The Weeknd (Lyrics)" as a song called The
+ * Weeknd by Blinding Lights.) Matching.songFromVideo is the same.
+ */
+export function songFromVideo(videoTitle: string, channel: string, typedTitle = ''): { title: string; artist: string } {
+  const ch = channel.replace(/\s*-\s*Topic$/i, '').replace(/VEVO$/i, '').replace(/\s*(Media|Official)$/i, '').trim();
+  const topic = / - Topic$/i.test(channel);
+  const parts = videoTitle.split(/\s+[-–—|]\s+/);
+  if (topic || parts.length < 2) {
+    const quoted = topic ? null : /^(.+?)\s+["“](.+?)["”]/.exec(videoTitle);
+    if (quoted) return { title: tidy(quoted[2]), artist: tidy(quoted[1]) };
+    return { title: tidy(videoTitle), artist: ch };
+  }
+  const a = parts[0], b = parts.slice(1).join(' - ');
+  const asTitle = (t: string, r: string) => ({ title: tidy(t), artist: tidy(r) });
+  const want = bare(typedTitle);
+  if (want) {
+    const isTitle = (x: string) => { const v = bare(x); return !!v && (v === want || (v.length > 2 && (v.includes(want) || want.includes(v)))); };
+    if (isTitle(a) && !isTitle(b)) return asTitle(a, b);
+    if (isTitle(b) && !isTitle(a)) return asTitle(b, a);
+  }
+  // The channel names the artist (spaces and case aside: TheWeekndVEVO is The Weeknd).
+  const squash = (s: string) => norm(s).replace(/ /g, '');
+  const c = squash(ch);
+  if (c.length > 1) {
+    if (squash(b).includes(c) && !squash(a).includes(c)) return asTitle(a, b);
+    if (squash(a).includes(c)) return asTitle(b, a);
+  }
+  return asTitle(b, a);
 }
 
 /** How likely a search result is the song itself, as released (not a live take, cover or edit). */

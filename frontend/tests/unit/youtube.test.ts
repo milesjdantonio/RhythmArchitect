@@ -103,6 +103,15 @@ describe('finding the song', () => {
     expect(songFromVideo('One Dance (feat. WizKid & Kyla) - Drake (Official Audio)', 'Drake Media')).toEqual({ title: 'One Dance (feat. WizKid & Kyla)', artist: 'Drake' });
     expect(songFromVideo('Kendrick Lamar - Sing About Me, I\'m Dying Of Thirst', 'KendrickLamarVEVO')).toEqual({ title: "Sing About Me, I'm Dying Of Thirst", artist: 'Kendrick Lamar' });
     expect(songFromVideo('One Dance', 'Drake - Topic')).toEqual({ title: 'One Dance', artist: 'Drake' });
+    // "Title - Artist" (lyric and fan channels): the typed title, else the channel, says which side is which.
+    expect(songFromVideo('Blinding Lights - The Weeknd (Lyrics)', '7clouds', 'Blinding Lights')).toEqual({ title: 'Blinding Lights', artist: 'The Weeknd' });
+    expect(songFromVideo('The Weeknd - Blinding Lights (Official Video)', 'TheWeekndVEVO', '')).toEqual({ title: 'Blinding Lights', artist: 'The Weeknd' });
+    expect(songFromVideo('Levitating - Dua Lipa (Lyrics)', 'Pop Mage', 'levitating')).toEqual({ title: 'Levitating', artist: 'Dua Lipa' });
+    expect(songFromVideo('Mr. Brightside - The Killers', 'Rock Classics', 'Mr Brightside')).toEqual({ title: 'Mr. Brightside', artist: 'The Killers' });
+    expect(songFromVideo('About Damn Time (Lyrics) - Lizzo', 'The Vibe Guide', 'About Damn Time')).toEqual({ title: 'About Damn Time', artist: 'Lizzo' });
+    expect(songFromVideo('Lizzo - About Damn Time (Lyrics)', 'The Vibe Guide', '')).toEqual({ title: 'About Damn Time', artist: 'Lizzo' });
+    expect(songFromVideo('Juice WRLD "Lucid Dreams" (Official Music Video)', 'Juice WRLD', '')).toEqual({ title: 'Lucid Dreams', artist: 'Juice WRLD' });
+    expect(songFromVideo('Kill Bill', 'SZA', '')).toEqual({ title: 'Kill Bill', artist: 'SZA' });
   });
 
   it('prefers the released song over live takes, covers and sped-up edits', () => {

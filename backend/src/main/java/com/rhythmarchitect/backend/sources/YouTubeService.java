@@ -122,7 +122,7 @@ public class YouTubeService {
         if (why != null) {
             throw new ApiException(422, "That video isn't a song: " + why + ". Paste the link to the song itself (its official audio or video).");
         }
-        Matching.SongName guess = Matching.songFromVideo(videoTitle, channel);
+        Matching.SongName guess = Matching.songFromVideo(videoTitle, channel, typedTitle);
         String songArtist = !artist.isEmpty() && Text.videoIdIn(artist) == null ? artist : guess.artist();
         return new VideoMatch(id, videoTitle, channel, typedTitle.isEmpty() ? guess.title() : typedTitle, songArtist, seconds,
             "https://i.ytimg.com/vi/" + id + "/mqdefault.jpg");
@@ -174,7 +174,7 @@ public class YouTubeService {
             List<VideoMatch> out = new ArrayList<>();
             for (Ranked r : ranked.subList(0, Math.min(OFFERED, ranked.size()))) {
                 String thumb = r.item.path("snippet").path("thumbnails").path("medium").path("url").asString(null);
-                String songArtist = artist.isEmpty() ? Matching.songFromVideo(r.title, r.channel).artist() : artist;
+                String songArtist = artist.isEmpty() ? Matching.songFromVideo(r.title, r.channel, title).artist() : artist;
                 out.add(new VideoMatch(r.item.path("id").path("videoId").asString(), r.title, r.channel, title, songArtist, r.seconds, thumb));
             }
             return List.copyOf(out);

@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -42,9 +43,13 @@ import tools.jackson.databind.node.ObjectNode;
 @Component
 public class SupabaseSongs {
 
-    /** Rows per request when loading, and songs per upsert (songs can be large: charts, loudness). */
+    /**
+     * Rows per request when loading; songs per upsert, and the most bytes one upsert carries (a
+     * song is up to a few hundred KB: charts, the loudness curve).
+     */
     static final int PAGE = 500;
     static final int BATCH = 25;
+    static final int BATCH_BYTES = 900_000;
 
     private final ObjectMapper json;
     private final String base;
@@ -59,7 +64,8 @@ public class SupabaseSongs {
                          @Value("${rythm.supabase.key:}") String key,
                          @Value("${rythm.supabase.table:songs}") String table) {
         this.json = json;
-        this.base = url == null ? "" : url.trim().replaceAll("/+$", "");
+        // The project URL (https://<ref>.supabase.co), also when pasted with /rest/v1 on the end.
+        this.base = url == null ? "" : url.trim().replaceAll("/+$", "").replaceAll("(?i)/rest/v1$", "");
         this.key = key == null ? "" : key.trim();
         this.table = table == null || table.isBlank() ? "songs" : table.trim();
     }
@@ -74,8 +80,40 @@ public class SupabaseSongs {
         return base + " (table " + table + ")";
     }
 
+    /**
+     * What is wrong with the settings, before trying them (null if nothing that can be seen):
+     * the publishable or anon key can't read or write the table (Row Level Security lets only
+     * the secret key through), and the URL must be the project's API URL.
+     */
+    public String settingsProblem() {
+        if (!enabled()) return null;
+        if (!base.matches("(?i)https?://[^/]+")) {
+            return "SUPABASE_URL should be the project URL, like https://abcdefgh.supabase.co (Project Settings → Data API), not " + base;
+        }
+        if (key.startsWith("sb_publishable_") || "anon".equals(jwtRole(key))) {
+            return "SUPABASE_SERVICE_KEY is the publishable (anon) key; the server needs the secret key "
+                + "(sb_secret_..., or the legacy service_role key) from Project Settings → API Keys";
+        }
+        return null;
+    }
+
+    /** The role in a legacy JWT key (anon, service_role), or null. */
+    private static String jwtRole(String k) {
+        String[] parts = k.split("\\.");
+        if (!k.startsWith("eyJ") || parts.length < 2) return null;
+        try {
+            String payload = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\"role\"\\s*:\\s*\"([^\"]+)\"").matcher(payload);
+            return m.find() ? m.group(1) : null;
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
     /** Every song, newest first. */
     public synchronized List<ObjectNode> load() throws IOException {
+        String wrong = settingsProblem();
+        if (wrong != null) throw new IOException(wrong);
         List<ObjectNode> out = new ArrayList<>();
         saved.clear();
         for (int offset = 0; ; offset += PAGE) {
@@ -103,9 +141,17 @@ public class SupabaseSongs {
             now.put(id, text);
             if (!text.equals(saved.get(id))) changed.add(row(s, i, songs.size()));
         }
-        for (int i = 0; i < changed.size(); i += BATCH) {
+        // In batches of at most BATCH songs and about BATCH_BYTES (one large song goes alone).
+        int i = 0;
+        while (i < changed.size()) {
             ArrayNode batch = json.createArrayNode();
-            changed.subList(i, Math.min(changed.size(), i + BATCH)).forEach(batch::add);
+            int bytes = 0;
+            while (i < changed.size() && batch.size() < BATCH) {
+                int size = changed.get(i).toString().length();
+                if (batch.size() > 0 && bytes + size > BATCH_BYTES) break;
+                batch.add(changed.get(i++));
+                bytes += size;
+            }
             send(request("?on_conflict=id")
                 .header("Prefer", "resolution=merge-duplicates,return=minimal")
                 .POST(HttpRequest.BodyPublishers.ofString(batch.toString(), StandardCharsets.UTF_8)));
@@ -142,7 +188,9 @@ public class SupabaseSongs {
             }
         }
         r.put("sort_key", key);
-        if (!created.isEmpty()) r.put("created_at", created);
+        // Every row has the same columns: PostgREST refuses a batch whose rows don't (PGRST102).
+        if (created.isEmpty()) r.putNull("created_at");
+        else r.put("created_at", created);
         r.put("updated_at", Instant.now().toString());
         return r;
     }
@@ -161,17 +209,39 @@ public class SupabaseSongs {
         return b;
     }
 
+    /** Supabase's error, in words that say what to do (and its own message, cut short). */
+    static String explain(int status, String body) {
+        String b = body.length() > 300 ? body.substring(0, 300) : body;
+        String why;
+        if (b.contains("PGRST205") || b.contains("42P01") || (status == 404 && b.contains("relation"))) {
+            why = "the songs table isn't there: run docs/supabase.sql in the project's SQL Editor";
+        } else if (b.contains("42501") || b.contains("permission denied")) {
+            why = "the key can't use the songs table: run the grant lines in docs/supabase.sql, and check the key is the secret one";
+        } else if (b.contains("row-level security")) {
+            why = "Row Level Security refused it: the key must be the secret (service) key, not the publishable one";
+        } else if (status == 401 || status == 403) {
+            why = "Supabase refused the key: SUPABASE_SERVICE_KEY must be the project's secret key";
+        } else if (status == 413) {
+            why = "a request was too large for Supabase";
+        } else {
+            why = "Supabase answered " + status;
+        }
+        return why + " (" + status + ": " + b + ")";
+    }
+
     private String send(HttpRequest.Builder req) throws IOException {
         try {
             HttpResponse<String> res = client.send(req.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             if (res.statusCode() / 100 != 2) {
                 String body = res.body() == null ? "" : res.body();
-                throw new IOException("Supabase answered " + res.statusCode() + ": " + (body.length() > 300 ? body.substring(0, 300) : body));
+                throw new IOException(explain(res.statusCode(), body));
             }
             return res.body() == null || res.body().isEmpty() ? "[]" : res.body();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Interrupted talking to Supabase", e);
+        } catch (java.net.ConnectException | java.net.http.HttpConnectTimeoutException e) {
+            throw new IOException("Couldn't connect to Supabase at " + base + ": check SUPABASE_URL (" + e.getClass().getSimpleName() + ")", e);
         }
     }
 }

@@ -1,6 +1,7 @@
 package com.rhythmarchitect.backend.match;
 
 import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -26,14 +27,52 @@ public final class Matching {
         return t.replaceAll("\\s{2,}", " ").replaceAll("[\\s\\-–|]+$", "").trim();
     }
 
-    /** Title and artist from a video's title and channel ("Artist - Title", "Title - Artist", "Artist - Topic"). */
+    private static final Pattern QUOTED = Pattern.compile("^(.+?)\\s+[\"“](.+?)[\"”]");
+
+    /** Title and artist from a video's title and channel, the player's typed title unknown. */
     public static SongName songFromVideo(String videoTitle, String channel) {
-        String ch = channel.replaceAll("(?i)\\s*-\\s*Topic$", "").replaceAll("(?i)VEVO$", "").replaceAll("(?i)\\s*Media$", "").trim();
-        String[] parts = videoTitle.split("\\s+[-–|]\\s+");
-        if (channel.matches("(?i).* - Topic$") || parts.length < 2) return new SongName(tidy(videoTitle), ch);
-        String a = parts[0], b = parts[1];
-        if (!Text.norm(ch).isEmpty() && Text.norm(b).contains(Text.norm(ch))) return new SongName(tidy(a), tidy(b));
-        return new SongName(tidy(String.join(" - ", List.of(parts).subList(1, parts.length))), tidy(a));
+        return songFromVideo(videoTitle, channel, "");
+    }
+
+    /**
+     * Title and artist from a video's title and channel: "Artist - Title", "Title - Artist" (lyric
+     * and fan channels post both), {@code Artist "Title"}, and "Artist - Topic" channels. Which side
+     * of the dash is the title: the one that matches what the player typed as the title, else the
+     * other side of the one that matches the channel, else the first is the artist (the usual way).
+     * As match.ts songFromVideo, with the same test cases.
+     */
+    public static SongName songFromVideo(String videoTitle, String channel, String typedTitle) {
+        String ch = channel.replaceAll("(?i)\\s*-\\s*Topic$", "").replaceAll("(?i)VEVO$", "").replaceAll("(?i)\\s*(Media|Official)$", "").trim();
+        boolean topic = channel.matches("(?i).* - Topic$");
+        String[] parts = videoTitle.split("\\s+[-–—|]\\s+");
+        if (topic || parts.length < 2) {
+            Matcher q = QUOTED.matcher(videoTitle);
+            if (!topic && q.find()) return new SongName(tidy(q.group(2)), tidy(q.group(1)));
+            return new SongName(tidy(videoTitle), ch);
+        }
+        String a = parts[0], b = String.join(" - ", List.of(parts).subList(1, parts.length));
+        String want = Text.bare(typedTitle == null ? "" : typedTitle);
+        if (!want.isEmpty()) {
+            boolean ta = isTitle(a, want), tb = isTitle(b, want);
+            if (ta && !tb) return new SongName(tidy(a), tidy(b));
+            if (tb && !ta) return new SongName(tidy(b), tidy(a));
+        }
+        // The channel names the artist (spaces and case aside: TheWeekndVEVO is The Weeknd).
+        String c = squash(ch);
+        if (c.length() > 1) {
+            if (squash(b).contains(c) && !squash(a).contains(c)) return new SongName(tidy(a), tidy(b));
+            if (squash(a).contains(c)) return new SongName(tidy(b), tidy(a));
+        }
+        return new SongName(tidy(b), tidy(a));
+    }
+
+    private static boolean isTitle(String side, String want) {
+        String v = Text.bare(side);
+        return !v.isEmpty() && (v.equals(want) || (v.length() > 2 && (v.contains(want) || want.contains(v))));
+    }
+
+    private static String squash(String s) {
+        return Text.norm(s).replace(" ", "");
     }
 
     /** Words in a video's title that say it isn't a song, whatever else it says (unless typed). As match.ts. */

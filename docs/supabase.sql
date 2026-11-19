@@ -18,3 +18,8 @@ create index if not exists songs_sort_key on public.songs (sort_key desc);
 -- Row Level Security on, with no policies: nobody but the server's secret (service) key can read
 -- or write. The browser never talks to Supabase.
 alter table public.songs enable row level security;
+
+-- The server's key may use the table. (Projects set up not to expose new tables to the Data API
+-- leave this out, and every request is refused with "permission denied".)
+grant usage on schema public to service_role;
+grant select, insert, update, delete on table public.songs to service_role;

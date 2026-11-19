@@ -107,7 +107,7 @@ async function pastedVideo(pasted: string, title: string, artist: string, fixtur
   }
   const why = notSongReason({ title: info.title, channel: info.author_name, seconds, categoryId }, `${typedTitle} ${videoIdIn(artist) ? '' : artist}`);
   if (why) throw new SourceError(`That video isn't a song: ${why}. Paste the link to the song itself (its official audio or video).`, 422);
-  const guess = songFromVideo(info.title, info.author_name);
+  const guess = songFromVideo(info.title, info.author_name, typedTitle);
   return {
     videoId: pasted, title: info.title, channel: info.author_name,
     songTitle: typedTitle || guess.title, songArtist: artist && !videoIdIn(artist) ? artist : guess.artist,
@@ -140,7 +140,7 @@ async function searchVideos(title: string, artist: string, key: string): Promise
   if (!ranked.length) throw new SourceError(`None of YouTube's videos for “${q}” is a song that can be played outside YouTube. Check the name, or paste the song's link.`, 404);
   return ranked.slice(0, OFFERED).map((r) => ({
     videoId: r.i.id.videoId, title: r.v.title, channel: r.v.channel,
-    songTitle: title, songArtist: artist || songFromVideo(r.v.title, r.v.channel).artist,
+    songTitle: title, songArtist: artist || songFromVideo(r.v.title, r.v.channel, title).artist,
     seconds: r.v.seconds, thumbnail: r.i.snippet.thumbnails?.medium?.url,
   }));
 }

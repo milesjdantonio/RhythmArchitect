@@ -35,7 +35,8 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * The song bank in Supabase, against a small stand-in for its REST API (PostgREST): the first run
  * fills the table, later changes send only what changed, deletions delete, the bank reads back in
- * its order, and an unreachable Supabase leaves the JSON file in charge.
+ * its order, and an unreachable Supabase leaves the JSON file in charge until it comes back. As
+ * strict as the real one where it matters: every row in a batch must have the same columns.
  */
 class SupabaseTests {
 
@@ -45,6 +46,8 @@ class SupabaseTests {
     private final Map<String, ObjectNode> table = new LinkedHashMap<>();
     private final List<String> calls = new ArrayList<>();
     private String url;
+    /** Supabase is out (every request: 503). */
+    private volatile boolean down;
 
     @BeforeEach
     void start() throws IOException {
@@ -63,6 +66,10 @@ class SupabaseTests {
         String method = ex.getRequestMethod();
         String query = URLDecoder.decode(ex.getRequestURI().getRawQuery() == null ? "" : ex.getRequestURI().getRawQuery(), StandardCharsets.UTF_8);
         calls.add(method + " " + query);
+        if (down) {
+            reply(ex, 503, "{\"message\":\"unavailable\"}");
+            return;
+        }
         if (!"secret".equals(ex.getRequestHeaders().getFirst("apikey"))) {
             reply(ex, 401, "{\"message\":\"no key\"}");
             return;
@@ -77,6 +84,16 @@ class SupabaseTests {
             }
             case "POST" -> {
                 JsonNode rows = json.readTree(ex.getRequestBody().readAllBytes());
+                // As PostgREST: a batch's rows must all have the same columns.
+                java.util.Set<String> cols = null;
+                for (JsonNode r : rows) {
+                    java.util.Set<String> c = new java.util.TreeSet<>(r.propertyNames());
+                    if (cols != null && !cols.equals(c)) {
+                        reply(ex, 400, "{\"code\":\"PGRST102\",\"message\":\"All object keys must match\"}");
+                        return;
+                    }
+                    cols = c;
+                }
                 for (JsonNode r : rows) table.put(r.path("id").asString(), (ObjectNode) r);
                 reply(ex, 201, "");
             }
@@ -150,11 +167,54 @@ class SupabaseTests {
     }
 
     @Test
-    void unreachableOrRefusedLeavesTheFileInCharge() throws IOException {
+    void unreachableOrRefusedLeavesTheFileInChargeAndSaysWhy() throws IOException {
         Path file = Files.createTempDirectory("rythm-supabase").resolve("songs.json");
         SongStore s = store(file, "wrong key");
         assertEquals("file", s.storage());
         assertTrue(Files.exists(file), "the file bank started");
         assertTrue(table.isEmpty());
+        Map<String, Object> st = s.status();
+        assertEquals("failing", st.get("database"));
+        assertTrue(String.valueOf(st.get("problem")).contains("refused the key"), String.valueOf(st.get("problem")));
+    }
+
+    @Test
+    void songsWithAndWithoutADateGoInTogether() throws IOException {
+        // (A batch mixing rows with and without created_at was refused, and the file took over.)
+        Path file = Files.createTempDirectory("rythm-supabase").resolve("songs.json");
+        Files.writeString(file, "{\"songs\":[{\"id\":\"dated\",\"title\":\"A\",\"artist\":\"B\",\"createdAt\":\"2026-01-01T00:00:00Z\"},"
+            + "{\"id\":\"undated\",\"title\":\"C\",\"artist\":\"D\"}]}");
+        SongStore s = store(file, "secret");
+        assertEquals("supabase", s.storage());
+        assertTrue(table.containsKey("dated") && table.containsKey("undated"));
+        assertEquals("connected", s.status().get("database"));
+    }
+
+    @Test
+    void comesBackToSupabaseAndBringsWhatTheFileKept() throws IOException {
+        Path file = Files.createTempDirectory("rythm-supabase").resolve("songs.json");
+        down = true;
+        SongStore s = store(file, "secret");
+        s.retryAfter(0);
+        assertEquals("file", s.storage());
+        ObjectNode added = s.add((ObjectNode) json.readTree("{\"title\":\"Meanwhile\",\"artist\":\"A\",\"source\":{\"kind\":\"youtube\",\"videoId\":\"mmm\"}}"));
+        assertTrue(table.isEmpty());
+        down = false;
+        assertEquals("supabase", s.storage(), "tried again, and it answered");
+        assertTrue(table.containsKey(added.path("id").asString()), "the song added meanwhile went up");
+        assertEquals("connected", s.status().get("database"));
+    }
+
+    @Test
+    void saysWhenTheKeyOrUrlIsTheWrongOne() {
+        SupabaseSongs publishable = new SupabaseSongs(json, url, "sb_publishable_abc", "songs");
+        assertTrue(publishable.settingsProblem().contains("publishable"));
+        SupabaseSongs dashboard = new SupabaseSongs(json, "https://supabase.com/dashboard/project/abc", "secret", "songs");
+        assertTrue(dashboard.settingsProblem().contains("project URL"));
+        // The API URL pasted with /rest/v1 on the end works as it is.
+        assertEquals(null, new SupabaseSongs(json, url + "/rest/v1/", "secret", "songs").settingsProblem());
+        calls.clear();
+        SongStore s = new SongStore(json, "unused-songs.json", publishable);
+        assertTrue(String.valueOf(s.status().get("problem")).contains("publishable"));
     }
 }
