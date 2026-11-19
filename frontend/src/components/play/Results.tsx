@@ -8,6 +8,9 @@ import { href } from '../../lib/router';
 import { Icon } from '../Icon';
 import { VideoSlot } from '../VideoSlot';
 import { fmtTime } from '../../lib/format';
+import { createStore, useStore, type ReadStore } from '../../lib/store';
+
+const NO_MODEL = createStore<{ state: PlayState | null } | null>(null);
 import { EASE_OUT } from '../../lib/motion';
 import { OVERDRIVE_LOOKS, OVERDRIVE_ROMAN, overdriveVars } from '../../game/overdrive';
 
@@ -36,7 +39,7 @@ interface Props {
   previousBest?: number;
   saving: 'saving' | 'saved' | 'error' | 'skipped';
   /** What the controller (main.Main on the server) counted for the run. */
-  model?: { state: PlayState | null } | null;
+  model?: ReadStore<{ state: PlayState | null } | null>;
   onRetry: () => void;
 }
 
@@ -65,7 +68,8 @@ const rise = (i: number) => ({
   transition: { duration: 0.7, delay: 0.25 + i * 0.08, ease: EASE_OUT },
 });
 
-export function Results({ song, difficulty, result, previousBest, saving, model, onRetry }: Props) {
+export function Results({ song, difficulty, result, previousBest, saving, model: modelStore, onRetry }: Props) {
+  const model = useStore(modelStore ?? NO_MODEL);
   const score = useCountUp(result.score);
   const stars = starsFor(result.grade);
   const newBest = !result.failed && !result.assisted && (previousBest === undefined || result.score > previousBest);

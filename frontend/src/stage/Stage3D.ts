@@ -70,6 +70,19 @@ const MAX_NOTES = 220;
 const MAX_SPARKS = 5000;
 /** The stage's pixel ratio cap. */
 const MAX_DPR = 1.75;
+/**
+ * Dynamic resolution: when frames run slow (a quarter of the last RES_WINDOW frames longer than
+ * RES_SLOW s), the stage draws at RES_STEP of its resolution, down to RES_MIN;
+ * when they come at the screen's own rate again it steps back up (not within RES_HOLD s of a step
+ * down, so it doesn't see-saw). The layout never changes, only how many pixels are drawn: an
+ * integrated graphics chip on a 2880x1800 screen drew ~4 million pixels a frame at 1.75x and fell
+ * to ~10 frames a second.
+ */
+const RES_WINDOW = 45;
+const RES_SLOW = 0.022;
+const RES_STEP = 0.85;
+const RES_MIN = 0.5;
+const RES_HOLD = 4;
 const MAX_GLINTS = 48;
 const MAX_FLARES = 14;
 const MAX_RINGS = 32;
@@ -639,6 +652,55 @@ export class Stage3D {
   /** The device pixel ratio (from the page, or the surface's in a worker). */
   private get deviceRatio() { return isElement(this.host) ? devicePixelRatio || 1 : this.host.dpr; }
 
+  // Dynamic resolution (RES_*): the share of the full resolution drawn, and the recent frame times.
+  private resScale = 1;
+  private readonly resTimes = new Float32Array(RES_WINDOW);
+  private readonly resSorted = new Float32Array(RES_WINDOW);
+  private resCount = 0;
+  private resChangedAt = -Infinity;
+  private resLoweredAt = -Infinity;
+  /** The shortest frame interval seen lately: the screen's own rate. */
+  private resBest = 1;
+
+  /** The share of the full resolution the stage draws now (dev tools, tests). */
+  get resolution() { return this.resScale; }
+
+  /** Paced by the page's frames (a worker's stage: its own frames stay quick when the chip is behind). */
+  private pagePaced = false;
+  /** The page made a frame, `interval` s after its last one: what the dynamic resolution goes by. */
+  pageFrame(interval: number) {
+    this.pagePaced = true;
+    this.adaptResolution(interval, performance.now() / 1000);
+  }
+
+  /** A frame took `interval` s: every RES_WINDOW frames, the resolution steps down or back up. */
+  private adaptResolution(interval: number, now: number) {
+    if (!(interval > 0) || interval > 0.5) return; // a stall or a hidden tab says nothing about drawing
+    this.resTimes[this.resCount++] = interval;
+    this.resBest = Math.min(this.resBest * 1.002, interval); // forgets slowly, follows a faster screen at once
+    if (this.resCount < RES_WINDOW) return;
+    this.resCount = 0;
+    this.resSorted.set(this.resTimes);
+    this.resSorted.sort();
+    // The slow quarter of the frames: drawing that falls behind shows as a share of long frames
+    // between ones on time (the median stays on time at ~40 a second), so it goes by the 75th.
+    const median = this.resSorted[RES_WINDOW >> 1];
+    const slow = this.resSorted[Math.floor(RES_WINDOW * 0.75)];
+    if (now - this.resChangedAt < 1.5) return;
+    let next = this.resScale;
+    if (slow > RES_SLOW && this.resScale > RES_MIN) {
+      next = Math.max(RES_MIN, this.resScale * RES_STEP);
+      this.resLoweredAt = now;
+    } else if (median < Math.max(this.resBest * 1.25, 1 / 200) && this.resScale < 1 && now - this.resLoweredAt > RES_HOLD) {
+      next = Math.min(1, this.resScale / RES_STEP);
+    }
+    if (next !== this.resScale) {
+      this.resScale = next;
+      this.resChangedAt = now;
+      this.resize();
+    }
+  }
+
   /** In a worker: the page's new size for the stage. */
   setSurface(width: number, height: number, dpr: number) {
     if (isElement(this.host)) return;
@@ -1095,8 +1157,9 @@ export class Stage3D {
     const r = isElement(this.host) ? this.host.getBoundingClientRect() : this.host;
     this.width = Math.max(1, r.width);
     this.height = Math.max(1, r.height);
-    // The pixel ratio can change too (a monitor with other scaling, browser zoom).
-    this.renderer.setPixelRatio(Math.min(MAX_DPR, this.deviceRatio));
+    // The pixel ratio can change too (a monitor with other scaling, browser zoom), and the dynamic
+    // resolution draws a share of it when frames run slow.
+    this.renderer.setPixelRatio(Math.max(0.5, Math.min(MAX_DPR, this.deviceRatio) * this.resScale));
     this.renderer.setSize(this.width, this.height, false);
     if (isCanvasEl(this.canvas)) {
       this.canvas.style.width = `${this.width}px`;
@@ -1625,6 +1688,7 @@ export class Stage3D {
    */
   frame(t: number, notes?: StageNote[], from = 0) {
     const now = performance.now() / 1000;
+    if (this.lastT && !this.pagePaced) this.adaptResolution(now - this.lastT, now);
     const dt = Math.min(0.05, Math.max(0, now - (this.lastT || now)));
     this.lastT = now;
     this.clock += dt;

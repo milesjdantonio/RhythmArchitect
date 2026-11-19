@@ -118,6 +118,10 @@ function handle(m: ToStage) {
         for (let i = 0; i < state.length && from + i < notes.length; i++) unpackNote(notes[from + i], state[i]);
         noteFrom = from;
         songT = m.frame.t;
+        // How fast the page makes frames is what the dynamic resolution goes by (Stage3D
+        // pageFrame): this worker's own frames stay quick while the graphics chip, backed up by
+        // drawing, holds the page's back.
+        if (sentAt > 0) stage?.pageFrame((m.frame.at - sentAt) / 1000);
         sentAt = m.frame.at;
         songRate = m.frame.rate > 0 ? m.frame.rate : 1;
         carry = true;

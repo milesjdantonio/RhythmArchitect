@@ -15,8 +15,11 @@ Rive.suppressDeprecationWarnings = ['default-state-machine', 'state-machine-inpu
  * On the menus Rive draws at most MENU_FPS (perf.ts). Its runtime schedules every animation's
  * frames through one function; that function is wrapped here so a request is carried to a later
  * frame until the cap allows one. Animations keep their speed (Rive advances by the time passed).
- * Gameplay (body[data-scene=play]) and the intro (data-scene=intro) draw at the screen's rate.
+ * The intro (data-scene=intro) draws at the screen's rate; gameplay (data-scene=play) at most
+ * PLAY_FPS: its only Rive there is the run panel's combo meter, and at the screen's rate it took
+ * about a tenth of the page's main thread on a 2880x1800 screen.
  */
+const PLAY_FPS = 30;
 RuntimeLoader.awaitInstance().then((runtime) => {
   const rt = runtime as unknown as { requestAnimationFrame(cb: FrameRequestCallback): number; cancelAnimationFrame(id: number): void };
   const request = rt.requestAnimationFrame.bind(rt), cancel = rt.cancelAnimationFrame.bind(rt);
@@ -28,10 +31,11 @@ RuntimeLoader.awaitInstance().then((runtime) => {
     if (ts === lastTs) return lastOk;
     lastTs = ts;
     const scene = document.body.dataset.scene;
-    if (scene === 'play' || scene === 'intro') { slot = Number.NaN; return (lastOk = true); }
-    if (!(ts - slot <= iv && slot - ts <= iv * 2)) slot = ts;
+    if (scene === 'intro') { slot = Number.NaN; return (lastOk = true); }
+    const step = scene === 'play' ? 1000 / PLAY_FPS : iv;
+    if (!(ts - slot <= step && slot - ts <= step * 2)) slot = ts;
     if (ts < slot - 1.5) return (lastOk = false);
-    slot += iv;
+    slot += step;
     return (lastOk = true);
   };
   rt.requestAnimationFrame = (cb) => {

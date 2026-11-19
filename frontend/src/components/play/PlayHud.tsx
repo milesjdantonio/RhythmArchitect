@@ -1,7 +1,7 @@
-import { useRef, type Ref } from 'react';
-import { motion } from 'motion/react';
+import { useEffect, useRef, type Ref } from 'react';
 import type { Difficulty, PlayState, Song } from '../../api/types';
 import type { LinkStatus } from '../../game/controllerLink';
+import { useStore, type Store } from '../../lib/store';
 import type { BotMode } from '../../game/autoplay';
 import type { Judgement } from '../../game/engine';
 import { fmtTime } from '../../lib/format';
@@ -27,7 +27,8 @@ interface Props {
   song: Song;
   difficulty: Difficulty;
   section: string;
-  hud: HudState;
+  /** The run's numbers (a store: the panel re-renders with them, not the screen holding it). */
+  hud: Store<HudState>;
   /** Whole seconds into the song. */
   clock: number;
   bot: BotMode;
@@ -44,7 +45,7 @@ interface Props {
   /** Practice mode: what is looping and how fast (nothing is saved). */
   practice?: string;
   /** What the controller (main.Main on the server) has counted, as it last said. */
-  model?: { state: PlayState | null; status: LinkStatus } | null;
+  model?: Store<{ state: PlayState | null; status: LinkStatus } | null>;
 }
 
 /**
@@ -54,7 +55,8 @@ interface Props {
  * the lanes are narrow and far away, so the panel stays clear of them (they widen toward the
  * bottom of the screen, which is left free). The lanes and the hit line stay centred.
  */
-export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, canPause, onDev, onPause, combo, panel, overdriveKey, onOverdrive, practice, model }: Props) {
+export function PlayHud({ song, difficulty, section, hud: hudStore, clock, bot, devTools, canPause, onDev, onPause, combo, panel, overdriveKey, onOverdrive, practice, model }: Props) {
+  const hud = useStore(hudStore);
   const length = Math.round((song.lengthBeats * 60) / song.bpm);
   const video = song.source.kind === 'youtube';
   return (
@@ -86,7 +88,7 @@ export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, 
         <div className="hud-stat hud-score-block">
           <span className="label">Score</span>
           <ScoreGain score={hud.score} />
-          <motion.span key={hud.score} className="hud-score mono" initial={{ scale: hud.score ? 1.06 : 1 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 800, damping: 20 }}>{hud.score.toLocaleString()}</motion.span>
+          <Pulse value={hud.score} from={1.06} ms={260} className="hud-score mono">{hud.score.toLocaleString()}</Pulse>
         </div>
         <div className="hud-pair">
           <div className="hud-stat">
@@ -96,14 +98,13 @@ export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, 
           <div className="hud-stat">
             <span className="label">Multiplier</span>
             {/* Each Overdrive level slams the multiplier in. */}
-            <motion.span key={hud.overdrive} className={`hud-mult mono ${hud.overdrive ? 'is-overdrive' : hud.multiplier >= 5 ? 'is-fever' : ''}`}
-              initial={{ scale: hud.overdrive ? 2.2 : 1 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 520, damping: 14 }}>×{hud.multiplier}</motion.span>
+            <Pulse value={hud.overdrive} from={hud.overdrive ? 2.2 : 1} ms={520} className={`hud-mult mono ${hud.overdrive ? 'is-overdrive' : hud.multiplier >= 5 ? 'is-fever' : ''}`}>×{hud.multiplier}</Pulse>
           </div>
         </div>
         <div className="hud-stat hud-combo-block">
           <span className="label">Combo</span>
           <div className="hud-combo-row">
-            <motion.span key={hud.combo} className="hud-combo mono" initial={{ scale: hud.combo ? 1.22 : 1, opacity: 0.7 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: 'spring', stiffness: 700, damping: 18 }}>{hud.combo}</motion.span>
+            <Pulse value={hud.combo} from={hud.combo ? 1.22 : 1} fade ms={300} className="hud-combo mono">{hud.combo}</Pulse>
             <RiveAnim ref={combo} src="combo" stateMachine="Combo" className="combo-meter"
               fallback={<span className="combo-fallback" data-level={hud.combo ? Math.min(5, hud.multiplier - hud.overdrive) : 0}><i /><i /><i /><i /><i /></span>} />
           </div>
@@ -118,7 +119,7 @@ export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, 
         <dl className="hud-counts">
           {COUNTS.map(([j, label]) => <div key={j} className={`hud-count stat-${j}`}><dt className="label">{label}</dt><dd className="mono">{hud.counts[j]}</dd></div>)}
         </dl>
-        {model && <ModelLine model={model} />}
+        {model && <ModelLine store={model} />}
       </aside>
     </>
   );
@@ -129,7 +130,9 @@ export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, 
  * against the chart and counted through GameScore: the score above, a moment behind) and how many
  * presses Main, the controller, reviewed against the song's notes.
  */
-function ModelLine({ model }: { model: { state: PlayState | null; status: LinkStatus } }) {
+function ModelLine({ store }: { store: Store<{ state: PlayState | null; status: LinkStatus } | null> }) {
+  const model = useStore(store);
+  if (!model) return null;
   const s = model.state;
   return (
     <div className={`hud-model is-${model.status}`} title="Main, the controller, reviews every press; the model confirms the score above (GameScore)">
@@ -182,11 +185,29 @@ function Overdrive({ hud, keyName, onFire }: { hud: HudState; keyName: string; o
 function ScoreGain({ score }: { score: number }) {
   const last = useRef(score);
   const gain = useRef(0);
+  const el = useRef<HTMLSpanElement>(null);
   if (score !== last.current) { gain.current = Math.max(0, score - last.current); last.current = score; }
-  if (!gain.current || !score) return null;
-  return (
-    <motion.span key={score} className="hud-gain mono" aria-hidden initial={{ opacity: 1, y: 0 }} animate={{ opacity: 0, y: -10 }} transition={{ duration: 0.7, ease: 'easeOut' }}>
-      +{gain.current.toLocaleString()}
-    </motion.span>
-  );
+  // Rises and fades on each gain: one element, animated (transform and opacity), not a new one each time.
+  useEffect(() => {
+    if (!gain.current || !score) return;
+    el.current?.animate([{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-10px)' }], { duration: 700, easing: 'ease-out', fill: 'forwards' });
+  }, [score]);
+  return <span ref={el} className="hud-gain mono" aria-hidden style={{ opacity: 0 }}>+{gain.current.toLocaleString()}</span>;
+}
+
+/**
+ * A number that kicks when it changes: a scale from `from` back to 1 (and a fade in with `fade`),
+ * played on the same element (transform and opacity), not by mounting a new one each time: the
+ * panel's numbers change up to ten times a second.
+ */
+function Pulse({ value, from, fade, ms, className, children }: { value: number; from: number; fade?: boolean; ms: number; className: string; children: React.ReactNode }) {
+  const el = useRef<HTMLSpanElement>(null);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }
+    if (from === 1 && !fade) return;
+    el.current?.animate(fade ? [{ transform: `scale(${from})`, opacity: 0.7 }, { transform: 'scale(1)', opacity: 1 }] : [{ transform: `scale(${from})` }, { transform: 'scale(1)' }],
+      { duration: ms, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' });
+  }, [value]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <span ref={el} className={className} style={{ display: 'inline-block' }}>{children}</span>;
 }

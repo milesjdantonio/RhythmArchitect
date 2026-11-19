@@ -25,5 +25,5 @@ describe('automap on a band (melody, chords, bass, drums)', () => {
       expect(s.f, `F-measure at ${bpm} BPM`).toBeGreaterThan(minF);
       expect(lg.r, `legato notes at ${bpm} BPM`).toBeGreaterThan(rough ? 0.7 : 0.9);
     }
-  });
+  }, 30_000); // three bands, each mapped twice (whole band, then its legato solo): ~5 s alone, longer beside the other suites
 });

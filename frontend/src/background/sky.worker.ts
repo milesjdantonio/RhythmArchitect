@@ -42,9 +42,31 @@ const STALL_MS = 100;
 let fresh = false;
 let stateAt = 0;
 
+/**
+ * Dynamic resolution, as the stage has (Stage3D RES_*): the sky draws a share of its resolution
+ * when its frames come slow (the median of the last 30 over 30 ms: it's paced by the page, at most
+ * 60 a second), back up when they're quick again (not within 4 s of a step down).
+ */
+let resScale = 1;
+const resTimes = new Float32Array(30);
+let resCount = 0, resChangedAt = 0, resLoweredAt = -1e9;
+function adaptResolution(interval: number, now: number) {
+  if (!(interval > 0) || interval > 500) return;
+  resTimes[resCount++] = interval;
+  if (resCount < resTimes.length) return;
+  resCount = 0;
+  const sorted = resTimes.slice().sort();
+  const median = sorted[sorted.length >> 1];
+  if (now - resChangedAt < 1500) return;
+  let next = resScale;
+  if (median > 30 && resScale > 0.5) { next = Math.max(0.5, resScale * 0.85); resLoweredAt = now; }
+  else if (median < 20 && resScale < 1 && now - resLoweredAt > 4000) next = Math.min(1, resScale / 0.85);
+  if (next !== resScale) { resScale = next; resChangedAt = now; resize(); }
+}
+
 function resize() {
   if (!renderer || !sky) return;
-  renderer.setPixelRatio(Math.min(size.dpr, MAX_DPR));
+  renderer.setPixelRatio(Math.max(0.5, Math.min(size.dpr, MAX_DPR) * resScale));
   renderer.setSize(size.w, size.h, false);
   sky.resize(renderer);
 }
@@ -59,10 +81,13 @@ function loop(now: number) {
   const dt = last ? Math.min(0.1, Math.max(0, (now - last) / 1000)) : 0;
   // In play the game's stage draws the sky; a calm sky holds after its one frame.
   if (playing || (calm && calmDrawn)) { last = now; return; }
+  // (Only frames the page drives say how fast it can draw: on its own it keeps to ~30 a second.)
+  const driven = fresh;
   if (fresh) fresh = false;
   // On its own (the page quiet): about 30 a second, enough to keep it moving.
   else if (performance.now() - stateAt < STALL_MS || now - last < 33) return;
   if (!frameGate(now)) return;
+  if (last && driven) adaptResolution(now - last, now);
   last = now;
   sky.update(dt);
   try {

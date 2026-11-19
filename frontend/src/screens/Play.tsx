@@ -9,6 +9,7 @@ import { ComboCallout, type Callout } from '../components/play/ComboCallout';
 import { DevTools, type DevEffect, type DevProbe } from '../components/play/DevTools';
 import { PlayHud, type HudState } from '../components/play/PlayHud';
 import { OverdriveFx, type OverdriveFxHandle } from '../components/play/OverdriveFx';
+import { createStore, useStore, type Store } from '../lib/store';
 import { PauseCard, StartCard, type Practice } from '../components/play/PlayCards';
 import { botPlan, type BotMode } from '../game/autoplay';
 import { Icon } from '../components/Icon';
@@ -62,7 +63,17 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const [phase, setPhase] = useState<Phase>('loading');
   const [error, setError] = useState('');
   const [count, setCount] = useState<number | null>(null);
-  const [hud, setHud] = useState<HudState>({ ...EMPTY_HUD, counts: { ...EMPTY_HUD.counts } });
+  // The run panel's numbers (ten times a second) live in a store the panel and the Overdrive layer
+  // read, so this whole screen doesn't re-render with them: it follows `look` (fever, Overdrive's
+  // level, running out), which changes a few times a song.
+  const hudStore = useMemo(() => createStore<HudState>({ ...EMPTY_HUD, counts: { ...EMPTY_HUD.counts } }), []);
+  const setHud = hudStore.set;
+  const [look, setLook] = useState({ fever: false, od: 0, low: false });
+  useEffect(() => hudStore.subscribe(() => {
+    const h = hudStore.get();
+    const next = { fever: multiplierFor(h.combo) >= 5, od: h.overdrive, low: h.overdrive > 0 && h.overdriveLeft <= OVERDRIVE_LOW / OVERDRIVE_LENGTH };
+    setLook((l) => (l.fever === next.fever && l.od === next.od && l.low === next.low ? l : next));
+  }), [hudStore]);
   const [banner, setBanner] = useState<Banner | null>(null);
   const [callout, setCallout] = useState<Callout | null>(null);
   /** Screen space the left HUD panel covers. */
@@ -109,7 +120,8 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const game = useRef<Game | null>(null);
   // The controller (main.Main on the server): every press and the clock go to it; what it counted shows on the panel.
   const link = useRef<ControllerLink | null>(null);
-  const [model, setModel] = useState<{ state: PlayState | null; status: LinkStatus } | null>(null);
+  const modelStore = useMemo(() => createStore<ModelView>(null), []);
+  const setModel = modelStore.set;
   useEffect(() => () => link.current?.stop(), []);
   const beat0 = useRef(0);
   const raf = useRef(0);
@@ -911,7 +923,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const hitY = song ? anchor(0).y : innerHeight * 0.8;
 
   return (
-    <div className={`play ${devTools ? 'has-dev' : ''} ${multiplierFor(hud.combo) >= 5 && phase === 'playing' ? 'is-fever' : ''} ${hud.overdrive && phase === 'playing' ? `is-overdrive od-${hud.overdrive}${hud.overdriveLeft <= OVERDRIVE_LOW / OVERDRIVE_LENGTH ? ' od-low' : ''}` : ''} ${phase === 'failing' || (phase === 'results' && result?.failed) ? 'is-failing' : ''}`} style={song ? ({ '--hA': song.hues[0], '--hB': song.hues[1], '--inset': `${inset}px` } as React.CSSProperties) : undefined}>
+    <div className={`play ${devTools ? 'has-dev' : ''} ${look.fever && phase === 'playing' ? 'is-fever' : ''} ${look.od && phase === 'playing' ? `is-overdrive od-${look.od}${look.low ? ' od-low' : ''}` : ''} ${phase === 'failing' || (phase === 'results' && result?.failed) ? 'is-failing' : ''}`} style={song ? ({ '--hA': song.hues[0], '--hB': song.hues[1], '--inset': `${inset}px` } as React.CSSProperties) : undefined}>
       <div ref={host} className="play-stage" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
         role="application" aria-label={`Playfield, 4 lanes. Keys ${laneKeyList(binds).map((k) => k.label).join(' ')}. Overdrive ${keyLabel(binds.overdrive)}.`}>
         {!use3d && <canvas ref={canvas} className="play-canvas" />}
@@ -919,12 +931,11 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
 
       {song && (
         <>
-          <OverdriveFx ref={odFx} ready={hud.charge >= 1 && hud.overdrive < MAX_OVERDRIVE && phase === 'playing'} level={hud.overdrive} keyName={keyLabel(binds.overdrive)}
-            safe={phase === 'playing' && hud.overdrive ? hud.odSafe : 0} />
-          <PlayHud song={song} difficulty={difficulty} section={section} hud={hud} clock={clock} bot={bot} devTools={devTools}
+          <LiveOverdriveFx odFx={odFx} store={hudStore} playing={phase === 'playing'} keyName={keyLabel(binds.overdrive)} />
+          <PlayHud song={song} difficulty={difficulty} section={section} hud={hudStore} clock={clock} bot={bot} devTools={devTools}
             canPause={phase === 'playing'} onDev={toggleDev} onPause={pause} combo={combo} panel={panel}
             overdriveKey={keyLabel(binds.overdrive)} onOverdrive={fireOverdrive}
-            practice={practice ? `Practice · ${practice.label} · ${Math.round(practice.speed * 100)}%` : undefined} model={model} />
+            practice={practice ? `Practice · ${practice.label} · ${Math.round(practice.speed * 100)}%` : undefined} model={modelStore} />
           <ComboCallout callout={callout} step={MILESTONE} />
 
           <AnimatePresence>
@@ -986,8 +997,20 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       </AnimatePresence>
 
       {phase === 'results' && result && song && (
-        <Results song={song} difficulty={difficulty} result={result} previousBest={prevBest} saving={saving} model={model} onRetry={() => { if (!result.assisted) setPrevBest(Math.max(prevBest ?? 0, result.failed ? 0 : result.score) || undefined); restart(); }} />
+        <Results song={song} difficulty={difficulty} result={result} previousBest={prevBest} saving={saving} model={modelStore} onRetry={() => { if (!result.assisted) setPrevBest(Math.max(prevBest ?? 0, result.failed ? 0 : result.score) || undefined); restart(); }} />
       )}
     </div>
+  );
+}
+
+/** What the controller (main.Main on the server) last said, and whether it's reviewing. */
+export type ModelView = { state: PlayState | null; status: LinkStatus } | null;
+
+/** The Overdrive layer, fed by the run panel's store (so only it re-renders with the numbers). */
+function LiveOverdriveFx({ odFx, store, playing, keyName }: { odFx: React.Ref<OverdriveFxHandle>; store: Store<HudState>; playing: boolean; keyName: string }) {
+  const hud = useStore(store);
+  return (
+    <OverdriveFx ref={odFx} ready={hud.charge >= 1 && hud.overdrive < MAX_OVERDRIVE && playing} level={hud.overdrive} keyName={keyName}
+      safe={playing && hud.overdrive ? hud.odSafe : 0} />
   );
 }

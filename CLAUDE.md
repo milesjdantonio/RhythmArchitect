@@ -260,8 +260,17 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 - The menus use the same system: the backdrop is the same sky on the GPU in
   `background/sky.worker.ts` (paced to the page's frames), the stage preview a `StageProxy` worker;
   menus draw at most `MENU_FPS` (60, Rive too: `RiveAnim` caps its runtime), gameplay and the intro
-  at the screen's rate. The shared loop (`lib/ticker.ts`) falls back to a timer when the browser
-  holds animation frames back.
+  at the screen's rate (the run panel's Rive at most 30: `PLAY_FPS`). The shared loop
+  (`lib/ticker.ts`) falls back to a timer when the browser holds animation frames back.
+- Dynamic resolution: the stage (`RES_*` in Stage3D.ts) and the sky worker draw fewer pixels when
+  the page's frames run slow and step back up when they're on time again; the layout never changes.
+  They go by the page's frames (`pageFrame`, sent with each batch), not the worker's own, which
+  stay quick while the graphics chip falls behind (an integrated chip on a 2880x1800 screen: ~10 a
+  second at full resolution during hits). The share drawn now: `Stage3D.resolution`.
+- The run panel's numbers (ten times a second) and the controller's state live in stores
+  (`lib/store.ts`, `useStore`) read by PlayHud, the Overdrive layer and Results, so the Play screen
+  re-renders only when its look changes (fever, Overdrive's level). The panel's pulses are Web
+  Animations on one element (`Pulse`), not a remounted motion span per change.
 - Keep the 2D fallback (`src/game/render.ts`) working.
 
 ## After a change
