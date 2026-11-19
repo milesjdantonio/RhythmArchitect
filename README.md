@@ -37,8 +37,9 @@ game in `frontend/`) and a Controller (`Main`, Darsh's part, still to come).
 ### Run the model (no view)
 
 The model is plain Java with no libraries: `Node` and `Queue` (first in, first out), `Note`, the enums,
-`Song` (one `Queue<Note>` per difficulty) and `SongWriter` (builds a `Song` from a chart). It knows
-nothing about the view or the server.
+`Song` (one `Queue<Note>` per difficulty), `SongWriter` (builds a `Song` from a chart), and `Score`
+(tracks hit points, misses, combos, accuracy, and high scores). It knows nothing about the view or
+the server.
 
 **A tiny driver.** `ModelDemo` reads a real chart (the game's built-in songs are exported to
 `src/java/charts/`), writes its `Song`, plays one difficulty's note queue front to back, checks the
@@ -52,9 +53,9 @@ java -cp out main.ModelDemo src/java/charts/ink-and-fury.chart hard # another ch
 java -cp out main.ModelDemo src/java/charts/one-dance.chart banana  # an unknown difficulty: Easy
 ```
 
-**The tests.** JUnit 5 tests for every model class (`src/test/main/`: `QueueTest`, `NodeTest`,
-`NoteTest`, `SongTest`, `SongWriterTest`, 42 tests from the spec's test plan, good and bad cases)
-run with the backend's tests through Maven (Java 25):
+**The tests.** JUnit 5 tests for the model classes (`src/test/main/`: `QueueTest`, `NodeTest`,
+`NoteTest`, `SongTest`, `SongWriterTest`, `ScoreTest`, `GameScoreTest`, and the others), covering
+good and bad cases from the spec's test plan, run with the backend's tests through Maven (Java 25):
 
 ```bash
 cd backend
@@ -422,7 +423,7 @@ Each change says what the spec said, what we built, why, and what prompted it.
 | 9 | **Validation: key at the wrong time** | Penalize the score. | A press with no tile to hit is a *stray*: it costs a little signal and Overdrive charge (recorded in the run as `X`, so the server's replay agrees), but no points and no combo. Strays don't count from long before the first tile or after the last. | At first strays were ignored (penalizing them seemed to punish tapping along to the beat), but then mashing every key cleared songs for free. A small cost per stray stops mashing without punishing the odd extra press. | Play-testing (Miles, Nov 17). |
 | 10 | **Validation: no difficulty chosen** | Default to Easy. | `SongWriter.chartFor(song, null)` gives Easy. In the game a difficulty is always chosen: the menu starts on Medium, and a link with no or an unknown difficulty goes back to the menu. | | The e2e bad-input test. |
 | 11 | **Validation: AI fails or returns bad data** | `SongWriter` throws; the view says "Couldn't create song". | If the trained mapper fails (no model download, bad output), the song still gets charts from the on-device onset mapper, and the dev tools say why. A bad chart file makes `SongWriter` throw an `IllegalArgumentException` that names the problem, and the server turns down a mapped song or fan chart `SongWriter` can't take in. | Better a playable map than an error. | The e2e test "when the trained mapper fails". |
-| 12 | **Tests** | Tests for Node, Queue, Note, Song, SongWriter, Score and Main. | 44 JUnit tests for Node, Queue, Note, Song and SongWriter (`src/test/main/`, good and bad cases from the plan), 6 for GameScore; 16 backend tests; 113 frontend unit tests; 22 browser tests. Score and Main have none yet (not written). | | The test plan. |
+| 12 | **Tests** | Tests for Node, Queue, Note, Song, SongWriter, Score and Main. | JUnit tests cover Node, Queue, Note, Song, SongWriter, Score, Main and GameScore (`src/test/main/`, with good and bad cases from the plan); backend, frontend unit and browser suites cover the rest of the app. `ScoreTest` has 8 tests and `MainTest` has 13 tests for construction, hit windows, invalid input, missed notes and upcoming notes. | | The test plan. |
 | 13 | **Scope** | JavaFX, then HTML/CSS (revised scope). | HTML, CSS and TypeScript (React, three.js for the 3D stage, Tone.js for sound), songs played through YouTube's embedded player. | We know the web better, and YouTube lets any song play without downloading its audio. | The revised scope and the GTA conversation. |
 | 14 | **Score** (rules on top) | `Score`: a Perfect 100, a Good 75, an Early or Late 50; a combo. | `Score` unchanged. `GameScore` on top: points ×10 (a Perfect is 1,000), a combo multiplier to ×5, and Overdrive (+1 per level, three levels: ×8 at most; one miss ends it, except in the 5 seconds after each press), checked and counted again on the server. Signal drains faster on a miss and refills slower on a hit. | Scores felt small and the run too forgiving; Overdrive (an idea in the last Next Steps) needed to matter. Five stackable levels (×10, renewable at the top, a miss costing 8 tiles) were then too easy to keep: three levels, ended by any miss. Gold tiles (one in eight, triple on a Perfect) were tried and dropped; a grace after each press was added, because a hand on the Overdrive key can't be back on the lanes at once. | Play-testing (Miles, Nov 17). |
 
@@ -470,7 +471,7 @@ through `GameScore` (`Score` with the game's combo multiplier and held-note bonu
 | 2 | **Done.** Write `Main`, the controller. | Darsh | `processInput(int lane, double currentTime)` (peeks the chart's queue, judges the hit, `dequeue()`s the note, calls `Score.addHit`), `checkMissedNotes(double currentTime)` (`peek()`/`dequeue()` past the miss window, `Score.addMiss`), `getUpcomingNotes(int count)`; gets its chart with `SongWriter.chartFor(song, difficulty)`. |
 | 3 | Expose the controller to the view. | Darsh, Miles | Spring Boot routes for `Main` (for example a play session: start, input, upcoming notes, score) and a client in `frontend/src/api/client.ts`. |
 | 4 | Play through the controller. | Miles | `frontend/src/screens/Play.tsx` asks `Main` for upcoming notes and sends key presses; `frontend/src/game/engine.ts` stays as the offline fallback. |
-| 5 | Tests for `Score` and `Main`, then beta testing. | Haniya | `ScoreTest`, `MainTest` from the test plan; an end-to-end test that plays through the controller. |
+| 5 | **Done.** Test `Main`, then beta testing. | Haniya | `ScoreTest` and `MainTest` cover the model classes from the test plan; an end-to-end test that plays through the controller remains. |
 | 6 | **Built; to switch on.** Keep songs on the deployed site. | Miles | `SongStore` keeps the bank in Supabase through `SupabaseSongs` when `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set; set them and `YOUTUBE_API_KEY` on Render ([docs/supabase.md](docs/supabase.md), [docs/youtube-api.md](docs/youtube-api.md)). |
 | 7 | Review the model changes in this deliverable. | Sarah | `Queue`, `Note`, `Song` (changes 2-6 above) and the new `SongWriter`. |
 
@@ -541,8 +542,6 @@ last, and can a second charge extend it? Can it be set off any time, or only bet
 
 ### New tests needed
 
-- `ScoreTest`: every row of the test plan for `Score` (start at zero, `addHit` updates score and combo, a null hit is ignored, `addMiss` resets the combo, `getAccuracy` is 0 before any note, `reset`).
-- `MainTest`: `processInput` (a hit in the window gives the right `HitResult`; a bad lane or negative time is rejected), `checkMissedNotes` (a note past its window is a miss; none past it changes nothing), `getUpcomingNotes` (a count of zero or less is empty).
 - An integration test (Spring MockMvc): a play session through the controller's routes.
 - A browser test that plays a song through the controller.
 - For practice mode: `Song.getChartBetween` (the stretch's notes only, in order; an empty stretch; `from` after `to`).
@@ -594,6 +593,8 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `src/test/main/NoteTest.java` | Miles D'Antonio; Haniya Naseer | Same. |
 | `src/test/main/SongTest.java` | Miles D'Antonio; Haniya Naseer | Same. |
 | `src/test/main/SongWriterTest.java` | Miles D'Antonio; Haniya Naseer | Same, for the new SongWriter. |
+| `src/test/main/ScoreTest.java` | Sarah Schallon | Hit values, misses and miss hit results, null hits, combo and max-combo, accuracy, high score and reset behavior (GenAI-assisted). |
+| `src/test/main/MainTest.java` | Sarah Schallon | Controller construction, difficulty defaults, hit windows, invalid input, missed notes and upcoming-note preservation (GenAI-assisted). |
 | `src/test/main/GameScoreTest.java` | Miles D'Antonio | `GameScore` on the same run the browser's test uses (GenAI-assisted). |
 | `backend/src/test/.../ApiTests.java` | Miles D'Antonio | Every route against a fresh song bank (GenAI-assisted). |
 | `backend/src/test/.../MappingTests.java` | Miles D'Antonio | Name matching, the song check and the osu! port (GenAI-assisted). |
