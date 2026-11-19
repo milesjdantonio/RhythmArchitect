@@ -158,6 +158,25 @@ describe('the trained mapper\'s tiles on the song\'s grid', () => {
     // Easy holds only the long ones: a 1.5-beat hold at 120 BPM (0.75 s) stays, shorter ones don't.
     expect(c.easy.notes.filter((x) => x.hold).every((x) => x.len >= 1)).toBe(true);
   });
+
+  it('no chart fills up with holds: past its share, the shortest are taps', () => {
+    // Every tile a hold, of growing length.
+    const all: ChartNote[] = Array.from({ length: 400 }, (_, i) => ({ t: i, lane: i % 4, pitch: 'C5', len: 0.5 + (i % 7) * 0.25, hold: true }));
+    const out = thinChart(all, opts({ rate: 100, share: 1, minGap: 0.1, holdsAlone: false, maxHolds: 0.25 }));
+    const held = out.filter((n) => n.hold);
+    expect(held.length).toBeLessThanOrEqual(Math.floor(out.length * 0.25));
+    // The ones kept as holds are the longest.
+    expect(Math.min(...held.map((n) => n.len))).toBeGreaterThanOrEqual(Math.max(...out.filter((n) => !n.hold).map((n) => all.find((a) => a.t === n.t)!.len)));
+  });
+
+  it('on a very fast, busy song every step stays about the same (the per-second caps step together)', () => {
+    // Ultra at about 8 tiles a second for three minutes.
+    const fast: ChartNote[] = Array.from({ length: 1440 }, (_, i) => ({ t: i / 4, lane: i % 4, pitch: 'C5', len: 0.25 }));
+    const c = easierCharts(fast, { bpm: 128, offset: 0, events: [], onGrid: true });
+    const n = (['easy', 'medium', 'hard', 'ultra'] as const).map((d) => c[d].notes.length);
+    // Medium to Hard and Hard to Ultra (the caps' work; Easy is held to the beat by its spacing here).
+    for (let i = 2; i < 4; i++) expect(n[i] / n[i - 1], n.map((k) => (k / 180).toFixed(2)).join(' ')).toBeLessThan(1.6);
+  });
 });
 
 describe("the trained mapper's own beat grid (its chart's timing)", () => {

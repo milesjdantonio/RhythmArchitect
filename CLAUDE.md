@@ -36,7 +36,9 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   fast; `docs/supabase.md`, `docs/supabase.sql`). The browser never talks to Supabase. Keep the
   backend's boot quick (a sleeping free server wakes on the first visit): no startup work beyond
   Spring's own (the bank is read in the background, `SongStore.warm`), and the Docker image keeps
-  its AOT cache step. No screen waits for it: while `/api/health` doesn't answer, the places waiting on the server
+  its AOT cache step (its training start and `CMD` share one fixed heap, `-Xmx384m`: a heap
+  sized as a share of the build machine's memory turned compressed pointers off there and the
+  cache was refused on Render, ~36 s starts). No screen waits for it: while `/api/health` doesn't answer, the places waiting on the server
   (searches, Favorites, the bank, a song loading) say so with `ServerNote` (`src/lib/server.ts`).
 - YouTube videos must be songs (`notSongReason` in `mock-server/match.ts`, `Matching` in the
   backend: the same rules and the same test cases). Setting up the API key: `docs/youtube-api.md`.
@@ -254,6 +256,11 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 
 ## After a change
 
+- After changing the trained mapper's placement (`ensomi.ts`), `thin.ts` or the beat grid, run
+  `node tools/map-bench.mjs` (the whole pipeline in a browser on the synthetic band of
+  `tests/bench/band.ts`, 76-188 BPM clean and rough, then the bundled tracks): tempo right on every
+  band, tiles on real notes, strong notes caught per difficulty, the ladder's steps and holds.
+  Nov 19: tempo 16/16, on-note 100%, strong caught E 80% M 93% H 96% U 96%, every step ×1.3-1.55.
 - After changing `src/mapping/automap.ts` or `charts.ts`, run `npm run map`. The band benchmark (`tests/unit/automap-band.test.ts`) must keep finding the notes (legato ones too).
 - Before finishing (in `frontend/`): `npx tsc -b`, `npm test`, `npm run test:e2e`, `npm run build`.
   On this Windows box run vitest from a path that starts with an upper-case `C:` (a lower-case

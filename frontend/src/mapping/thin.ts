@@ -17,15 +17,18 @@ import type { ChartNote, Difficulty, SoundEvent } from '../api/types';
  * half, Hard 0.7: before, Medium to Hard doubled the tiles while Hard to Ultra added a tenth), and
  * chords, holds and spacing come in gradually: Easy one at a time, long holds only; Medium closer,
  * a chord of two on the biggest hits; Hard closer again, more chords, shorter holds and taps under
- * them; Ultra the whole chart. `rate` caps a very busy song (tiles a second), `floor` keeps a sparse
- * one from emptying.
+ * them; Ultra the whole chart. `rate` caps a very busy song (tiles a second; the caps are about 0.7
+ * of each other too, so on a fast, busy song every step stays the same: with Hard's at 4.6 the
+ * benchmark's 188 BPM band went ×1.9 from Hard to Ultra), `floor` keeps a sparse one from
+ * emptying, and `maxHolds` keeps any chart from filling up with holds (the shortest go first:
+ * 55% of Hard's tiles were holds on the benchmark's 92 BPM band, whose melody rings).
  */
-export const KEEP: Record<Difficulty, Pick<ThinOptions, 'rate' | 'floor' | 'minGap' | 'share' | 'maxChord' | 'chords' | 'holdsAlone' | 'minHold'>> = {
-  easy: { share: 0.34, rate: 2.2, floor: 0.9, minGap: 0.26, maxChord: 1, chords: 0, holdsAlone: true, minHold: [1, 0.45] },
-  medium: { share: 0.5, rate: 3.2, floor: 1.3, minGap: 0.17, maxChord: 2, chords: 0.04, holdsAlone: true, minHold: [0.75, 0.35] },
-  hard: { share: 0.7, rate: 4.6, floor: 1.8, minGap: 0.11, maxChord: 2, chords: 0.15, holdsAlone: false, minHold: [0.5, 0.25] },
+export const KEEP: Record<Difficulty, Pick<ThinOptions, 'rate' | 'floor' | 'minGap' | 'share' | 'maxChord' | 'chords' | 'holdsAlone' | 'minHold' | 'maxHolds'>> = {
+  easy: { share: 0.34, rate: 2.6, floor: 0.9, minGap: 0.26, maxChord: 1, chords: 0, holdsAlone: true, minHold: [1, 0.45], maxHolds: 0.15 },
+  medium: { share: 0.5, rate: 3.8, floor: 1.3, minGap: 0.15, maxChord: 2, chords: 0.04, holdsAlone: true, minHold: [0.75, 0.35], maxHolds: 0.2 },
+  hard: { share: 0.7, rate: 5.6, floor: 1.8, minGap: 0.11, maxChord: 2, chords: 0.15, holdsAlone: false, minHold: [0.5, 0.25], maxHolds: 0.25 },
   // The whole chart (chords of two at most, nothing closer than a 16th at 250 BPM).
-  ultra: { share: 1, rate: 1000, floor: 0, minGap: 0.06, maxChord: 2, chords: 1, holdsAlone: false, minHold: [0, 0] },
+  ultra: { share: 1, rate: 1000, floor: 0, minGap: 0.06, maxChord: 2, chords: 1, holdsAlone: false, minHold: [0, 0], maxHolds: 0.3 },
 };
 
 export interface ThinOptions {
@@ -45,6 +48,8 @@ export interface ThinOptions {
   chords: number;
   /** A hold shorter than this many beats or seconds (either) is a tap here. */
   minHold: [number, number];
+  /** At most this share of the kept tiles are holds (the shortest past it are taps). Default: no limit. */
+  maxHolds?: number;
   /** Nothing starts while a kept hold is held (else other lanes go on under it). */
   holdsAlone: boolean;
   /** Weigh beats over offbeats (only when the grid is right). */
@@ -150,6 +155,13 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     const pick = notes.length === 1 && r.notes.length > 1 ? capChord(r.notes, 1, prevLane) : notes;
     out.push(...pick);
     prevLane = pick[pick.length - 1].lane;
+  }
+  // Too many holds: the shortest become taps until the rest fit.
+  const holds = out.filter((n) => n.hold);
+  const room = Math.floor((o.maxHolds ?? 1) * out.length);
+  if (holds.length > room) {
+    const drop = new Set([...holds].sort((a, b) => a.len - b.len).slice(0, holds.length - room));
+    return out.map((n) => (drop.has(n) ? tap(n) : n));
   }
   return out;
 }

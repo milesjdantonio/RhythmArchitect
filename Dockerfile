@@ -22,9 +22,14 @@ COPY --from=build /src/app.jar app.jar
 # Measured: about 4.6 s to start before, about 2.1 s with both.
 RUN java -Djarmode=tools -jar app.jar extract --destination /app/run && rm app.jar
 WORKDIR /app/run
-RUN SONGS_FILE=/tmp/training/songs.json java -XX:MaxRAMPercentage=75 -XX:AOTCacheOutput=app.aot       -Dspring.context.exit=onRefresh -jar app.jar && rm -rf /tmp/training
+# The heap is set outright (not as a share of the machine's memory): on the build machine 75% of its
+# memory is a heap so large that Java turns compressed pointers off, while Render's 512 MB turns them
+# on, and a cache saved one way is refused the other ("The saved state of UseCompressedOops ... is
+# different from runtime": every start loaded classes the slow way, ~36 s on Render). 384 MB is 75%
+# of the free instance; raise both numbers together on a bigger one.
+RUN SONGS_FILE=/tmp/training/songs.json java -Xmx384m -XX:AOTCacheOutput=app.aot -Dspring.context.exit=onRefresh -jar app.jar && rm -rf /tmp/training
 # Render (and most hosts) set PORT; the app listens on it (8080 if unset).
 ENV PORT=8080
 EXPOSE 8080
-# The same memory flag as the training start (the cache is only used with a matching setup).
-CMD ["java", "-XX:MaxRAMPercentage=75", "-XX:AOTCache=app.aot", "-jar", "app.jar"]
+# The same heap as the training start (the cache is only used with a matching setup).
+CMD ["java", "-Xmx384m", "-XX:AOTCache=app.aot", "-jar", "app.jar"]
