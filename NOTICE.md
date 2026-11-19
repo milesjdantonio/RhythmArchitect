@@ -19,6 +19,27 @@ copies. Their beatmaps were made by this project's onset mapper (`npm run map`).
 line to the song's 104 BPM (each tile keeps its exact time) and lined up with the video
 (`frontend/mock-server/songs/tracks/one-dance.json`). Easy and Medium are thinned from it.
 
+## Music and charts the mapper is tested against (not in this repository)
+
+`frontend/tools/fetch-cc-sets.py` downloads, for `frontend/tools/map-human.mjs`, songs released
+under Creative Commons licences with human-made osu!mania 4K charts of them, into a folder outside
+the repository (nothing of them is committed or shipped with the game):
+
+- Music by **Kevin MacLeod** ([incompetech.com](https://incompetech.com)), licensed under
+  [Creative Commons: By Attribution 4.0](https://creativecommons.org/licenses/by/4.0/): *Fife and
+  Drum*, *March of the Spoons*, *The Show Must Be Go*, *Meatball Parade*, *Spazzmatica Polka*,
+  *Scheming Weasel* (a faster edit), *If I Had a Chicken*, *Stringed Disco*, *Griphop*, *Local
+  Forecast - Elevator*, *Le Grand Chase*, *Gold Rush*, *Big Rock*, *Bittersweet*.
+- Music by **Scott Buckley** ([scottbuckley.com.au](https://www.scottbuckley.com.au)), released
+  under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): *Extrapolation*, *September 21*,
+  *Three Sheets To The Wind*, *Time and Space*.
+- *Arpanauts* by **Eric Skiff** (*Resistor Anthems*, [ericskiff.com/music](https://ericskiff.com/music/)),
+  licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/).
+- The charts are by their osu! mappers (beatmap sets 510470, 608653, 882519, 1452286, 1604756,
+  1743483, 2136894, 2295883, 2181567, 2434857, 1301040, 2274064, 2651367, 2523137, 2349874,
+  2367503, 2351220, 2367936 and 1836415 on [osu.ppy.sh](https://osu.ppy.sh/beatmapsets)), used
+  only to measure the mapper.
+
 ## Models the mapper runs in the browser
 
 - **Beat This!** beat and downbeat tracker (Foscarin, Schlüter & Widmer, ISMIR 2024,

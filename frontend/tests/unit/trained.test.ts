@@ -92,12 +92,13 @@ describe('the trained mapper\'s tiles on the song\'s grid', () => {
     expect(c.notes.map((n) => [n.t, n.lane, !!n.hold, n.len])).toEqual([[0, 0, false, 0.25], [1, 3, true, 2], [1.5, 1, false, 0.25]]);
   });
 
-  it('a long note is a hold only where its sound rings (about half of it or more), and at least an 8th', () => {
+  it('a long note is a hold only where its sound rings (about a third of it or more), and at least an 8th', () => {
     const hold = (len: number, ringBeats: number | null, ms = 1000) => toChart([{ lane: 0, start_ms: 1000, end_ms: 1000 + ms }], 'hard',
       { bpm: BPM, offset: 0, events: ringBeats == null ? [] : [ring(1, ringBeats)] }).notes[0].hold === true && len > 0;
     expect(hold(2, 2)).toBe(true);
     expect(hold(2, 1)).toBe(true); // half of it
-    expect(hold(2, 0.7)).toBe(false); // the sound stopped a third of the way: a tap
+    expect(hold(2, 0.7)).toBe(true); // a third of it
+    expect(hold(2, 0.5)).toBe(false); // the sound stopped a quarter of the way: a tap
     expect(hold(2, null)).toBe(false); // no sound where it starts
     expect(hold(0.4, 1, 200)).toBe(false); // under an 8th
   });

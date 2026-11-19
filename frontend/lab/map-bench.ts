@@ -27,7 +27,10 @@ async function mapAudio(pcm: Float32Array, sr: number, title: string) {
   const sameBeat = (a: number, b: number) => [1, 2, 0.5].some((k) => Math.abs(a / b / k - 1) < 0.04);
   let on: Grid = { bpm: result.bpm, offset: result.offset };
   let model: number | null = null;
+  // The model's own long notes (its first chart): how many, and how long their sounds ring.
+  let raw = { notes: 0, long: 0 };
   const out = await trainedCharts(o.ort, pcm, sr, {
+    onRaw: (star, objects) => { if (star === 2) raw = { notes: objects.length, long: objects.filter((x) => x.end_ms != null && x.end_ms - x.start_ms >= 120).length }; },
     base: ENSOMI_BASE, title, bpm: result.bpm, offset: result.offset, events: result.events, onGrid: result.onBeatGrid, gpu,
     regrid: (g) => {
       model = g.bpm;
@@ -37,7 +40,7 @@ async function mapAudio(pcm: Float32Array, sr: number, title: string) {
       return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid };
     },
   });
-  return { charts: out.charts, grid: on, tracker: grid?.bpm ?? null, onset: result.bpm, model: model as number | null, gridUsed: result.gridUsed, gpu };
+  return { charts: out.charts, grid: on, tracker: grid?.bpm ?? null, onset: result.bpm, model: model as number | null, gridUsed: result.gridUsed, gpu, rawLong: raw.notes ? raw.long / raw.notes : 0 };
 }
 
 const tilesAt = (c: Chart, g: Grid) => [...new Set(c.notes.map((n) => Math.round((g.offset + (n.t * 60) / g.bpm) * 1000) / 1000))].sort((a, b) => a - b);
@@ -78,6 +81,27 @@ export async function benchBand(bpm: number, rough: boolean, bars = 24) {
     }];
   }));
   return { bpm, rough, read: m.grid.bpm, call: tempoCall(m.grid.bpm, bpm), tracker: m.tracker, onset: m.onset, model: m.model, gridUsed: m.gridUsed, gpu: m.gpu, per, ...ladder(m.charts, seconds) };
+}
+
+/**
+ * Any audio file (tools/map-human.mjs serves the Creative Commons songs it compares with their
+ * human charts): each difficulty's tiles as seconds into the audio, with holds and chords.
+ */
+export async function benchAudio(url: string, title: string) {
+  const buf = await (await fetch(url)).arrayBuffer();
+  const decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(buf);
+  const off = new OfflineAudioContext(1, Math.ceil(decoded.duration * SR), SR);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
+  const pcm = (await off.startRendering()).getChannelData(0).slice();
+  const m = await mapAudio(pcm, SR, title);
+  const spb = 60 / m.grid.bpm;
+  const charts = Object.fromEntries(DIFFICULTIES.map((d) => [d, m.charts[d].notes.map((n) => ({
+    sec: Math.round((m.grid.offset + n.t * spb) * 1000) / 1000, lane: n.lane, hold: !!n.hold, len: n.hold ? Math.round(n.len * spb * 1000) / 1000 : 0,
+  }))]));
+  return { title, seconds: pcm.length / SR, read: m.grid.bpm, tracker: m.tracker, model: m.model, rawLong: m.rawLong, charts };
 }
 
 /** A bundled track (public/audio/<id>.mp3): no truth, its tempo and ladder. */

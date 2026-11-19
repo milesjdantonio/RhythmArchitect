@@ -392,8 +392,8 @@ Before that, two models run in the browser on what was heard (the mapping worker
   browser's cache. Its lowest star rating is usually about this game's Ultra (the whole chart), so
   it charts at that rating; where Ultra would be thin (fast, intense songs, whose hardest stretches
   2★ eases), it charts again busier and each 10 s of the song takes the chart nearest about two
-  tiles a beat. Its long notes are holds only where the sound under them rings for about half
-  their length or more (the onset mapper measures how long each sound rings): the model writes
+  tiles a beat. Its long notes are holds only where the sound under them rings for about a third
+  of their length or more (the onset mapper measures how long each sound rings): the model writes
   long notes out of habit, and charts were a third holds over sounds that had stopped. Then every
   difficulty keeps a subset of its tiles (`thin.ts` `KEEP`): the strongest sounds, spaced out, each
   stretch of the song keeping its share, each step about 0.7 of the tiles of the one above (Easy

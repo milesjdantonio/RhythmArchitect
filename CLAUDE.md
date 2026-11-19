@@ -152,7 +152,7 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   again a star busier (to 4★, at most three charts, from the same analysis) and each stretch takes
   the chart nearest its target (`splice`). Every difficulty keeps a subset of that (`src/mapping/thin.ts`, `KEEP`),
   and its tiles move onto the onset mapper's measured sounds (`soundShift`: they come ~29 ms early).
-  Its long notes are holds only where the sound under them rings ≥45% of their length (`RING`,
+  Its long notes are holds only where the sound under them rings ≥30% of their length (`RING`,
   `SoundEvent.len`) and they're an 8th or longer: it writes them out of habit, and charts were up
   to a third holds over sounds that had stopped. To study its output, `onRaw` hands over each chart
   as the model made it (the Nov 19 study ran it headless on the bundled tracks and re-thinned
@@ -261,6 +261,12 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   `tests/bench/band.ts`, 76-188 BPM clean and rough, then the bundled tracks): tempo right on every
   band, tiles on real notes, strong notes caught per difficulty, the ladder's steps and holds.
   Nov 19: tempo 16/16, on-note 100%, strong caught E 80% M 93% H 96% U 96%, every step ×1.3-1.55.
+- Against human charts: `python -I tools/fetch-cc-sets.py <folder outside the repo>` (Creative
+  Commons songs with osu!mania 4K charts; credits in NOTICE.md; their audio is never committed),
+  then `node tools/map-human.mjs <folder>`. Nov 19 (26 charts, 19 songs): timing F1 63% at the
+  nearest difficulty (78-88% on 9 songs), Ultra holds 69% of the human tiles. Tempo: 10 the same,
+  5 half/double (a choice of counting), 3 off where both trackers agree (likely mistimed unranked
+  charts). Holds: human median 15% (0-78%: no agreement), ours ~1/3/8/8%.
 - After changing `src/mapping/automap.ts` or `charts.ts`, run `npm run map`. The band benchmark (`tests/unit/automap-band.test.ts`) must keep finding the notes (legato ones too).
 - Before finishing (in `frontend/`): `npx tsc -b`, `npm test`, `npm run test:e2e`, `npm run build`.
   On this Windows box run vitest from a path that starts with an upper-case `C:` (a lower-case
