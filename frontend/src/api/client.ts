@@ -1,8 +1,8 @@
 // Typed client for the songs, search and mapper API. Point VITE_API_BASE_URL at the real
 // backend; when it is empty the app talks to the mock in mock-server/ on the same origin.
 
-import type { FanChartRequest, NewSong, PlayInput, PlayReply, PlayStart, ScoreSubmit, SearchResults, Song, SongList, SongPatch, SongSummary, VideoMatch, VideoResults } from './types';
-import { upgradeSong, upgradeSummary } from './upgrade';
+import type { ChartsUpdate, FanChartRequest, NewSong, PlayInput, PlayReply, PlayStart, ScoreSubmit, SearchResults, Song, SongList, SongPatch, SongSummary, VideoMatch, VideoResults } from './types';
+import { rethinSong, upgradeSong, upgradeSummary } from './upgrade';
 
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -32,9 +32,25 @@ const listOf = (r: SearchResults | undefined): SongSummary[] => (Array.isArray(r
 /** A song on today's four charts (one saved before Ultra had three: upgrade.ts). */
 const song = (p: Promise<Song>) => p.then(upgradeSong);
 
+/**
+ * A song the trained mapper charted before today's ladder: its charts made again from its Ultra
+ * and kept on the server (which checks every tile is one of its Ultra's) the first time it's
+ * opened. If the server can't take them now, the song stays as it is (its runs are checked
+ * against the server's charts).
+ */
+async function onLadder(s: Song): Promise<Song> {
+  const update = rethinSong(s);
+  if (!update) return s;
+  try {
+    return upgradeSong(await request<Song>(`/songs/${encodeURIComponent(s.id)}/charts`, { method: 'PUT', body: JSON.stringify(update satisfies ChartsUpdate) }));
+  } catch {
+    return s;
+  }
+}
+
 export const api = {
   listSongs: () => request<SongList>('/songs').then((r) => r.songs.map(upgradeSong)),
-  getSong: (id: string) => song(request<Song>(`/songs/${encodeURIComponent(id)}`)),
+  getSong: (id: string) => song(request<Song>(`/songs/${encodeURIComponent(id)}`)).then(onLadder),
   updateSong: (id: string, patch: SongPatch) => song(request<Song>(`/songs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) })),
   deleteSong: (id: string) => request<void>(`/songs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   submitScore: (id: string, score: ScoreSubmit) => song(request<Song>(`/songs/${encodeURIComponent(id)}/scores`, { method: 'POST', body: JSON.stringify(score) })),
@@ -56,5 +72,5 @@ export const api = {
   /** Starts a run through the controller (main.Main on the server). */
   startPlay: (songId: string, difficulty: string, part?: { from: number; to: number }) => request<PlayStart>('/play', { method: 'POST', body: JSON.stringify({ songId, difficulty, ...part }) }),
   /** What the player did since the last call, in order: the model's state comes back. */
-  playInputs: (run: string, inputs: PlayInput[]) => request<PlayReply>(`/play/${encodeURIComponent(run)}/inputs`, { method: 'POST', body: JSON.stringify({ inputs }) }),
+  playInputs: (run: string, inputs: PlayInput[], judged?: string) => request<PlayReply>(`/play/${encodeURIComponent(run)}/inputs`, { method: 'POST', body: JSON.stringify({ inputs, ...(judged !== undefined ? { run: judged } : {}) }) }),
 };

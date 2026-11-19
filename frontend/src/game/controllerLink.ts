@@ -1,11 +1,14 @@
 // Playing through the controller: every key press and the song's clock go to main.Main on the
-// server (POST /api/play: backend PlayController), and what comes back is the model's state (Main's
-// Score and queue), which the run panel and the results show as the controller's count.
+// server (POST /api/play: backend PlayController), which reviews each press against the song's
+// queue of notes; with them goes the run as the game judged it, and the model confirms it
+// (checked against the chart, counted through GameScore: the same rules as the score at the top).
+// What comes back is the model's state: the confirmed score and how many presses were reviewed,
+// which the run panel and the results show.
 //
 // The game still judges each press here at once (a hit can't wait on the network); the controller
-// gets the same presses, in order, a quarter of a second at a time, and counts the run by its own
-// rules. Nothing here keeps a copy of the model's state beyond the last answer it gave. If the
-// server can't be reached, the run plays on and the panel says the controller isn't counting.
+// gets the same presses, in order, a quarter of a second at a time. Nothing here keeps a copy of
+// the model's state beyond the last answer it gave. If the server can't be reached, the run plays
+// on and the panel says the controller isn't reviewing.
 
 import { api } from '../api/client';
 import type { Difficulty, PlayInput, PlayState } from '../api/types';
@@ -22,12 +25,17 @@ export class ControllerLink {
   private lastTick = -Infinity;
   private dead = false;
   private timer = 0;
+  /** How much of the game's judged run has gone. */
+  private sent = 0;
   status: LinkStatus = 'starting';
   /** The model's state, as the controller last gave it. */
   state: PlayState | null = null;
 
-  /** `part`: practice mode's stretch (seconds of song): the controller plays only that (Song.getChartBetween). */
-  constructor(songId: string, difficulty: Difficulty, private onState: (s: PlayState | null, status: LinkStatus) => void, part?: { from: number; to: number }) {
+  /**
+   * `judged`: the run as the game has judged it so far (Game.run). `part`: practice mode's stretch
+   * (seconds of song): the controller plays only that (Song.getChartBetween).
+   */
+  constructor(songId: string, difficulty: Difficulty, private onState: (s: PlayState | null, status: LinkStatus) => void, private judged: () => string, part?: { from: number; to: number }) {
     api.startPlay(songId, difficulty, part).then((r) => {
       if (this.dead) return;
       this.run = r.run;
@@ -56,11 +64,15 @@ export class ControllerLink {
   }
 
   private async flush() {
-    if (!this.run || this.sending || !this.queue.length || this.dead) return;
+    if (!this.run || this.sending || this.dead) return;
+    const run = this.judged();
+    if (!this.queue.length && run.length === this.sent) return;
     const batch = this.queue.splice(0, 500);
+    const more = run.slice(this.sent);
+    this.sent = run.length;
     this.sending = true;
     try {
-      const r = await api.playInputs(this.run, batch);
+      const r = await api.playInputs(this.run, batch, more);
       if (!this.dead) this.set(r.state, 'on');
     } catch {
       if (!this.dead) { this.set(this.state, 'off'); clearInterval(this.timer); }

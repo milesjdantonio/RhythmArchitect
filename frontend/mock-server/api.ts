@@ -8,6 +8,7 @@
 //   PATCH  /api/songs/:id             { title?, favorite?, offset? } -> Song
 //   DELETE /api/songs/:id             -> 204
 //   POST   /api/songs/:id/scores      ScoreSubmit -> Song  (counts a play, keeps the best)
+//   PUT    /api/songs/:id/charts      ChartsUpdate -> Song  (charts made again on a newer ladder: every tile one of its Ultra's)
 //   GET    /api/search?title=&artist= -> { results: SongSummary[] }  (best matches first, max 8)
 //   GET    /api/favorites?q=          -> { results: SongSummary[] }  (favourites, newest first; q filters title or artist)
 //   GET    /api/health                -> { ok: true }  (the app asks this when it opens: is the server up?)
@@ -29,7 +30,7 @@ import type { Difficulty, FanChartRequest, NewSong, PlayInput, ScoreSubmit, Song
 import { runInputs, startRun } from './play';
 import { sortAtoZ } from '../src/library/bank';
 import { DIFFICULTIES } from '../src/api/types';
-import { upgradeSong } from '../src/api/upgrade';
+import { rechartProblem, upgradeSong } from '../src/api/upgrade';
 import { replayRun, runFits } from '../src/game/score';
 import { gradeFor } from '../src/game/engine';
 import { builtInSongs } from './songs/builtins';
@@ -261,6 +262,21 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           save(songs);
           return send(res, 204);
         }
+        if (parts.length === 3 && parts[2] === 'charts' && method === 'PUT') {
+          const body = await readJson(req, 4_000_000);
+          const problem = rechartProblem(song, body);
+          if (problem) return fail(res, 400, problem);
+          const u = body as { charts: Song['charts']; ladder: number };
+          // A difficulty whose chart changed loses its best score (it was set on another chart).
+          for (const d of DIFFICULTIES) {
+            const same = JSON.stringify(song.charts[d]?.notes ?? []) === JSON.stringify(u.charts[d].notes);
+            if (!same) delete song.best[d];
+            song.charts[d] = { difficulty: d, lanes: 4, notes: u.charts[d].notes };
+          }
+          song.report = { ...song.report, ladder: u.ladder };
+          save(songs);
+          return send(res, 200, song);
+        }
         if (parts.length === 3 && parts[2] === 'scores' && method === 'POST') {
           const body = (await readJson(req)) as ScoreSubmit;
           if (!DIFFICULTIES.includes(body.difficulty) || !Number.isFinite(body.score)) return fail(res, 400, 'Bad score');
@@ -296,10 +312,10 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           return send(res, 201, startRun(s, d, part ? { from: body.from as number, to: body.to as number } : undefined));
         }
         if (parts.length === 3 && parts[2] === 'inputs') {
-          const body = (await readJson(req)) as { inputs?: unknown };
+          const body = (await readJson(req, 1_000_000)) as { inputs?: unknown; run?: unknown };
           if (!Array.isArray(body?.inputs)) return fail(res, 400, 'Send the inputs as a list');
           if (body.inputs.length > 500) return fail(res, 400, 'Too many inputs at once');
-          const out = runInputs(parts[1], body.inputs as PlayInput[]);
+          const out = runInputs(parts[1], body.inputs as PlayInput[], 'run' in body ? body.run : undefined);
           return out ? send(res, 200, out) : fail(res, 404, 'That run is over (or never started)');
         }
       }

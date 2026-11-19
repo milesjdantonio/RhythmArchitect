@@ -23,6 +23,13 @@ import type { ChartNote, Difficulty, SoundEvent } from '../api/types';
  * emptying, and `maxHolds` keeps any chart from filling up with holds (the shortest go first:
  * 55% of Hard's tiles were holds on the benchmark's 92 BPM band, whose melody rings).
  */
+/**
+ * The ladder KEEP makes (saved in a song's report): 2 since Nov 19, 2026 (even steps, chords and
+ * holds brought in gradually, holds capped). Songs the trained mapper made before it are made
+ * again from their Ultra (upgrade.ts rethinSong).
+ */
+export const LADDER = 2;
+
 export const KEEP: Record<Difficulty, Pick<ThinOptions, 'rate' | 'floor' | 'minGap' | 'share' | 'maxChord' | 'chords' | 'holdsAlone' | 'minHold' | 'maxHolds'>> = {
   easy: { share: 0.34, rate: 2.6, floor: 0.9, minGap: 0.26, maxChord: 1, chords: 0, holdsAlone: true, minHold: [0.75, 0.4], maxHolds: 0.15 },
   medium: { share: 0.5, rate: 3.8, floor: 1.3, minGap: 0.15, maxChord: 2, chords: 0.04, holdsAlone: true, minHold: [0.5, 0.3], maxHolds: 0.2 },

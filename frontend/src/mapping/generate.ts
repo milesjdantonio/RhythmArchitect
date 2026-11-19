@@ -3,6 +3,7 @@
 import type { Chart, Difficulty, NewSong, VideoMatch } from '../api/types';
 import type { Heard, ListenError, Mapped } from './listen';
 import { huesFor } from './osu';
+import { LADDER } from './thin';
 
 /** The charts a song gets: from the trained mapper (ensomi.ts), or (when it can't) the on-device mapper (automap.ts). */
 export interface Charted {
@@ -38,6 +39,7 @@ export function songFromListening(m: Mapped, video: VideoMatch, heard: Pick<Hear
     report: {
       ...r.report,
       mapper: `${c.mapper}, listening pass${c.fallback ? ` (on-device: ${c.fallback})` : ''}`,
+      ladder: LADDER,
       ...(heard.placement ? { listen: heard.placement } : {}),
     },
     patch: { name: 'Glass Bell', oscillator: 'triangle', attack: 0.002, decay: 0.3, sustain: 0.05, release: 0.4, cutoff: 6000, space: 0.3 },

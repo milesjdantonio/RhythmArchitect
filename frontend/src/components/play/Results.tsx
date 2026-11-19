@@ -132,12 +132,14 @@ export function Results({ song, difficulty, result, previousBest, saving, model,
             <span className="results-od-bonus mono">+{Math.round(od.bonus).toLocaleString()}</span>
           </motion.div>
         )}
-        {/* What the controller (main.Main, Score's rules) counted for the same presses. */}
+        {/* The controller: the presses Main reviewed, and the score the model confirmed (GameScore). */}
         {model?.state && (
           <motion.p className="results-model muted small" {...rise(5)}>
-            <span className="label">The controller counted</span>{' '}
-            <span className="mono">{model.state.score.toLocaleString()}</span> points (Score: Perfect 100, Good 75, Early/Late 50), {model.state.hits} hits, {model.state.misses} misses,
-            accuracy {model.state.accuracy.toFixed(1)}%, best combo {model.state.maxCombo}
+            <span className="label">Controller</span>{' '}
+            {model.state.reviewed} presses reviewed ·{' '}
+            {!model.state.confirmed ? 'the run was refused'
+              : model.state.confirmed.score === result.score ? <>score confirmed: <span className="mono">{model.state.confirmed.score.toLocaleString()}</span> ✓</>
+              : <>the model counted <span className="mono">{model.state.confirmed.score.toLocaleString()}</span> (not the same)</>}
           </motion.p>
         )}
         {timing !== null && Math.abs(timing) >= 15 && !result.assisted && (

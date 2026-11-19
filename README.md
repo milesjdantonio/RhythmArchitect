@@ -94,14 +94,18 @@ state:
 2. **Play.** Every key press goes to `Main.processInput(lane, time)` and the song's clock to
    `Main.checkMissedNotes(time)`, in order, a quarter of a second at a time
    (`frontend/src/game/controllerLink.ts`, `POST /api/play/:run/inputs`).
-3. **Show.** Each answer is the model's state: `Main`'s `Score` (points, combo, accuracy, hits,
-   misses) and the notes left in its queue. The run panel shows it live under **Controller**, and
-   the results say what the controller counted. The view keeps no copy of it: it shows the last
-   answer.
+3. **Confirm.** With the presses goes the run as the game judged it, and the model confirms it:
+   checked against the chart's `Queue<Note>` and counted through `GameScore` (`RunReplay`), the
+   same rules as the score at the top of the screen. `Main` is the input reviewer; the model keeps
+   the score.
+4. **Show.** Each answer is the model's state: the confirmed score and how many presses `Main`
+   reviewed (and `Main`'s own `Score` and queue). The run panel shows it live under
+   **Controller** ("97,150 confirmed · 512 presses reviewed"), and the results say whether the
+   model's score matches the game's (✓). The view keeps no copy of it: it shows the last answer.
 
 The game also judges each press at once in the browser (`engine.ts`, the same rules as
-`GameScore`), so a slow network never delays a hit; that is the big score on screen, and the
-server counts it again through `GameScore` before keeping a best. Bad input stops at the
+`GameScore`), so a slow network never delays a hit; that is the big score on screen, confirmed by
+the model a moment later and counted again before a best is kept. Bad input stops at the
 controller: a lane out of 0-3 or a time that isn't one is turned down by `Main` (`null`, nothing
 counted), and a practice stretch that doesn't start before it ends by `Song.getChartBetween` (a
 400). `PlayTests` checks all of it.
@@ -540,7 +544,7 @@ browser judges each press at once with a TypeScript copy of `GameScore`'s rules
 
 ### What doesn't work yet
 
-- **`Main` and the game don't count a run the same way yet.** `Main`'s windows are wider (0.1, 0.2, 0.3 s against the game's 45, 90, 140 ms), it judges presses strictly in its queue's order (in a chord, pressing the second lane first is a miss), and it has no holds, combo multiplier or Overdrive. So the controller's count, shown beside the game's, can differ; the saved best is `GameScore`'s.
+- **`Main` reviews presses by its own rules.** Its windows are wider (0.1, 0.2, 0.3 s against the game's 45, 90, 140 ms) and it takes presses strictly in its queue's order (in a chord, pressing the second lane first is a miss), so its own `Score` isn't the game's. The score shown and saved is `GameScore`'s, which the model confirms from the judged run.
 - **If the server can't be reached mid-run**, the run plays on and the panel says the controller isn't counting (nothing is lost but its count).
 - **Songs mapped on the deployed site don't last until Supabase is set up there**: the Render service's song file is reset when it restarts; with `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` set the bank is kept in Supabase ([docs/supabase.md](docs/supabase.md)).
 - **Searching YouTube by name on the deployed site** needs `YOUTUBE_API_KEY` set on Render ([docs/youtube-api.md](docs/youtube-api.md)); pasting a YouTube link works without it. Without the key, a pasted link is checked as a song by its title and channel only.
@@ -548,7 +552,7 @@ browser judges each press at once with a TypeScript copy of `GameScore`'s rules
 - **Mapping a new song needs desktop Chrome or Edge** (sharing a tab's sound); other browsers and phones get an osu! fan chart when one exists.
 - **The first song mapped downloads the trained model** (about 120 MB, then cached); without WebGPU, charting a 3-minute song takes about 90 s instead of 20 s.
 - **The menu starts on Medium**, not Easy as the spec's "no difficulty chosen" row says.
-- **Songs mapped before Nov 19** keep the old difficulty ladder (Medium to Hard too big a jump) until they're mapped again.
+- **Songs mapped before Nov 19** are made again from their saved Ultra the first time they're opened (the server checks every tile was in it), so their Easy, Medium and Hard best scores reset; their holds can't be checked against the sound any more (it isn't saved), only capped.
 
 ## Next Steps
 
@@ -560,7 +564,7 @@ browser judges each press at once with a TypeScript copy of `GameScore`'s rules
 | 2 | Review `PlayController`'s use of `Main` and the model changes since Deliverable 3. | Sarah | `PlayController`, `Song.getChartBetween`, `QueueTest`'s interleaved case, `PlayTests`. |
 | 3 | Show the controller's count on the results next to the game's, with where they differ (once 1 is done they should agree). | Miles | `Results.tsx`, `controllerLink.ts`. |
 | 4 | Keep songs on the deployed site: set `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and `YOUTUBE_API_KEY` on Render. | Miles | `SongStore`, `SupabaseSongs` ([docs/supabase.md](docs/supabase.md)). |
-| 5 | Map the bank's older songs again, for the new difficulty ladder. | Miles | `thin.ts`, `ensomi.ts`. |
+| 5 | **Done.** The bank's older songs get the new difficulty ladder (made again from their Ultra when first opened). | Miles | `upgrade.ts` `rethinSong`, `SongController.rechart`. |
 | 6 | Rehearse the demo below to time. | Everyone | |
 
 ### Stretch goals

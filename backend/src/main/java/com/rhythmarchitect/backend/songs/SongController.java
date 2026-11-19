@@ -1,6 +1,7 @@
 package com.rhythmarchitect.backend.songs;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 
 import org.slf4j.Logger;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -78,6 +80,64 @@ public class SongController {
             }
             return song.deepCopy();
         });
+    }
+
+    /**
+     * { charts, ladder }: a song the trained mapper charted before today's difficulty ladder, its
+     * charts made again (the browser does it from its Ultra the first time it's opened). Kept only
+     * if the ladder is newer, all four difficulties are there on four lanes, every tile is one of
+     * the song's Ultra's (the same beat and lane; a hold no longer than it was, or a tap: charts
+     * made again can only leave tiles out) and the model takes the song in. A difficulty whose
+     * chart changed loses its best score (it was set on another chart). The mock checks the same
+     * (upgrade.ts rechartProblem).
+     */
+    @PutMapping("/songs/{id}/charts")
+    public ObjectNode rechart(@PathVariable String id, @RequestBody JsonNode body) {
+        JsonNode charts = body.path("charts");
+        if (!body.path("ladder").isNumber() || !charts.isObject()) throw ApiException.badRequest("Send the charts and their ladder");
+        int ladder = body.path("ladder").asInt();
+        return store.write(all -> {
+            ObjectNode song = store.find(all, id).orElseThrow(SongController::missing);
+            if (ladder <= song.path("report").path("ladder").asInt(1)) throw ApiException.badRequest("The song is on that ladder already");
+            Map<String, Double> ultra = new HashMap<>();
+            for (JsonNode n : song.path("charts").path("ultra").path("notes")) {
+                ultra.put(tileKey(n), n.path("hold").asBoolean(false) ? n.path("len").asDouble(0) : 0.0);
+            }
+            for (Difficulty d : Difficulty.values()) {
+                String name = SongModel.name(d);
+                JsonNode c = charts.path(name);
+                if (c.path("lanes").asInt(0) != 4 || !c.path("notes").isArray() || c.path("notes").isEmpty()) throw ApiException.badRequest("No " + name + " chart");
+                for (JsonNode n : c.path("notes")) {
+                    Double was = ultra.get(tileKey(n));
+                    if (was == null) throw ApiException.badRequest("A " + name + " tile that isn't in Ultra");
+                    if (n.path("hold").asBoolean(false) && !(n.path("len").asDouble(Double.NaN) <= was + 1e-6)) throw ApiException.badRequest("A " + name + " hold longer than Ultra's");
+                }
+            }
+            ObjectNode next = song.deepCopy();
+            ObjectNode best = next.path("best") instanceof ObjectNode b ? b : next.putObject("best");
+            ObjectNode nextCharts = next.putObject("charts");
+            for (Difficulty d : Difficulty.values()) {
+                String name = SongModel.name(d);
+                if (!charts.path(name).path("notes").equals(song.path("charts").path(name).path("notes"))) best.remove(name);
+                ObjectNode c = nextCharts.putObject(name);
+                c.put("difficulty", name);
+                c.put("lanes", 4);
+                c.set("notes", charts.path(name).path("notes").deepCopy());
+            }
+            (next.path("report") instanceof ObjectNode r ? r : next.putObject("report")).put("ladder", ladder);
+            try {
+                SongModel.of(next);
+            } catch (IllegalArgumentException e) {
+                throw ApiException.badRequest("The game can't play these charts: " + e.getMessage());
+            }
+            song.setAll(next);
+            return song.deepCopy();
+        });
+    }
+
+    /** A tile's beat (to a thousandth) and lane. */
+    private static String tileKey(JsonNode n) {
+        return Math.round(n.path("t").asDouble(Double.NaN) * 1000) + ":" + n.path("lane").asInt(-1);
     }
 
     @DeleteMapping("/songs/{id}")

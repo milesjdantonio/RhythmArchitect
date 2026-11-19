@@ -125,17 +125,19 @@ export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, 
 }
 
 /**
- * The controller's count, as main.Main on the server keeps it (its Score: points, combo,
- * accuracy, and the notes left in its queue): the model's own state, shown as it last said.
+ * The controller, as the server last answered: the score the model confirmed (the run checked
+ * against the chart and counted through GameScore: the score above, a moment behind) and how many
+ * presses Main, the controller, reviewed against the song's notes.
  */
 function ModelLine({ model }: { model: { state: PlayState | null; status: LinkStatus } }) {
   const s = model.state;
   return (
-    <div className={`hud-model is-${model.status}`} title="Main, the controller, counts the same presses by the model's rules (Score)">
+    <div className={`hud-model is-${model.status}`} title="Main, the controller, reviews every press; the model confirms the score above (GameScore)">
       <span className="label">Controller</span>
-      {model.status === 'off' && !s ? <span className="muted">not counting (no server)</span>
+      {model.status === 'off' && !s ? <span className="muted">not reviewing (no server)</span>
         : !s ? <span className="muted">starting</span>
-        : <span className="mono">{s.score.toLocaleString()} · ×{s.combo} · {s.accuracy.toFixed(1)}% · {s.left} left</span>}
+        : !s.confirmed ? <span className="hud-model-bad">run refused · {s.reviewed} presses reviewed</span>
+        : <span className="mono">{s.confirmed.score.toLocaleString()} confirmed · {s.reviewed} presses reviewed</span>}
     </div>
   );
 }

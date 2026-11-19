@@ -58,6 +58,7 @@ class PlayTests {
         return body;
     }
 
+    /** `inputs`: the list, and anything after it in the body (e.g. `, "run": "PP"`). */
     private org.springframework.test.web.servlet.ResultActions send(String run, String inputs) throws Exception {
         return mvc.perform(post("/api/play/" + run + "/inputs").contentType(MediaType.APPLICATION_JSON).content("{\"inputs\":" + inputs + "}"));
     }
@@ -76,6 +77,19 @@ class PlayTests {
             .andExpect(jsonPath("$.state.combo").value(1))
             .andExpect(jsonPath("$.state.hits").value(1))
             .andExpect(jsonPath("$.state.left").value(notes - 1));
+    }
+
+    @Test
+    void theRunIsConfirmedThroughGameScoreAsTheGameCountsIt() throws Exception {
+        String run = JsonPath.read(start("demo-neon-blueprint", "easy"), "$.run");
+        // Before any of it: nothing confirmed yet, nothing reviewed.
+        send(run, "[]").andExpect(jsonPath("$.state.confirmed.score").value(0)).andExpect(jsonPath("$.state.reviewed").value(0));
+        // Three Perfects and a Good, sent in two parts: 1000 + 1000 + 1000 + 750 (Score's points x10, x1).
+        send(run, "[{\"lane\":0,\"time\":0}], \"run\": \"PP\"").andExpect(jsonPath("$.state.confirmed.score").value(2000)).andExpect(jsonPath("$.state.reviewed").value(1));
+        send(run, "[], \"run\": \"PG\"").andExpect(jsonPath("$.state.confirmed.score").value(3750)).andExpect(jsonPath("$.state.confirmed.maxCombo").value(4));
+        // A run the chart couldn't have given (more tiles than Easy has) is refused, for good.
+        send(run, "[], \"run\": \"" + "P".repeat(500) + "\"").andExpect(jsonPath("$.state.confirmed").value(org.hamcrest.Matchers.nullValue()));
+        send(run, "[], \"run\": \"P\"").andExpect(jsonPath("$.state.confirmed").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test

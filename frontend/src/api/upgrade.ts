@@ -3,8 +3,9 @@
 // (thin.ts KEEP), as a newly mapped song's are. Best scores move with their charts (the old Easy's
 // has no chart any more). Free of browser and Node APIs: the client and the mock server use it.
 
-import type { BestScore, Chart, Difficulty, SongSummary } from './types';
-import { KEEP, thinChart } from '../mapping/thin';
+import type { BestScore, Chart, ChartsUpdate, Difficulty, MapReport, SongSummary } from './types';
+import { DIFFICULTIES } from './types';
+import { KEEP, LADDER, thinChart } from '../mapping/thin';
 
 type Charts = Partial<Record<Difficulty, Chart>>;
 type Best = Partial<Record<Difficulty, BestScore>>;
@@ -20,7 +21,15 @@ export function upgradeSong<S extends { bpm: number; charts: Charts; best?: Best
   if (charts.ultra || !charts.hard) return song;
   const full = charts.hard.notes;
   const spb = 60 / song.bpm;
-  const kept = (d: Difficulty): Chart => ({ difficulty: d, lanes: 4, notes: thinChart(full, { ...KEEP[d], spb, offset: 0, events: [], onGrid: true }) });
+  // Medium and Hard an even step apart between the Easy it keeps (the old Medium) and Ultra (the
+  // old Hard), as upgradeSummary estimates them: KEEP's shares of Ultra alone could put Medium
+  // under that Easy (a fan chart's Medium is denser than a third of its Hard).
+  const easyN = charts.medium?.notes.length ?? 0;
+  const share = (k: number) => (easyN ? Math.min(1, (easyN * Math.pow(full.length / easyN, k)) / Math.max(1, full.length)) : KEEP[k < 0.5 ? 'medium' : 'hard'].share);
+  const kept = (d: Difficulty): Chart => ({
+    difficulty: d, lanes: 4,
+    notes: thinChart(full, { ...KEEP[d], ...(d === 'medium' || d === 'hard' ? { share: share(d === 'medium' ? 1 / 3 : 2 / 3), rate: 1000, floor: 0 } : {}), spb, offset: 0, events: [], onGrid: true }),
+  });
   return {
     ...song,
     charts: {
@@ -31,6 +40,48 @@ export function upgradeSong<S extends { bpm: number; charts: Charts; best?: Best
     },
     ...(song.best ? { best: moveBest(song.best) } : {}),
   };
+}
+
+/**
+ * A song the trained mapper charted before today's ladder (LADDER), made again from its Ultra:
+ * Ultra keeps its tiles (its holds capped as a new song's are), and Easy, Medium and Hard are
+ * thinned from it as a newly mapped song's are. Null when it's on today's ladder already, or
+ * wasn't made by the trained mapper (other mappers' charts are kept as they are). The server
+ * keeps the result only if every tile is one of its Ultra's (PUT /api/songs/:id/charts).
+ */
+export function rethinSong(song: { bpm: number; charts: Charts; report?: Pick<MapReport, 'mapper' | 'ladder'> }): ChartsUpdate | null {
+  const ultra = song.charts.ultra;
+  if (!ultra || !song.report?.mapper.startsWith('Ensomi') || (song.report.ladder ?? 1) >= LADDER) return null;
+  const spb = 60 / song.bpm;
+  const keep = (src: Chart['notes'], d: Difficulty) => thinChart(src, { ...KEEP[d], spb, offset: 0, events: [], onGrid: true });
+  const top = keep(ultra.notes, 'ultra');
+  const charts = Object.fromEntries(DIFFICULTIES.map((d) => [d, { difficulty: d, lanes: 4, notes: d === 'ultra' ? top : keep(top, d) }])) as Record<Difficulty, Chart>;
+  return { charts, ladder: LADDER };
+}
+
+/**
+ * Why charts made again (PUT /api/songs/:id/charts) can't replace a song's, or null when they can:
+ * a newer ladder, all four difficulties on four lanes, and every tile one of the song's Ultra's
+ * (the same moment and lane; a hold no longer than it was, or a tap). Charts made again can only
+ * leave tiles out, never add one. The backend checks the same (SongController.rechart).
+ */
+export function rechartProblem(song: { charts: Charts; report?: Partial<Pick<MapReport, 'mapper' | 'ladder'>> }, update: unknown): string | null {
+  const u = update as Partial<ChartsUpdate> | null;
+  if (!u || typeof u.ladder !== 'number' || !u.charts) return 'Send the charts and their ladder';
+  if (u.ladder <= (song.report?.ladder ?? 1)) return 'The song is on that ladder already';
+  const ultra = song.charts.ultra?.notes ?? [];
+  const had = new Map<string, number>();
+  for (const n of ultra) had.set(`${Math.round(n.t * 1000)}:${n.lane}`, n.hold ? n.len : 0);
+  for (const d of DIFFICULTIES) {
+    const c = u.charts[d];
+    if (!c || c.lanes !== 4 || !Array.isArray(c.notes) || !c.notes.length) return `No ${d} chart`;
+    for (const n of c.notes) {
+      const was = had.get(`${Math.round(Number(n.t) * 1000)}:${n.lane}`);
+      if (was === undefined) return `A ${d} tile that isn't in Ultra`;
+      if (n.hold && !(Number(n.len) <= was + 1e-6)) return `A ${d} hold longer than Ultra's`;
+    }
+  }
+  return null;
 }
 
 /**

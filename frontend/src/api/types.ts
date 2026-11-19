@@ -90,6 +90,12 @@ export interface MapReport {
    * 1 stretch, first sound at 0.4 s" or why it fell back to placing it as it was heard.
    */
   listen?: string;
+  /**
+   * Which difficulty ladder the charts were made on (thin.ts LADDER). The trained mapper's songs
+   * from before it (none: the first) are made again from their Ultra when opened (upgrade.ts
+   * rethinSong, PUT /api/songs/:id/charts).
+   */
+  ladder?: number;
 }
 
 /** Synth patch for synth-played songs. Names map to Tone.js oscillator types. */
@@ -281,11 +287,16 @@ export interface ChartProgress {
 export type NewSong = Omit<Song, 'id' | 'createdAt' | 'best' | 'plays' | 'favorite' | 'builtIn'>;
 
 /**
- * Playing through the controller (POST /api/play, backend PlayController running main.Main):
- * the model's state after what the player did. `accuracy` is Score's (0..100), `left` the notes
- * still in Main's queue, `upcoming` the next few (lane, seconds from beat 0).
+ * Playing through the controller (POST /api/play, backend PlayController running main.Main): the
+ * controller reviews the input and the model keeps the score. `confirmed`: the run so far as the
+ * game judged it, checked against the chart and counted through GameScore (the score at the top of
+ * the screen; accuracy 0..1), null when it was refused. `reviewed`: the presses Main checked
+ * against its queue of notes. Then Main's own state: its Score (`accuracy` 0..100), its clock, the
+ * notes left in its queue and the next few (lane, seconds from beat 0).
  */
 export interface PlayState {
+  confirmed: { score: number; accuracy: number; maxCombo: number } | null;
+  reviewed: number;
   score: number; combo: number; maxCombo: number; hits: number; misses: number; accuracy: number;
   time: number; left: number; upcoming: { lane: number; time: number }[];
 }
@@ -295,6 +306,9 @@ export interface PlayStart { run: string; notes: number; state: PlayState }
 export type PlayInput = { lane: number; time: number } | { time: number };
 /** Each press's result (Main's HitResult, null when Main turned the input down), then the state. */
 export interface PlayReply { results: (string | null)[]; state: PlayState }
+
+/** A song's charts made again on today's ladder (PUT /api/songs/:id/charts): every tile one of its Ultra's. */
+export interface ChartsUpdate { charts: Record<Difficulty, Chart>; ladder: number }
 
 export interface ScoreSubmit {
   difficulty: Difficulty;

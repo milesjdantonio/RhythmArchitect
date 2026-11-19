@@ -630,7 +630,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     // The run goes through the controller too (practice: a run of just the stretch, each time round).
     link.current?.stop();
     const spbOf = 60 / song.bpm;
-    link.current = new ControllerLink(song.id, difficulty, (state, status) => setModel({ state, status }), p ? { from: p.from * spbOf, to: p.to * spbOf } : undefined);
+    link.current = new ControllerLink(song.id, difficulty, (state, status) => setModel({ state, status }), () => g.run, p ? { from: p.from * spbOf, to: p.to * spbOf } : undefined);
     setModel({ state: null, status: 'starting' });
     pressed.current = [false, false, false, false];
     flash.current = [0, 0, 0, 0];

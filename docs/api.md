@@ -14,22 +14,27 @@ Base URL: `VITE_API_BASE_URL` (empty means same origin). All bodies are JSON. Er
 | `GET /api/songs/:id` | | `Song` |
 | `PATCH /api/songs/:id` | `{ title?, favorite? }` | `Song` |
 | `DELETE /api/songs/:id` | | `204` (the dev tools' "Delete map") |
+| `PUT /api/songs/:id/charts` | `{ charts, ladder }` | `Song`: a song the trained mapper charted before today's difficulty ladder, its four charts made again from its Ultra (the browser does it the first time it's opened: `upgrade.ts` `rethinSong`). 400 unless the ladder is newer than the song's and every tile is one of its Ultra's (same beat and lane; a hold no longer, or a tap); a difficulty whose chart changed loses its best. |
 | `POST /api/songs/:id/scores` | `{ difficulty, score, accuracy, maxCombo, grade, run? }` | `Song` (plays + 1; `best[difficulty]` kept if higher). Autoplay runs are never sent. `run` is the run in order (`P` `G` `E` `L` a hit as `main.HitResult`, `M` a miss, `H<ms>;` a held note held its length, `B` one let go): the server checks it against the song's chart for that difficulty (the game's model: a `Queue` of `Note`s, so no more tiles judged than the chart has, no more holds ended than it has, no hold held longer than its holds, within 2 ms) and counts it again through `main.GameScore` (`Score` with the combo multiplier and the hold bonus), and keeps that score, accuracy, max combo and grade, marked `rules: "score"`; a best without it (the old points) gives way to any such run. A `run` that isn't one, or that the chart couldn't have given: 400 "Bad run" (no play counted). |
 
 ## Play (through the controller)
 
-Every run (a practice loop too, each time round, as a run of just its stretch) also goes through the game's controller,
-`main.Main`, on the server (`PlayController`): key presses go to `Main.processInput`, the song's
-clock to `Main.checkMissedNotes`, and every answer is the model's state (`PlayState`: Main's
-`Score` and the notes left in its queue), which the run panel and the results show. The game still
-judges each press at once in the browser; these go a quarter of a second at a time.
+Every run (a practice loop too, each time round, as a run of just its stretch) also goes through
+the game's controller, `main.Main`, on the server (`PlayController`). The controller reviews the
+input and the model keeps the score: key presses go to `Main.processInput` (checked against the
+song's queue of notes), the song's clock to `Main.checkMissedNotes`, and the run as the game judged
+it (the tokens of `POST /api/songs/:id/scores`, a part at a time) is confirmed through the model
+(`RunReplay`: checked against the chart's queue, counted through `GameScore`, the same rules as the
+score at the top of the screen). Every answer is the model's state, which the run panel and the
+results show. The game still judges each press at once in the browser; these go a quarter of a
+second at a time.
 
 | Route | Body | Returns |
 |---|---|---|
 | `POST /api/play` | `{ songId, difficulty, from?, to? }` | `201 { run, notes, state: PlayState }`: a `Main` on the song's model at that difficulty. With `from` and `to` (seconds: practice mode), only that stretch: the song's chart is replaced by `Song.getChartBetween` (400 when it doesn't start before it ends). `400` without a song id or with an unknown difficulty, or when the model can't take the song; `404` for an unknown song. |
-| `POST /api/play/:run/inputs` | `{ inputs: ({ lane, time } \| { time })[] }` (in order; at most 500) | `{ results, state }`: one result per press (Main's `HitResult` name, or `null` when Main turned the input down: a lane out of 0-3, a time that isn't one or is negative), then the state. A time alone is the clock passing. `400` when `inputs` isn't a list or is too long; `404` for a run that's over (runs live in memory: at most 300, none idle over an hour). |
+| `POST /api/play/:run/inputs` | `{ inputs: ({ lane, time } \| { time })[], run? }` (in order; at most 500; `run`: the judged run's tokens since the last call) | `{ results, state }`: one result per press (Main's `HitResult` name, or `null` when Main turned the input down: a lane out of 0-3, a time that isn't one or is negative), then the state. A time alone is the clock passing. `400` when `inputs` isn't a list or is too long; `404` for a run that's over (runs live in memory: at most 300, none idle over an hour). |
 
-`PlayState`: `{ score, combo, maxCombo, hits, misses, accuracy (0-100), time, left, upcoming: { lane, time }[] }`.
+`PlayState`: `{ confirmed: { score, accuracy (0-1), maxCombo } | null, reviewed, score, combo, maxCombo, hits, misses, accuracy (0-100), time, left, upcoming: { lane, time }[] }`. `confirmed` is the run so far through `GameScore` (null once a part couldn't have been played on the chart: it stays refused); `reviewed` the presses `Main` took; the rest is `Main`'s own `Score` and queue.
 
 ## Search and favourites
 

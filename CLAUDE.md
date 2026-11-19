@@ -27,9 +27,14 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   `frontend/` after they change). Run `./mvnw test` there after changing it. Every run (practice
   too, its stretch via `Song.getChartBetween`) also plays through `Main` on the server
   (`PlayController`, `POST /api/play`, `/api/play/:run/inputs`; the game's side:
-  `src/game/controllerLink.ts`; the mock's copy of Main's rules: `mock-server/play.ts`): presses
-  and the clock go in, Main's `Score` comes back and the run panel shows it (the course's
-  "view through the controller into the model"). The browser still judges each press at once.
+  `src/game/controllerLink.ts`; the mock's copy of Main's rules: `mock-server/play.ts`). Main is the
+  input reviewer: presses and the clock go to it; the game's judged run goes too and the model
+  confirms the score (`RunReplay`: the chart's queue, then `GameScore`: the score at the top). The
+  run panel shows the confirmed score and the presses reviewed (the course's "view through the
+  controller into the model"). The browser still judges each press at once. Songs the trained
+  mapper charted before ladder 2 (`thin.ts` `LADDER`, `report.ladder`) are made again from their
+  Ultra when first opened (`upgrade.ts` `rethinSong`, `PUT /api/songs/:id/charts`: every tile must
+  be one of their Ultra's).
   Haniya isn't credited in the README (she didn't work on it).
 - The song bank is a JSON file, or Supabase when `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set
   (`SupabaseSongs`: its REST API with Java's own HTTP client, no driver or pool, so boots stay

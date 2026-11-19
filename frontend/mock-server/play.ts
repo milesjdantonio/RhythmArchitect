@@ -4,7 +4,8 @@
 // 0.2 s Good, 0.3 s Early or Late (else a miss, as is a press on another lane); the clock passing a
 // note by more than 0.3 s misses it; Score's points (100, 75, 50), combo and accuracy.
 
-import type { Difficulty, PlayInput, PlayState, Song } from '../src/api/types';
+import type { Chart, Difficulty, PlayInput, PlayState, Song } from '../src/api/types';
+import { replayRun, runFits } from '../src/game/score';
 
 type Result = 'PERFECT' | 'GOOD' | 'EARLY' | 'LATE' | 'MISS';
 interface QNote { lane: number; time: number }
@@ -24,6 +25,13 @@ class MainRun {
   private ok = 0;
   private misses = 0;
   readonly total: number;
+  /** The run as the game judged it, and the chart it's confirmed against (PlayController's run). */
+  private run = '';
+  private chart: Chart;
+  private bpm: number;
+  private reviewed = 0;
+  private refused = false;
+  private confirmed = { score: 0, accuracy: 1, maxCombo: 0 };
 
   constructor(song: Song, difficulty: Difficulty, part?: { from: number; to: number }) {
     const spb = 60 / song.bpm;
@@ -32,6 +40,9 @@ class MainRun {
     this.q = [...song.charts[difficulty].notes].sort((a, b) => a.t - b.t || a.lane - b.lane).map((n) => ({ lane: n.lane, time: n.t * spb }))
       .filter((n) => !part || (n.time >= part.from && n.time < part.to));
     this.total = this.q.length;
+    const all = song.charts[difficulty];
+    this.chart = { ...all, notes: part ? all.notes.filter((n) => n.t * spb >= part.from && n.t * spb < part.to) : all.notes };
+    this.bpm = song.bpm;
   }
 
   private hit(r: Result) {
@@ -57,6 +68,20 @@ class MainRun {
     return r;
   }
 
+  /** The run so far, the game's tokens since the last call: confirmed (GameScore's rules), or refused. */
+  addRun(more: unknown) {
+    if (this.refused) return;
+    if (typeof more !== 'string' || this.run.length + more.length > 400_000) { this.refused = true; return; }
+    if (!more) return;
+    this.run += more;
+    const c = runFits(this.run, this.chart, this.bpm) ? replayRun(this.run) : null;
+    if (!c) { this.refused = true; return; }
+    this.confirmed = { score: c.score, accuracy: c.accuracy, maxCombo: c.maxCombo };
+  }
+
+  /** A press Main took (not turned down). */
+  review() { this.reviewed++; }
+
   /** Main.checkMissedNotes. */
   tick(time: unknown) {
     if (typeof time !== 'number' || !Number.isFinite(time) || time < 0) return;
@@ -68,6 +93,7 @@ class MainRun {
     const hits = this.perfect + this.good + this.ok;
     const total = hits + this.misses;
     return {
+      confirmed: this.refused ? null : { ...this.confirmed }, reviewed: this.reviewed,
       score: this.score, combo: this.combo, maxCombo: this.maxCombo, hits, misses: this.misses,
       accuracy: total ? ((this.perfect * 100 + this.good * 75 + this.ok * 50) / (total * 100)) * 100 : 0,
       time: this.time, left: this.q.length - this.head, upcoming: this.q.slice(this.head, this.head + UPCOMING),
@@ -87,14 +113,18 @@ export function startRun(song: Song, difficulty: Difficulty, part?: { from: numb
   return { run: id, notes: run.total, state: run.state() };
 }
 
-/** What the player did, in order (POST /api/play/:run/inputs); null when there's no such run. */
-export function runInputs(id: string, inputs: PlayInput[]) {
+/** What the player did, in order, and the run since (POST /api/play/:run/inputs); null when there's no such run. */
+export function runInputs(id: string, inputs: PlayInput[], more?: unknown) {
   const run = runs.get(id);
   if (!run) return null;
+  if (more !== undefined) run.addRun(more);
   const results: (Result | null)[] = [];
   for (const i of inputs) {
-    if (i && typeof i === 'object' && 'lane' in i) results.push(run.input(i.lane, i.time));
-    else run.tick(i?.time);
+    if (i && typeof i === 'object' && 'lane' in i) {
+      const r = run.input(i.lane, i.time);
+      if (r) run.review();
+      results.push(r);
+    } else run.tick(i?.time);
   }
   return { results, state: run.state() };
 }

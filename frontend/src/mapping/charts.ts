@@ -46,8 +46,8 @@ interface Rules {
 // Easy is what Medium was before Ultra, Ultra what Hard was; Medium and Hard are the steps between.
 export const RULES: Record<Difficulty, Rules> = {
   easy: { lanes: 4, minGap: 0.5, keep: 0.85, holdMin: 1.5, playDuringHold: false, chords: false, fast: [2, 1.5] },
-  medium: { lanes: 4, minGap: 0.33, keep: 0.9, holdMin: 1.5, playDuringHold: false, chords: false, fast: [1.5, 1.25] },
-  hard: { lanes: 4, minGap: 0.24, keep: 0.95, holdMin: 1.5, playDuringHold: true, chords: false, fast: [1.5, 1.25] },
+  medium: { lanes: 4, minGap: 0.4, keep: 0.9, holdMin: 1.5, playDuringHold: false, chords: false, fast: [1.5, 1.25] },
+  hard: { lanes: 4, minGap: 0.3, keep: 0.95, holdMin: 1.5, playDuringHold: true, chords: false, fast: [1.5, 1.25] },
   ultra: { lanes: 4, minGap: 0.24, keep: 1, holdMin: 1.5, playDuringHold: true, chords: true, fast: [1, 1] },
 };
 
