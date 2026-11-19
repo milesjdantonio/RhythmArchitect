@@ -138,7 +138,9 @@ the mock: `cd backend && ./mvnw spring-boot:run`, and `VITE_API_BASE_URL=http://
   shards burst, every hundred in gold. Big moments burst from the sides of the track and tiles draw
   over every effect, so the notes stay readable. Hitting a tile makes no sound: the song is the
   sound (synth songs play every note of the map themselves).
-- **Overdrive.** Accurate hits fill a charge (shown under the multiplier). When it's full, press
+- **Overdrive.** Accurate hits fill a charge (shown under the multiplier: a Perfect 3, a Good 2,
+  Early or Late 1, a hold held to its end 3, out of 100, so about 34 Perfects in a row; a miss takes
+  20). When Overdrive ends, run out or broken, the charge empties with it. When it's full, press
   **Space** (or the key you bound, or the HUD's button on touch screens): Overdrive adds +1 to the
   multiplier for the next 48 tiles. Press again whenever the charge fills while it runs to stack it,
   up to three levels: ×5 from the combo plus ×3 from Overdrive is **×8**. At the top it can't be set
@@ -517,7 +519,9 @@ fills more than a Good; a miss drains some). When the meter is full, the game sa
 more striking animations and extra effects (the light, particles and colour go further, the track
 and the backdrop react harder to every hit), in the spirit of the special mode in *Tetris Effect:
 Connected* (a reference for the feeling, not something to copy). When the charge runs out, the
-game returns to normal and the meter starts filling again.
+game returns to normal and the meter starts filling again from empty (Nov 18: at first the charge
+was kept, so a player could set off the first level again at once; and a Perfect filled 5 of 100,
+which play-testing found too easy, so now 3).
 
 Open questions: does Overdrive change scoring (a multiplier, or looks only)? How long does it
 last, and can a second charge extend it? Can it be set off any time, or only between phrases?

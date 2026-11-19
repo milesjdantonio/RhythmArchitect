@@ -30,7 +30,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 class ApiTests {
     /** The Overdrive run shared with frontend score.test.ts and GameScoreTest. */
-    static final String OVERDRIVE_RUN = "PPPPPPPPPPPPPPPPPPPPOPPGMUH1000;PM";
+    static final String OVERDRIVE_RUN = "P".repeat(34) + "OPPGMUH1000;PM";
 
 
     static Path dir;
@@ -144,16 +144,16 @@ class ApiTests {
         mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPZ")))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
 
-        // Overdrive: the run in score.test.ts and GameScoreTest (20 Perfects fill the charge, O sets it
+        // Overdrive: the run in score.test.ts and GameScoreTest (34 Perfects fill the charge, O sets it
         // off: +1 on the multiplier). Set off without a full charge, the run is refused.
         mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted(OVERDRIVE_RUN)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.best.ultra.score").value(47400))
-            .andExpect(jsonPath("$.best.ultra.maxCombo").value(23))
-            .andExpect(jsonPath("$.best.ultra.accuracy").value(closeTo(2375.0 / 2600, 1e-12)));
+            .andExpect(jsonPath("$.best.ultra.score").value(97150))
+            .andExpect(jsonPath("$.best.ultra.maxCombo").value(37))
+            .andExpect(jsonPath("$.best.ultra.accuracy").value(closeTo(3775.0 / 4000, 1e-12)));
 
         // Refused: Overdrive without a full charge, a grace ended with none running, ended twice.
-        for (String bad : new String[] { "PPPO", "PU", "P".repeat(20) + "OUU" }) {
+        for (String bad : new String[] { "PPPO", "PU", "P".repeat(34) + "OUU" }) {
             mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted(bad)))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
         }

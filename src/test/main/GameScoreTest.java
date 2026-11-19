@@ -71,23 +71,23 @@ class GameScoreTest
         assertEquals(180, GameScore.holdBonus(1.5));
     }
 
-    /** "PPPPPPPPPPPPPPPPPPPPOPPGMUH1000;PM": Overdrive set off once its charge is full; a miss in its grace keeps it, one after ends it. */
+    /** 34 Perfects, then "OPPGMUH1000;PM": Overdrive set off once its charge is full; a miss in its grace keeps it, one after ends it. */
     @Test
     void overdriveAddsItsLevelToTheMultiplier()
     {
         GameScore s = new GameScore();
         assertEquals(false, s.startOverdrive(), "no charge yet");
-        for(int i = 0; i < 20; i++)
+        for(int i = 0; i < 34; i++)
         {
             s.addHit(HitResult.PERFECT);
         }
         assertEquals(GameScore.CHARGE_FULL, s.getCharge());
         assertEquals(true, s.isCharged());
-        assertEquals(32000, s.getScore());
+        assertEquals(79000, s.getScore(), "x1 to x4: a full charge takes 34 Perfects (3 each)");
         assertEquals(true, s.startOverdrive());
         assertEquals(1, s.getOverdrive());
         assertEquals(0, s.getCharge());
-        assertEquals(4, s.getMultiplier(), "x3 from the combo, +1");
+        assertEquals(5, s.getMultiplier(), "x4 from the combo, +1");
         assertEquals(true, s.isGrace(), "just set off: a miss won't end it");
         s.addHit(HitResult.PERFECT);
         s.addHit(HitResult.PERFECT);
@@ -101,11 +101,12 @@ class GameScoreTest
         s.addMiss();
         assertEquals(0, s.getOverdrive(), "after the grace one miss ends it");
         assertEquals(0, s.getOverdriveLeft());
-        // 3200, then 400 + 400 + 300 at x4, the hold 120 x 2, a Perfect x2; all times 10.
-        assertEquals(47400, s.getScore());
-        assertEquals(2375, s.getPoints());
-        assertEquals(23, s.getMaxCombo());
-        assertEquals(2375.0 / 2600 * 100, s.getAccuracy(), 1e-9);
+        assertEquals(0, s.getCharge(), "ended: the charge empties");
+        // 7900, then 500 + 500 + 375 at x5, the hold 120 x 2, a Perfect x2; all times 10.
+        assertEquals(97150, s.getScore());
+        assertEquals(3775, s.getPoints());
+        assertEquals(37, s.getMaxCombo());
+        assertEquals(3775.0 / 4000 * 100, s.getAccuracy(), 1e-9);
     }
 
     @Test
@@ -114,7 +115,7 @@ class GameScoreTest
         GameScore s = new GameScore();
         for(int level = 1; level <= GameScore.MAX_OVERDRIVE; level++)
         {
-            for(int i = 0; i < 20; i++)
+            for(int i = 0; i < 34; i++)
             {
                 s.addHit(HitResult.PERFECT);
             }
@@ -122,17 +123,18 @@ class GameScoreTest
             assertEquals(level, s.getOverdrive());
         }
         assertEquals(8, s.getMultiplier(), "x5 from the combo, +3");
-        for(int i = 0; i < 20; i++)
+        for(int i = 0; i < 34; i++)
         {
             s.addHit(HitResult.PERFECT);
         }
         assertEquals(true, s.isCharged());
         assertEquals(false, s.startOverdrive(), "not at the top level");
-        for(int i = 0; i < GameScore.OVERDRIVE_LENGTH - 20; i++)
+        for(int i = 0; i < GameScore.OVERDRIVE_LENGTH - 34; i++)
         {
             s.addHit(HitResult.PERFECT);
         }
         assertEquals(0, s.getOverdrive(), "it ran its length");
+        assertEquals(0, s.getCharge(), "the full charge emptied with it");
         assertEquals(5, s.getMultiplier());
         s.reset();
         assertEquals(0, s.getCharge());
@@ -143,7 +145,7 @@ class GameScoreTest
     void aStrayPressScoresNothingAndDrainsTheCharge()
     {
         GameScore s = new GameScore();
-        for(int i = 0; i < 20; i++)
+        for(int i = 0; i < 34; i++)
         {
             s.addHit(HitResult.PERFECT);
         }

@@ -11,8 +11,9 @@
 //               scores nothing and takes STRAY_CHARGE off the Overdrive charge.
 //   Multiplier: the combo's (×1, then one more every 10 in a row, at most ×5) plus the Overdrive
 //               level (0-3): at most ×8.
-//   Overdrive:  accurate hits fill a charge (Perfect 5, Good 3, Early/Late 1, a hold held to its
-//               end 5; a miss takes 20). With a full charge (100) the player sets it off (Space):
+//   Overdrive:  accurate hits fill a charge (Perfect 3, Good 2, Early/Late 1, a hold held to its
+//               end 3; a miss takes 20): about 34 Perfects in a row. When Overdrive ends (run out
+//               or broken), the charge empties: no starting again at once. With a full charge (100) the player sets it off (Space):
 //               the charge empties, the level goes up one and it lasts the next OVERDRIVE_LENGTH
 //               tiles judged. Set off again while it runs, it goes up again and starts its length
 //               again, up to MAX_OVERDRIVE (at the top it can't be set off). One miss ends it,
@@ -43,7 +44,11 @@ export const POINT_SCALE = 10;
 /** What a stray press takes off the charge. */
 export const STRAY_CHARGE = 10;
 /** GameScore.chargeFor: what a hit adds to the charge. */
-const CHARGE: Record<HitResult, number> = { PERFECT: 5, GOOD: 3, EARLY: 1, LATE: 1, MISS: 0 };
+const CHARGE: Record<HitResult, number> = { PERFECT: 3, GOOD: 2, EARLY: 1, LATE: 1, MISS: 0 };
+/** What a hold held to its end adds to the charge (GameScore.HOLD_CHARGE). */
+export const HOLD_CHARGE = 3;
+/** Perfects in a row that fill the charge from empty. */
+export const PERFECTS_TO_CHARGE = Math.ceil(CHARGE_FULL / CHARGE.PERFECT);
 const FROM_CODE: Record<string, HitResult> = { P: 'PERFECT', G: 'GOOD', E: 'EARLY', L: 'LATE', M: 'MISS' };
 /** Score.addHit's points. */
 const POINTS: Record<Exclude<HitResult, 'MISS'>, number> = { PERFECT: 100, GOOD: 75, EARLY: 50, LATE: 50 };
@@ -120,7 +125,15 @@ export class RunScore {
   private spend(tiles: number) {
     if (!this.overdrive) return;
     this.overdriveLeft -= tiles;
-    if (this.overdriveLeft <= 0) { this.overdrive = 0; this.overdriveLeft = 0; this.grace = false; }
+    if (this.overdriveLeft <= 0) this.endOverdrive();
+  }
+
+  /** Overdrive ends (run out, or a miss): every level, and the charge empties with it. */
+  private endOverdrive() {
+    this.overdrive = 0;
+    this.overdriveLeft = 0;
+    this.grace = false;
+    this.charge = 0;
   }
 
   add(r: HitResult) {
@@ -134,7 +147,7 @@ export class RunScore {
     this.run += `H${ms};`;
     this.score += holdBonus(ms / 1000) * POINT_SCALE * this.multiplier;
     this.overdriveBonus += holdBonus(ms / 1000) * POINT_SCALE * this.overdrive;
-    this.fill(5);
+    this.fill(HOLD_CHARGE);
   }
 
   /** A stray press: a key that hit no tile. Nothing scored; the charge drains. */
@@ -155,7 +168,7 @@ export class RunScore {
       this.combo = 0;
       this.fill(-20);
       // One miss ends Overdrive, every level (not in its grace).
-      if (!this.grace) { this.overdrive = 0; this.overdriveLeft = 0; }
+      if (this.overdrive && !this.grace) this.endOverdrive();
       return;
     }
     const p = POINTS[r];

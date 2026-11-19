@@ -25,7 +25,7 @@ class RunReplayTests {
 
     @Test
     void aMissInTheGraceKeepsOverdriveAndOneAfterItEndsIt() {
-        String charged = "P".repeat(20) + "O";
+        String charged = "P".repeat(34) + "O";
         assertNotNull(RunReplay.of(charged + "M"));
         assertNull(RunReplay.of("PU"), "no grace to end");
         assertNull(RunReplay.of(charged + "UU"), "it ended already");
@@ -39,7 +39,7 @@ class RunReplayTests {
         Queue<Note> chart = everyHalfSecond(60);
         // 5 s of grace (and 0.6 s) holds 12 of these tiles: a grace may judge 14.
         assertEquals(14, RunReplay.graceTiles(java.util.stream.IntStream.range(0, 60).mapToObj(i -> i * 0.5).toList()));
-        String charged = "P".repeat(20) + "O";
+        String charged = "P".repeat(34) + "O";
         assertNotNull(RunReplay.of(charged + "P".repeat(14) + "U", chart));
         assertNull(RunReplay.of(charged + "P".repeat(15) + "U", chart));
         assertNull(RunReplay.of(charged + "P".repeat(15), chart), "never ended");

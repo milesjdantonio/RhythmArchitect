@@ -14,8 +14,9 @@ package main;
  * {@link #STRAY_CHARGE} off the Overdrive charge, so mashing the keys doesn't fill it.</p>
  *
  * <p>The multiplier is the combo's (x1, then one more every 10 in a row, at most x5) plus the
- * Overdrive level (0 to 3), so at most x8. Overdrive: accurate hits fill a charge (a PERFECT 5,
- * a GOOD 3, an EARLY or a LATE 1, a hold held to its end 5; a miss takes 20 away). With a full
+ * Overdrive level (0 to 3), so at most x8. Overdrive: accurate hits fill a charge (a PERFECT 3,
+ * a GOOD 2, an EARLY or a LATE 1, a hold held to its end 3; a miss takes 20 away; when Overdrive
+ * ends, run out or broken, it empties). With a full
  * charge (100) the player sets it off ({@link #startOverdrive()}): the charge empties and the
  * level goes up one, for the next {@link #OVERDRIVE_LENGTH} tiles judged. Setting it off again
  * while it runs (the charge fills again meanwhile) raises the level once more and starts the
@@ -43,6 +44,8 @@ public class GameScore extends Score
     public static final int POINT_SCALE = 10;
     /** What a stray press takes off the charge. */
     public static final int STRAY_CHARGE = 10;
+    /** What a hold held to its end adds to the charge. */
+    public static final int HOLD_CHARGE = 3;
 
     private long total;
     private int charge;
@@ -74,17 +77,17 @@ public class GameScore extends Score
      * The charge a hit adds.
      *
      * @param result the type of hit
-     * @return 5 for a PERFECT, 3 for a GOOD, 1 for an EARLY or a LATE, 0 for a miss
+     * @return 3 for a PERFECT, 2 for a GOOD, 1 for an EARLY or a LATE, 0 for a miss
      */
     public static int chargeFor(HitResult result)
     {
         if(result == HitResult.PERFECT)
         {
-            return 5;
+            return 3;
         }
         if(result == HitResult.GOOD)
         {
-            return 3;
+            return 2;
         }
         if(result == HitResult.EARLY || result == HitResult.LATE)
         {
@@ -147,10 +150,9 @@ public class GameScore extends Score
     {
         super.addMiss();
         fill(-20);
-        if(!grace)
+        if(overdrive > 0 && !grace)
         {
-            overdrive = 0;
-            overdriveLeft = 0;
+            endOverdrive();
         }
     }
 
@@ -178,7 +180,7 @@ public class GameScore extends Score
     public void addHoldDone(double seconds)
     {
         total += holdBonus(seconds) * POINT_SCALE * getMultiplier();
-        fill(5);
+        fill(HOLD_CHARGE);
     }
 
     /**
@@ -230,10 +232,20 @@ public class GameScore extends Score
         overdriveLeft -= tiles;
         if(overdriveLeft <= 0)
         {
-            overdrive = 0;
-            overdriveLeft = 0;
-            grace = false;
+            endOverdrive();
         }
+    }
+
+    /**
+     * Overdrive ends (run out, or a miss): every level, and the charge empties with it, so it
+     * can't be set off again at once.
+     */
+    private void endOverdrive()
+    {
+        overdrive = 0;
+        overdriveLeft = 0;
+        grace = false;
+        charge = 0;
     }
 
     /**

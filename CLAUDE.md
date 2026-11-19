@@ -80,7 +80,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   every song (`fallTime`).
 - Scoring is `main.Score`'s rules (Perfect 100, Good 75, Early/Late 50, accuracy, combo) with the
   game's on top: points ×10 (`POINT_SCALE`), the combo multiplier (×1-×5), the held-note bonus,
-  **Overdrive** (a charge from accurate hits; Space adds +1 per level for 48 tiles, up to three
+  **Overdrive** (a charge from accurate hits: Perfect 3, Good 2, Early/Late 1, a finished hold 3,
+  out of 100, ~34 Perfects; it empties when Overdrive ends; Space adds +1 per level for 48 tiles, up to three
   levels: ×8; not at the top; any miss ends it, except in its grace: `OVERDRIVE_GRACE`, 5 song
   seconds after each press, timed by engine.ts) and stray presses (a key with no tile: signal and
   charge drain, no points): `main.GameScore` (Score.java itself is Darsh's: add on top, don't edit
