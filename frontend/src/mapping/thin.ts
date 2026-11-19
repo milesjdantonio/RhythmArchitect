@@ -31,8 +31,8 @@ import type { ChartNote, Difficulty, SoundEvent } from '../api/types';
 export const LADDER = 2;
 
 export const KEEP: Record<Difficulty, Pick<ThinOptions, 'rate' | 'floor' | 'minGap' | 'share' | 'maxChord' | 'chords' | 'holdsAlone' | 'minHold' | 'maxHolds'>> = {
-  easy: { share: 0.34, rate: 2.6, floor: 0.9, minGap: 0.26, maxChord: 1, chords: 0, holdsAlone: true, minHold: [0.75, 0.4], maxHolds: 0.15 },
-  medium: { share: 0.5, rate: 3.8, floor: 1.3, minGap: 0.15, maxChord: 2, chords: 0.04, holdsAlone: true, minHold: [0.5, 0.3], maxHolds: 0.2 },
+  easy: { share: 0.34, rate: 2.6, floor: 0.9, minGap: 0.26, maxChord: 1, chords: 0, holdsAlone: true, minHold: [0.5, 0.35], maxHolds: 0.15 },
+  medium: { share: 0.5, rate: 3.8, floor: 1.3, minGap: 0.15, maxChord: 2, chords: 0.04, holdsAlone: true, minHold: [0.5, 0.25], maxHolds: 0.2 },
   hard: { share: 0.7, rate: 5.6, floor: 1.8, minGap: 0.11, maxChord: 2, chords: 0.15, holdsAlone: false, minHold: [0.5, 0.25], maxHolds: 0.25 },
   // The whole chart (chords of two at most, nothing closer than a 16th at 250 BPM).
   ultra: { share: 1, rate: 1000, floor: 0, minGap: 0.06, maxChord: 2, chords: 1, holdsAlone: false, minHold: [0, 0], maxHolds: 0.3 },

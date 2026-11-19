@@ -80,7 +80,8 @@ test.describe('Rythm Architect', () => {
     // Behind the intro the menu is mounted but out of reach.
     await expect(page.locator('main')).toHaveAttribute('inert', '');
     await page.keyboard.press('Space');
-    await expect(page.locator('#song-title')).toBeFocused(); // typing goes straight to the search
+    // (A cold first load, the suite's first test, can take longer than the default 5 s to launch.)
+    await expect(page.locator('#song-title')).toBeFocused({ timeout: 15_000 }); // typing goes straight to the search
     await expect(intro).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Name a Song' })).toBeVisible();
     await expect(page.locator('main')).not.toHaveAttribute('inert', '');

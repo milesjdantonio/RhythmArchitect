@@ -28,10 +28,10 @@ interface Flow {
 }
 
 export const FLOW: Record<Difficulty, Flow> = {
-  easy: { jack: 0.6, jackCost: 4, jump: 0.45, run: 3, far: 1.2, spread: 0.3 },
+  easy: { jack: 0.6, jackCost: 4, jump: 0.45, run: 3, far: 1.2, spread: 0.4 },
   medium: { jack: 0.45, jackCost: 3, jump: 0.3, run: 4, far: 1, spread: 0.22 },
-  hard: { jack: 0.3, jackCost: 2, jump: 0.2, run: 6, far: 0.7, spread: 0.15 },
-  ultra: { jack: 0.18, jackCost: 1.5, jump: 0.14, run: 8, far: 0.4, spread: 0.15 },
+  hard: { jack: 0.3, jackCost: 2, jump: 0.25, run: 6, far: 0.7, spread: 0.15 },
+  ultra: { jack: 0.18, jackCost: 1.5, jump: 0.25, run: 8, far: 0.4, spread: 0.15 },
 };
 const MOVE_COST = 1;
 const JUMP_COST = 1.5;

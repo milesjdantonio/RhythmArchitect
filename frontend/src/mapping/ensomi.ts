@@ -37,7 +37,7 @@ const MIN_HOLD = 0.5;
  * The model writes long notes as a habit of the charts it learned from (a quarter of its tiles on
  * some songs, a beat long), and the charts filled up with holds over sounds that had stopped.
  */
-const RING = 0.3;
+const RING = 0.2;
 
 // The model reads audio at 22050 Hz (and 24000 Hz for one stage); the listening pass hears at one
 // of the two. The runtime's tables for 24000 Hz go with the app.

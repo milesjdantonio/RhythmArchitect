@@ -162,7 +162,7 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   in time; thinning left the model's lanes, written for its whole chart, hopping 1.4 lanes a step
   where human charts move 1.1; measured by `src/mapping/patterns.ts` against the human charts),
   and its tiles move onto the onset mapper's measured sounds (`soundShift`: they come ~29 ms early).
-  Its long notes are holds only where the sound under them rings ≥30% of their length (`RING`,
+  Its long notes are holds only where the sound under them rings ≥20% of their length (`RING`,
   `SoundEvent.len`) and they're an 8th or longer: it writes them out of habit, and charts were up
   to a third holds over sounds that had stopped. To study its output, `onRaw` hands over each chart
   as the model made it (the Nov 19 study ran it headless on the bundled tracks and re-thinned
@@ -276,7 +276,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   then `node tools/map-human.mjs <folder>`. Nov 19 (26 charts, 19 songs): timing F1 63% at the
   nearest difficulty (78-88% on 9 songs), Ultra holds 69% of the human tiles. Tempo: 10 the same,
   5 half/double (a choice of counting), 3 off where both trackers agree (likely mistimed unranked
-  charts). Holds: human median 15% (0-78%: no agreement), ours ~1/3/8/8%.
+  charts). Holds: human median 15% (0-78%: no agreement), ours 6/8/10/12% (E/M/H/U). Lanes
+  (`patterns.ts`): move 1.08 a step (human 1.10), quick jumps 3% (8%), balance 30% (29%).
 - After changing `src/mapping/automap.ts` or `charts.ts`, run `npm run map`. The band benchmark (`tests/unit/automap-band.test.ts`) must keep finding the notes (legato ones too).
 - Before finishing (in `frontend/`): `npx tsc -b`, `npm test`, `npm run test:e2e`, `npm run build`.
   On this Windows box run vitest from a path that starts with an upper-case `C:` (a lower-case
