@@ -84,10 +84,11 @@ public class SongController {
 
     /**
      * { charts, ladder }: a song the trained mapper charted before today's difficulty ladder, its
-     * charts made again (the browser does it from its Ultra the first time it's opened). Kept only
-     * if the ladder is newer, all four difficulties are there on four lanes, every tile is one of
-     * the song's Ultra's (the same beat and lane; a hold no longer than it was, or a tap: charts
-     * made again can only leave tiles out) and the model takes the song in. A difficulty whose
+     * charts made again (the browser does it from its Ultra the first time it's opened, its lanes
+     * flowed: lanes.ts). Kept only if the ladder is newer, all four difficulties are there on four
+     * lanes, every tile is at one of the song's Ultra's moments (its beat) with no more tiles there
+     * than Ultra had and no hold longer than Ultra's longest there (charts made again can only
+     * leave tiles out) and the model takes the song in. A difficulty whose
      * chart changed loses its best score (it was set on another chart). The mock checks the same
      * (upgrade.ts rechartProblem).
      */
@@ -99,18 +100,25 @@ public class SongController {
         return store.write(all -> {
             ObjectNode song = store.find(all, id).orElseThrow(SongController::missing);
             if (ladder <= song.path("report").path("ladder").asInt(1)) throw ApiException.badRequest("The song is on that ladder already");
-            Map<String, Double> ultra = new HashMap<>();
+            // Ultra's moments (beats): how many tiles each had, and its longest hold there.
+            Map<Long, int[]> tilesAt = new HashMap<>();
+            Map<Long, Double> holdAt = new HashMap<>();
             for (JsonNode n : song.path("charts").path("ultra").path("notes")) {
-                ultra.put(tileKey(n), n.path("hold").asBoolean(false) ? n.path("len").asDouble(0) : 0.0);
+                long k = beatKey(n);
+                tilesAt.computeIfAbsent(k, x -> new int[1])[0]++;
+                holdAt.merge(k, n.path("hold").asBoolean(false) ? n.path("len").asDouble(0) : 0.0, Math::max);
             }
             for (Difficulty d : Difficulty.values()) {
                 String name = SongModel.name(d);
                 JsonNode c = charts.path(name);
                 if (c.path("lanes").asInt(0) != 4 || !c.path("notes").isArray() || c.path("notes").isEmpty()) throw ApiException.badRequest("No " + name + " chart");
+                Map<Long, Integer> used = new HashMap<>();
                 for (JsonNode n : c.path("notes")) {
-                    Double was = ultra.get(tileKey(n));
-                    if (was == null) throw ApiException.badRequest("A " + name + " tile that isn't in Ultra");
-                    if (n.path("hold").asBoolean(false) && !(n.path("len").asDouble(Double.NaN) <= was + 1e-6)) throw ApiException.badRequest("A " + name + " hold longer than Ultra's");
+                    long k = beatKey(n);
+                    int lane = n.path("lane").asInt(-1);
+                    int[] was = tilesAt.get(k);
+                    if (was == null || lane < 0 || lane > 3 || used.merge(k, 1, Integer::sum) > was[0]) throw ApiException.badRequest("A " + name + " tile that isn't in Ultra");
+                    if (n.path("hold").asBoolean(false) && !(n.path("len").asDouble(Double.NaN) <= holdAt.get(k) + 1e-6)) throw ApiException.badRequest("A " + name + " hold longer than Ultra's");
                 }
             }
             ObjectNode next = song.deepCopy();
@@ -135,9 +143,9 @@ public class SongController {
         });
     }
 
-    /** A tile's beat (to a thousandth) and lane. */
-    private static String tileKey(JsonNode n) {
-        return Math.round(n.path("t").asDouble(Double.NaN) * 1000) + ":" + n.path("lane").asInt(-1);
+    /** A tile's beat, to a thousandth (a moment of the chart). */
+    private static long beatKey(JsonNode n) {
+        return Math.round(n.path("t").asDouble(Double.NaN) * 1000);
     }
 
     @DeleteMapping("/songs/{id}")

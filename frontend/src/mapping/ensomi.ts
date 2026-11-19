@@ -13,6 +13,7 @@ import { DIFFICULTIES, type Chart, type ChartNote, type ChartProgress, type Diff
 import type { Ort } from './ort';
 import { cachedSource } from './ensomiModel';
 import { KEEP, thinChart } from './thin';
+import { flowChart } from './lanes';
 
 export { KEEP };
 // The runtime finds these beside its own module, which a bundler moves; so they're handed to it.
@@ -328,7 +329,9 @@ export function soundShift(objects: { start_ms: number }[], events: { sec: numbe
 /** Each difficulty keeps some of the model's rows (KEEP). */
 export function easierCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'>): Record<Difficulty, Chart> {
   const spb = 60 / o.bpm;
-  const chart = (d: Difficulty): Chart => ({ difficulty: d, lanes: 4, notes: thinChart(model, { ...KEEP[d], spb, offset: o.offset, events: o.events, onGrid: o.onGrid }) });
+  // Each difficulty's tiles, then its lanes flowed for its own speed (lanes.ts: thinning keeps the
+  // model's lanes, written for its whole chart).
+  const chart = (d: Difficulty): Chart => ({ difficulty: d, lanes: 4, notes: flowChart(thinChart(model, { ...KEEP[d], spb, offset: o.offset, events: o.events, onGrid: o.onGrid }), d, spb) });
   return { easy: chart('easy'), medium: chart('medium'), hard: chart('hard'), ultra: chart('ultra') };
 }
 

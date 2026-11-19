@@ -6,10 +6,11 @@
 //   Hard   — nearly every note, a 16th apart; taps under held notes.
 //   Ultra  — every note; the biggest hits as two-lane chords; fast songs not spaced out.
 // Lanes follow the pitch (higher notes further right, within a two-bar window), so the hand
-// moves with the melody. Fully deterministic: the same notes always give the same charts.
+// moves with the melody, then flow for the difficulty's speed (lanes.ts). Fully deterministic: the same notes always give the same charts.
 
 import type { Chart, ChartNote, Difficulty } from '../api/types';
 import { midiToName } from './theory';
+import { flowChart } from './lanes';
 
 export interface MelodyNote {
   /** Beat the note sounds. Exact: notes from real audio may fall between 16ths. */
@@ -169,7 +170,10 @@ export function chartFor(melody: MelodyNote[], difficulty: Difficulty, scale: nu
     }
   }
   notes.sort((a, b) => a.t - b.t || a.lane - b.lane);
-  return { difficulty, lanes: L, notes };
+  // The lanes follow the pitch; then they're flowed for this difficulty's speed (lanes.ts), which
+  // keeps the pitch's lane wherever it plays well: following the pitch alone hopped about 1.5
+  // lanes a step on Easy and Medium (human charts: 1.1) and left Hard quick repeats.
+  return { difficulty, lanes: L, notes: bpm && L === 4 ? flowChart(notes, difficulty, 60 / bpm) : notes };
 }
 
 const round = (x: number, k: number) => Math.round(x * k) / k;

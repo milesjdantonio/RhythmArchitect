@@ -11,7 +11,10 @@
 //
 // Each human chart is matched with the difficulty nearest its density.
 //
-//   node tools/map-human.mjs <sets folder> [--only=setId,setId] [--json out.json]
+//   node tools/map-human.mjs <sets folder> [--only=setId,setId] [--json out.json] [--save charts.json]
+//
+// --save keeps every song's charts (ours, with lanes and pitches, and the human ones) for studying
+// them offline (their lane patterns: src/mapping/patterns.ts).
 
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -27,6 +30,8 @@ if (!dir || !existsSync(join(dir, 'index.json'))) {
   process.exit(1);
 }
 const jsonAt = args.indexOf('--json');
+const saveAt = args.indexOf('--save');
+const saved = [];
 const only = args.find((a) => a.startsWith('--only='))?.slice(7).split(',').map(Number);
 const sets = JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8')).filter((s) => !only || only.includes(s.id));
 const D = ['easy', 'medium', 'hard', 'ultra'];
@@ -111,12 +116,13 @@ try {
       for (const c of s.charts) {
         const human = readOsu(readFileSync(join(dir, String(s.id), c.file), 'utf8'));
         if (human.length < 30) continue;
+        if (saveAt >= 0) saved.push({ song: `${s.artist} - ${s.title}`, chart: c.version, bpm: ours.read, human, ours: ours.charts });
         const per = Object.fromEntries(D.map((d) => [d, compare(ours.charts[d], human)]));
         const humanRate = human.length / per.ultra.span;
         // The difficulty nearest the human chart's density.
         const near = D.reduce((a, d) => (Math.abs(Math.log(per[d].rate / humanRate)) < Math.abs(Math.log(per[a].rate / humanRate)) ? d : a), 'easy');
         const row = {
-          song: `${s.artist} - ${s.title}`, chart: c.version, license: s.license, read: ours.read, tracker: ours.tracker, model: ours.model, rawLong: ours.rawLong,
+          song: `${s.artist} - ${s.title}`, chart: c.version, license: s.license, read: ours.read, tracker: ours.tracker, fit: ours.fit, beat: ours.beat, model: ours.model, rawLong: ours.rawLong,
           human: { rate: humanRate, holds: share(human, (t) => t.hold), chords: chordShare(human) },
           near, f1: per[near].f1, nearRate: per[near].rate, ultraRecall: per.ultra.r, shift: per[near].shift,
           ours: Object.fromEntries(D.map((d) => [d, { f1: per[d].f1, rate: per[d].rate, holds: share(ours.charts[d], (t) => t.hold), chords: chordShare(ours.charts[d]) }])),
@@ -138,3 +144,4 @@ if (rows.length) {
   console.log(`chords: human ${pct(mean((r) => r.human.chords))} vs ours ${D.map((d) => `${d} ${pct(mean((r) => r.ours[d].chords))}`).join(', ')}`);
 }
 if (jsonAt >= 0) writeFileSync(args[jsonAt + 1], JSON.stringify(rows, null, 1));
+if (saveAt >= 0) writeFileSync(args[saveAt + 1], JSON.stringify(saved));

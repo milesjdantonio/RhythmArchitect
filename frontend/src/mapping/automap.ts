@@ -62,6 +62,12 @@ export const PART_NAMES: PartName[] = ['drums', 'bass', 'vocals', 'other'];
 export const GRID_TRUST = 0.4;
 /** Its straight-grid `fit` at least this much means one grid stays on the beat all song long. */
 export const GRID_STRAIGHT = 0.5;
+/** The tracker's tempo is fine-tuned only when that puts this much more onset energy on the beats. */
+export const TUNE_GAIN = 1.03;
+/** ...and only when that tempo's beats carry this many times the average phase's onset energy. */
+export const TUNE_CONTRAST = 1.6;
+/** ...and a song at least this many beats long. */
+export const TUNE_MIN_BEATS = 60;
 
 /** The stretches the grid is checked in, in seconds (each judged by its sounds and its neighbours'). */
 const HOLD_BIN = 4;
@@ -419,14 +425,44 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
     : g === null ? 'Beat This! found no steady beat; own estimate used'
     : g ? `Beat This!: ${g.bpm} BPM, ${g.meter}/4, steady ${Math.round(g.confidence * 100)}%${straight} (${grid ? `used; own estimate was ${ownBpm} BPM` : `not used: ${refusal}; own estimate ${ownBpm} BPM`})`
     : undefined;
+  // The tracker's tempo, fine-tuned against the onsets as the own estimate is (within 1.5%, its
+  // octave and downbeat kept): its beats can come out about 1% off a song's real tempo (106.3 for
+  // 105, 126.3 for 125 on the human-chart benchmark), and a grid 1% off drifts a whole beat in
+  // under two minutes, off the music. Taken only when it puts clearly more onset energy on its beats
+  // (TUNE_GAIN) and that tempo explains the song as one straight grid: its beats stand out from the
+  // rest of the beat (TUNE_CONTRAST, the beats' energy over the average phase's). A song whose beat
+  // drifts has no such tempo, and is left as the tracker had it (beats.test.ts).
+  let tuned: { bpm: number; frame: number } | null = null;
+  let contrast = 0;
+  // (A few seconds of sound can't say: a few clicks line up with almost any tempo.)
+  if (grid && n / ((60 * fps) / grid.bpm) >= TUNE_MIN_BEATS) {
+    const per0 = (60 * fps) / grid.bpm, at0 = grid.offset * fps;
+    const base = sumAt(beatEnv, ((at0 % per0) + per0) % per0, per0);
+    let tb = grid.bpm, tp = 0, ts = -1, tm = 0;
+    for (let b = grid.bpm * 0.985; b <= grid.bpm * 1.015; b += 0.01) {
+      const per = (60 * fps) / b;
+      let best = -1, bestP = 0, sum = 0, k = 0;
+      for (let p = 0; p < per; p += 0.5) {
+        const s = sumAt(beatEnv, p, per);
+        sum += s; k++;
+        if (s > best) { best = s; bestP = p; }
+      }
+      if (best > ts) { ts = best; tb = b; tp = bestP; tm = sum / Math.max(1, k); }
+    }
+    contrast = tm > 0 ? ts / tm : 0;
+    if (ts > base * TUNE_GAIN && contrast >= TUNE_CONTRAST && Math.abs(tb - grid.bpm) > 0.05) {
+      const per = (60 * fps) / tb;
+      tuned = { bpm: Math.round(tb * 100) / 100, frame: tp + Math.round((at0 - tp) / per) * per };
+    }
+  }
   if (grid) {
-    bpm = Math.round(grid.bpm * 100) / 100;
+    bpm = tuned ? tuned.bpm : Math.round(grid.bpm * 100) / 100;
     meter = grid.meter;
     confidence = grid.confidence;
   }
   const period = (60 * fps) / bpm; // frames per beat
   let firstFrame: number;
-  if (grid) firstFrame = grid.offset * fps;
+  if (grid) firstFrame = tuned ? tuned.frame : grid.offset * fps;
   else {
     // Downbeat: of the `meter` beat positions in a bar, the one with the most low-end onsets.
     let bar = 0, barBest = -1;
@@ -675,6 +711,6 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
     onsetInfo: onsets.map((o) => ({ sec: Math.round(o.sec * 1000) / 1000, midi: o.midi, clarity: Math.round(o.clarity * 100) / 100, bright: Math.round(o.bright), band: o.band })),
     events,
     barEnergy,
-    report: { mapper: grid ? 'Onset mapper v3 (exact attacks, Beat This! grid)' : 'Onset mapper v2 (exact attacks)', confidence: Math.round(confidence * 100) / 100, sections, energy: curve, cues, ...(beatNote ? { beat: beatNote + holdNote } : {}) },
+    report: { mapper: grid ? 'Onset mapper v3 (exact attacks, Beat This! grid)' : 'Onset mapper v2 (exact attacks)', confidence: Math.round(confidence * 100) / 100, sections, energy: curve, cues, ...(beatNote ? { beat: beatNote + (tuned ? `; fine-tuned to ${tuned.bpm} BPM on the onsets (contrast ${contrast.toFixed(2)})` : grid ? `; not fine-tuned (contrast ${contrast.toFixed(2)})` : '') + holdNote } : {}) },
   };
 }

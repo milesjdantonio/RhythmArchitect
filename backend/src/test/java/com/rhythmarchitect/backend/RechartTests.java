@@ -88,10 +88,13 @@ class RechartTests {
         String id = oldSong();
         // Easy keeps one tap; Medium the hold as a tap; Hard and Ultra unchanged.
         String asTap = "[{\"t\":1,\"lane\":2,\"pitch\":\"E4\",\"len\":0.25}]";
-        rechart(id, charts(TAP_AT_0, asTap, ULTRA, ULTRA), 2)
+        // A tile may move lane (the browser flows them): Easy's tap at beat 0 on lane 3, not 1.
+        String moved = "[{\"t\":0,\"lane\":3,\"pitch\":\"C4\",\"len\":0.25}]";
+        rechart(id, charts(moved, asTap, ULTRA, ULTRA), 2)
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.report.ladder").value(2))
             .andExpect(jsonPath("$.charts.easy.notes.length()").value(1))
+            .andExpect(jsonPath("$.charts.easy.notes[0].lane").value(3))
             .andExpect(jsonPath("$.charts.medium.notes[0].hold").doesNotExist())
             .andExpect(jsonPath("$.charts.ultra.notes.length()").value(4))
             .andExpect(jsonPath("$.best.easy").doesNotExist())
@@ -104,9 +107,11 @@ class RechartTests {
     void chartsMadeAgainCanOnlyLeaveTilesOut() throws Exception {
         String id = oldSong();
         String added = "[{\"t\":2,\"lane\":1,\"pitch\":\"C4\",\"len\":0.25}]";
+        // Two tiles at a moment where Ultra had one.
+        String doubled = "[{\"t\":0,\"lane\":1,\"pitch\":\"C4\",\"len\":0.25},{\"t\":0,\"lane\":2,\"pitch\":\"C4\",\"len\":0.25}]";
         String longer = "[{\"t\":1,\"lane\":2,\"pitch\":\"E4\",\"len\":3,\"hold\":true}]";
         String tapMadeHold = "[{\"t\":0,\"lane\":1,\"pitch\":\"C4\",\"len\":0.25,\"hold\":true}]";
-        for (String bad : new String[] { added, longer, tapMadeHold }) {
+        for (String bad : new String[] { added, doubled, longer, tapMadeHold }) {
             rechart(id, charts(bad, TAP_AT_0, TAP_AT_0, TAP_AT_0), 2)
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").isString());
         }

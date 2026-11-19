@@ -143,7 +143,9 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   beat tracker (`src/mapping/beats.ts`, model in `public/models/`). Its grid is used whenever its
   beat is steady beat to beat (`confidence` ≥ `GRID_TRUST`), even if it drifts off one straight
   grid (`fit`) (`gridRefusal` in `automap.ts`; a 3:2-clash guard was tried and dropped: right
-  once, wrong once). Don't judge it by one straight grid over the whole song: that threw away right
+  once, wrong once). A straight one (`fit` ≥ `GRID_STRAIGHT`) has its tempo fine-tuned against the
+  onsets within 1.5% (`TUNE_GAIN`): the tracker came out ~1% off on a third of the human-chart
+  songs (106.3 for 105), and a grid 1% off drifts a beat in under two minutes. Never a drifting one. Don't judge it by one straight grid over the whole song: that threw away right
   tempos (a 200 BPM song kept at 121). When it isn't steady, the trained mapper's own grid (its
   .osu timing, `osuGrid` in `ensomi.ts`; larger tracker, often half or double) replaces the onset
   estimate after charting: `regrid` re-runs `automap` on it, and the page saves that result. Then
@@ -156,6 +158,9 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   chart) is judged 10 s at a time against about two tiles a beat (`ultraTargets`); while under 85% is met it charts
   again a star busier (to 4★, at most three charts, from the same analysis) and each stretch takes
   the chart nearest its target (`splice`). Every difficulty keeps a subset of that (`src/mapping/thin.ts`, `KEEP`),
+  then its lanes are flowed for its own speed (`src/mapping/lanes.ts` `flowChart`: never a tile moved
+  in time; thinning left the model's lanes, written for its whole chart, hopping 1.4 lanes a step
+  where human charts move 1.1; measured by `src/mapping/patterns.ts` against the human charts),
   and its tiles move onto the onset mapper's measured sounds (`soundShift`: they come ~29 ms early).
   Its long notes are holds only where the sound under them rings ≥30% of their length (`RING`,
   `SoundEvent.len`) and they're an 8th or longer: it writes them out of habit, and charts were up

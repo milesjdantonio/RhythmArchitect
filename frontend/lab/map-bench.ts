@@ -40,7 +40,7 @@ async function mapAudio(pcm: Float32Array, sr: number, title: string) {
       return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid };
     },
   });
-  return { charts: out.charts, grid: on, tracker: grid?.bpm ?? null, onset: result.bpm, model: model as number | null, gridUsed: result.gridUsed, gpu, rawLong: raw.notes ? raw.long / raw.notes : 0 };
+  return { charts: out.charts, grid: on, tracker: grid?.bpm ?? null, fit: grid?.fit ?? null, beat: result.report.beat ?? '', onset: result.bpm, model: model as number | null, gridUsed: result.gridUsed, gpu, rawLong: raw.notes ? raw.long / raw.notes : 0 };
 }
 
 const tilesAt = (c: Chart, g: Grid) => [...new Set(c.notes.map((n) => Math.round((g.offset + (n.t * 60) / g.bpm) * 1000) / 1000))].sort((a, b) => a - b);
@@ -99,9 +99,9 @@ export async function benchAudio(url: string, title: string) {
   const m = await mapAudio(pcm, SR, title);
   const spb = 60 / m.grid.bpm;
   const charts = Object.fromEntries(DIFFICULTIES.map((d) => [d, m.charts[d].notes.map((n) => ({
-    sec: Math.round((m.grid.offset + n.t * spb) * 1000) / 1000, lane: n.lane, hold: !!n.hold, len: n.hold ? Math.round(n.len * spb * 1000) / 1000 : 0,
+    sec: Math.round((m.grid.offset + n.t * spb) * 1000) / 1000, lane: n.lane, hold: !!n.hold, len: n.hold ? Math.round(n.len * spb * 1000) / 1000 : 0, pitch: n.pitch, t: n.t,
   }))]));
-  return { title, seconds: pcm.length / SR, read: m.grid.bpm, tracker: m.tracker, model: m.model, rawLong: m.rawLong, charts };
+  return { title, seconds: pcm.length / SR, read: m.grid.bpm, tracker: m.tracker, fit: m.fit, beat: m.beat, model: m.model, rawLong: m.rawLong, charts };
 }
 
 /** A bundled track (public/audio/<id>.mp3): no truth, its tempo and ladder. */

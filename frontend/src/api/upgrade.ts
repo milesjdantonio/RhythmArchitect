@@ -6,6 +6,7 @@
 import type { BestScore, Chart, ChartsUpdate, Difficulty, MapReport, SongSummary } from './types';
 import { DIFFICULTIES } from './types';
 import { KEEP, LADDER, thinChart } from '../mapping/thin';
+import { flowChart } from '../mapping/lanes';
 
 type Charts = Partial<Record<Difficulty, Chart>>;
 type Best = Partial<Record<Difficulty, BestScore>>;
@@ -55,30 +56,37 @@ export function rethinSong(song: { bpm: number; charts: Charts; report?: Pick<Ma
   const spb = 60 / song.bpm;
   const keep = (src: Chart['notes'], d: Difficulty) => thinChart(src, { ...KEEP[d], spb, offset: 0, events: [], onGrid: true });
   const top = keep(ultra.notes, 'ultra');
-  const charts = Object.fromEntries(DIFFICULTIES.map((d) => [d, { difficulty: d, lanes: 4, notes: d === 'ultra' ? top : keep(top, d) }])) as Record<Difficulty, Chart>;
+  const charts = Object.fromEntries(DIFFICULTIES.map((d) => [d, { difficulty: d, lanes: 4, notes: flowChart(d === 'ultra' ? top : keep(top, d), d, spb) }])) as Record<Difficulty, Chart>;
   return { charts, ladder: LADDER };
 }
 
 /**
  * Why charts made again (PUT /api/songs/:id/charts) can't replace a song's, or null when they can:
- * a newer ladder, all four difficulties on four lanes, and every tile one of the song's Ultra's
- * (the same moment and lane; a hold no longer than it was, or a tap). Charts made again can only
- * leave tiles out, never add one. The backend checks the same (SongController.rechart).
+ * a newer ladder, all four difficulties on four lanes, and every tile at one of the song's Ultra's
+ * moments (its beat), no more tiles there than Ultra had, a hold no longer than Ultra's longest
+ * there. The lanes may change (lanes.ts flows them); charts made again can only leave tiles out,
+ * never add one. The backend checks the same (SongController.rechart).
  */
 export function rechartProblem(song: { charts: Charts; report?: Partial<Pick<MapReport, 'mapper' | 'ladder'>> }, update: unknown): string | null {
   const u = update as Partial<ChartsUpdate> | null;
   if (!u || typeof u.ladder !== 'number' || !u.charts) return 'Send the charts and their ladder';
   if (u.ladder <= (song.report?.ladder ?? 1)) return 'The song is on that ladder already';
-  const ultra = song.charts.ultra?.notes ?? [];
-  const had = new Map<string, number>();
-  for (const n of ultra) had.set(`${Math.round(n.t * 1000)}:${n.lane}`, n.hold ? n.len : 0);
+  // Ultra's moments (beats): how many tiles each had, and its longest hold there.
+  const had = new Map<number, { tiles: number; hold: number }>();
+  for (const n of song.charts.ultra?.notes ?? []) {
+    const k = Math.round(n.t * 1000), m = had.get(k) ?? { tiles: 0, hold: 0 };
+    had.set(k, { tiles: m.tiles + 1, hold: Math.max(m.hold, n.hold ? n.len : 0) });
+  }
   for (const d of DIFFICULTIES) {
     const c = u.charts[d];
     if (!c || c.lanes !== 4 || !Array.isArray(c.notes) || !c.notes.length) return `No ${d} chart`;
+    const used = new Map<number, number>();
     for (const n of c.notes) {
-      const was = had.get(`${Math.round(Number(n.t) * 1000)}:${n.lane}`);
-      if (was === undefined) return `A ${d} tile that isn't in Ultra`;
-      if (n.hold && !(Number(n.len) <= was + 1e-6)) return `A ${d} hold longer than Ultra's`;
+      const k = Math.round(Number(n.t) * 1000), was = had.get(k);
+      if (!was || !Number.isInteger(n.lane) || n.lane < 0 || n.lane > 3) return `A ${d} tile that isn't in Ultra`;
+      used.set(k, (used.get(k) ?? 0) + 1);
+      if ((used.get(k) ?? 0) > was.tiles) return `A ${d} tile that isn't in Ultra`;
+      if (n.hold && !(Number(n.len) <= was.hold + 1e-6)) return `A ${d} hold longer than Ultra's`;
     }
   }
   return null;
