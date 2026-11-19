@@ -14,7 +14,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { VideoMatch } from '../src/api/types';
 import { parseOsu, type OsuMap } from '../src/mapping/osu';
-import { bare, MUSIC_CATEGORY, notSongReason, setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchBeatmap, type OsuSearchSet } from './match';
+import { bare, MUSIC_CATEGORY, notSongReason, setScore, songName, videoIdIn, videoScore, type OsuSearchBeatmap, type OsuSearchSet } from './match';
 
 // Mirrors ask apps to name themselves (some refuse anything that looks like a bot or server).
 const UA = 'RythmArchitect/0.1 (private project)';
@@ -107,10 +107,10 @@ async function pastedVideo(pasted: string, title: string, artist: string, fixtur
   }
   const why = notSongReason({ title: info.title, channel: info.author_name, seconds, categoryId }, `${typedTitle} ${videoIdIn(artist) ? '' : artist}`);
   if (why) throw new SourceError(`That video isn't a song: ${why}. Paste the link to the song itself (its official audio or video).`, 422);
-  const guess = songFromVideo(info.title, info.author_name, typedTitle);
+  const name = songName(info.title, info.author_name, typedTitle, artist && !videoIdIn(artist) ? artist : '');
   return {
     videoId: pasted, title: info.title, channel: info.author_name,
-    songTitle: typedTitle || guess.title, songArtist: artist && !videoIdIn(artist) ? artist : guess.artist,
+    songTitle: name.title, songArtist: name.artist,
     thumbnail: `https://i.ytimg.com/vi/${pasted}/mqdefault.jpg`, seconds,
   };
 }
@@ -140,7 +140,7 @@ async function searchVideos(title: string, artist: string, key: string): Promise
   if (!ranked.length) throw new SourceError(`None of YouTube's videos for “${q}” is a song that can be played outside YouTube. Check the name, or paste the song's link.`, 404);
   return ranked.slice(0, OFFERED).map((r) => ({
     videoId: r.i.id.videoId, title: r.v.title, channel: r.v.channel,
-    songTitle: title, songArtist: artist || songFromVideo(r.v.title, r.v.channel, title).artist,
+    ...((n) => ({ songTitle: n.title, songArtist: n.artist }))(songName(r.v.title, r.v.channel, title, artist)),
     seconds: r.v.seconds, thumbnail: r.i.snippet.thumbnails?.medium?.url,
   }));
 }

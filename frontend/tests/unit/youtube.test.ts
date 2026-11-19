@@ -4,7 +4,7 @@ import { FollowClock } from '../../src/audio/clock';
 import { Placer, chooseRecording, findTick, holesIn, missLimit, place, placeChunks, stretchesOf, type Mark } from '../../src/mapping/capture';
 import { computeLevels, decodeLevels, levelAt, levelsFromNotes } from '../../src/mapping/levels';
 import { beatGrid, fanNotes, fanSong, parseOsu } from '../../src/mapping/osu';
-import { notSongReason, setScore, songFromVideo, videoIdIn, videoScore, type OsuSearchSet } from '../../mock-server/match';
+import { notSongReason, setScore, songFromVideo, songName, videoIdIn, videoScore, type OsuSearchSet } from '../../mock-server/match';
 import easyOsu from '../fixtures/osu/9000011.osu?raw';
 import hardOsu from '../fixtures/osu/9000012.osu?raw';
 
@@ -112,6 +112,19 @@ describe('finding the song', () => {
     expect(songFromVideo('Lizzo - About Damn Time (Lyrics)', 'The Vibe Guide', '')).toEqual({ title: 'About Damn Time', artist: 'Lizzo' });
     expect(songFromVideo('Juice WRLD "Lucid Dreams" (Official Music Video)', 'Juice WRLD', '')).toEqual({ title: 'Lucid Dreams', artist: 'Juice WRLD' });
     expect(songFromVideo('Kill Bill', 'SZA', '')).toEqual({ title: 'Kill Bill', artist: 'SZA' });
+  });
+
+  it("files a song under the video's own wording when it's the song typed (capitals, features), else what was typed", () => {
+    // The same cases as MappingTests.songNames.
+    expect(songName('The Weeknd - Blinding Lights (Official Video)', 'TheWeekndVEVO', 'blinding lights', 'the weeknd')).toEqual({ title: 'Blinding Lights', artist: 'The Weeknd' });
+    expect(songName('One Dance (feat. WizKid & Kyla) - Drake (Official Audio)', 'Drake Media', 'one dance', 'drake')).toEqual({ title: 'One Dance (feat. WizKid & Kyla)', artist: 'Drake' });
+    expect(songName('Drake ft. WizKid & Kyla - One Dance', 'Drake', 'one dance', '')).toEqual({ title: 'One Dance (feat. WizKid & Kyla)', artist: 'Drake' });
+    expect(songName('Post Malone - Sunflower ft. Swae Lee', 'PostMaloneVEVO', 'sunflower', 'post malone')).toEqual({ title: 'Sunflower (feat. Swae Lee)', artist: 'Post Malone' });
+    expect(songName('Levitating - Dua Lipa (Lyrics)', 'Pop Mage', 'levitating', 'dua lipa')).toEqual({ title: 'Levitating', artist: 'Dua Lipa' });
+    expect(songName('Some Unrelated Upload', 'Random Channel', 'mr. brightside', 'the killers')).toEqual({ title: 'Mr. Brightside', artist: 'The Killers' });
+    expect(songName('HUMBLE.', 'Kendrick Lamar - Topic', 'humble', 'kendrick lamar')).toEqual({ title: 'HUMBLE.', artist: 'Kendrick Lamar' });
+    expect(songName('Kill Bill', 'SZA', 'Kill Bill', '')).toEqual({ title: 'Kill Bill', artist: 'SZA' });
+    expect(songName('Kill Bill', 'SZA', 'kill bill', 'SZA')).toEqual({ title: 'Kill Bill', artist: 'SZA' });
   });
 
   it('prefers the released song over live takes, covers and sped-up edits', () => {

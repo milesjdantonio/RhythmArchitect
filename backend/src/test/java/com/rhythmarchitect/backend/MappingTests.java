@@ -64,6 +64,20 @@ class MappingTests {
         assertEquals(new Matching.SongName("Kill Bill", "SZA"), Matching.songFromVideo("Kill Bill", "SZA", ""));
     }
 
+    /** The video's own wording when it's the song typed (capitals, features), else what was typed. The cases in youtube.test.ts. */
+    @Test
+    void songNames() {
+        assertEquals(new Matching.SongName("Blinding Lights", "The Weeknd"), Matching.songName("The Weeknd - Blinding Lights (Official Video)", "TheWeekndVEVO", "blinding lights", "the weeknd"));
+        assertEquals(new Matching.SongName("One Dance (feat. WizKid & Kyla)", "Drake"), Matching.songName("One Dance (feat. WizKid & Kyla) - Drake (Official Audio)", "Drake Media", "one dance", "drake"));
+        assertEquals(new Matching.SongName("One Dance (feat. WizKid & Kyla)", "Drake"), Matching.songName("Drake ft. WizKid & Kyla - One Dance", "Drake", "one dance", ""));
+        assertEquals(new Matching.SongName("Sunflower (feat. Swae Lee)", "Post Malone"), Matching.songName("Post Malone - Sunflower ft. Swae Lee", "PostMaloneVEVO", "sunflower", "post malone"));
+        assertEquals(new Matching.SongName("Levitating", "Dua Lipa"), Matching.songName("Levitating - Dua Lipa (Lyrics)", "Pop Mage", "levitating", "dua lipa"));
+        assertEquals(new Matching.SongName("Mr. Brightside", "The Killers"), Matching.songName("Some Unrelated Upload", "Random Channel", "mr. brightside", "the killers"));
+        assertEquals(new Matching.SongName("HUMBLE.", "Kendrick Lamar"), Matching.songName("HUMBLE.", "Kendrick Lamar - Topic", "humble", "kendrick lamar"));
+        assertEquals(new Matching.SongName("Kill Bill", "SZA"), Matching.songName("Kill Bill", "SZA", "Kill Bill", ""));
+        assertEquals(new Matching.SongName("Kill Bill", "SZA"), Matching.songName("Kill Bill", "SZA", "kill bill", "SZA"));
+    }
+
     /** A small osu!mania 4K file: 64 taps on the beat at 120 BPM, with two holds and a kiai. */
     static String maniaMap() {
         StringBuilder b = new StringBuilder("osu file format v14\n\n[General]\nMode: 3\n\n[Metadata]\nTitle:Test\nArtist:Band\n"

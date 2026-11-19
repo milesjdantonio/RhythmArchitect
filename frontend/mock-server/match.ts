@@ -49,6 +49,33 @@ export function songFromVideo(videoTitle: string, channel: string, typedTitle = 
   return asTitle(b, a);
 }
 
+const FEAT = /\s+[([]?\s*(?:ft\.?|feat\.?|featuring)\s+([^()[\]]+?)\s*[)\]]?$/i;
+/** Typed all in lower case: each word capitalised ("blinding lights" is filed as Blinding Lights). */
+const cased = (s: string) => { const t = s.trim().replace(/\s+/g, ' '); return /[a-z]/.test(t) && t === t.toLowerCase() ? t.replace(/(^|[\s(\-/&])(\p{Ll})/gu, (_, a: string, c: string) => a + c.toUpperCase()) : t; };
+
+/**
+ * The name a song is filed under (VideoMatch songTitle/songArtist): the video's own wording
+ * (songFromVideo: its capitals, its "(feat. …)") when it's the song the player typed, else what
+ * they typed (each word capitalised when typed all in lower case). A featured artist goes with the
+ * title, as "(feat. …)": "Drake ft. WizKid" is Drake, and the title gets "(feat. WizKid)".
+ * Matching.songName is the same, with the same test cases.
+ */
+export function songName(videoTitle: string, channel: string, typedTitle = '', typedArtist = ''): { title: string; artist: string } {
+  const guess = songFromVideo(videoTitle, channel, typedTitle);
+  const want = bare(typedTitle);
+  const v = bare(guess.title);
+  let title = !want ? guess.title : v && (v === want || (v.length > 2 && (v.includes(want) || want.includes(v)))) ? guess.title : cased(typedTitle);
+  const wa = norm(typedArtist), ga = norm(guess.artist);
+  let artist = !wa ? guess.artist : ga && (ga.includes(wa) || wa.includes(ga)) ? guess.artist : cased(typedArtist);
+  const inArtist = FEAT.exec(artist);
+  let feat = '';
+  if (inArtist) { feat = inArtist[1].trim(); artist = artist.slice(0, inArtist.index).trim(); }
+  const inTitle = FEAT.exec(title);
+  if (inTitle) { feat = inTitle[1].trim(); title = title.slice(0, inTitle.index).trim(); }
+  if (feat) title = `${title} (feat. ${feat})`;
+  return { title, artist };
+}
+
 /** How likely a search result is the song itself, as released (not a live take, cover or edit). */
 export function videoScore(v: { title: string; channel: string; seconds?: number }, title: string, artist: string): number {
   const t = norm(v.title), ch = norm(v.channel);

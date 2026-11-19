@@ -66,6 +66,42 @@ public final class Matching {
         return new SongName(tidy(b), tidy(a));
     }
 
+    private static final Pattern FEAT = Pattern.compile("(?i)\\s+[(\\[]?\\s*(?:ft\\.?|feat\\.?|featuring)\\s+([^()\\[\\]]+?)\\s*[)\\]]?$");
+    private static final Pattern WORD_START = Pattern.compile("(^|[\\s(\\-/&])(\\p{Ll})");
+
+    /** Typed all in lower case: each word capitalised ("blinding lights" is filed as Blinding Lights). */
+    static String cased(String s) {
+        String t = s.trim().replaceAll("\\s+", " ");
+        if (!t.matches("(?s).*[a-z].*") || !t.equals(t.toLowerCase(java.util.Locale.ROOT))) return t;
+        Matcher m = WORD_START.matcher(t);
+        StringBuilder out = new StringBuilder();
+        while (m.find()) m.appendReplacement(out, Matcher.quoteReplacement(m.group(1) + m.group(2).toUpperCase(java.util.Locale.ROOT)));
+        m.appendTail(out);
+        return out.toString();
+    }
+
+    /**
+     * The name a song is filed under (VideoMatch songTitle/songArtist): the video's own wording
+     * (songFromVideo: its capitals, its "(feat. …)") when it's the song the player typed, else what
+     * they typed (each word capitalised when typed all in lower case). A featured artist goes with
+     * the title, as "(feat. …)". As match.ts songName, with the same test cases.
+     */
+    public static SongName songName(String videoTitle, String channel, String typedTitle, String typedArtist) {
+        String tt = typedTitle == null ? "" : typedTitle, ta = typedArtist == null ? "" : typedArtist;
+        SongName guess = songFromVideo(videoTitle, channel, tt);
+        String want = Text.bare(tt);
+        String title = want.isEmpty() || isTitle(guess.title(), want) ? guess.title() : cased(tt);
+        String wa = Text.norm(ta), ga = Text.norm(guess.artist());
+        String artist = wa.isEmpty() ? guess.artist() : !ga.isEmpty() && (ga.contains(wa) || wa.contains(ga)) ? guess.artist() : cased(ta);
+        String feat = "";
+        Matcher inArtist = FEAT.matcher(artist);
+        if (inArtist.find()) { feat = inArtist.group(1).trim(); artist = artist.substring(0, inArtist.start()).trim(); }
+        Matcher inTitle = FEAT.matcher(title);
+        if (inTitle.find()) { feat = inTitle.group(1).trim(); title = title.substring(0, inTitle.start()).trim(); }
+        if (!feat.isEmpty()) title = title + " (feat. " + feat + ")";
+        return new SongName(title, artist);
+    }
+
     private static boolean isTitle(String side, String want) {
         String v = Text.bare(side);
         return !v.isEmpty() && (v.equals(want) || (v.length() > 2 && (v.contains(want) || want.contains(v))));
