@@ -7,7 +7,7 @@
 // beat: nextStar), and every difficulty keeps a subset of its tiles (thin.ts KEEP): Ultra nearly
 // all of them (chords of two at most), Hard, Medium and Easy fewer. Its tiles come
 // in milliseconds, a little early; they go onto the sounds the onset mapper measured and onto its
-// beat grid (soundShift, toChart).
+// beat grid (soundShift, toChart); its long notes are holds only where the sound rings (RING).
 
 import { DIFFICULTIES, type Chart, type ChartNote, type ChartProgress, type Difficulty, type SoundEvent } from '../api/types';
 import type { Ort } from './ort';
@@ -28,8 +28,15 @@ const DIFFS = DIFFICULTIES;
 const SEED = 7;
 /** How early the model's tiles usually come, in seconds (see soundShift). */
 const EARLY = 0.029;
-/** Shorter holds than this (in beats) are played as taps. */
-const MIN_HOLD = 0.25;
+/** Shorter holds than this (in beats: an 8th) are played as taps. */
+const MIN_HOLD = 0.5;
+/**
+ * A long note is a hold only where a sound rings: the sound it starts on (within 50 ms) must ring
+ * at least this share of its length (the onset mapper's measure, SoundEvent.len); else it's a tap.
+ * The model writes long notes as a habit of the charts it learned from (a quarter of its tiles on
+ * some songs, a beat long), and the charts filled up with holds over sounds that had stopped.
+ */
+const RING = 0.45;
 
 // The model reads audio at 22050 Hz (and 24000 Hz for one stage); the listening pass hears at one
 // of the two. The runtime's tables for 24000 Hz go with the app.
@@ -78,6 +85,8 @@ export interface TrainedOptions {
   regrid?: (grid: BeatGrid) => Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'> | null;
   title?: string;
   artist?: string;
+  /** Each chart the model makes, as it made it (its objects in ms, before they're moved and thinned), with the shift it gets: for tools that study its output. */
+  onRaw?: (star: number, objects: { lane: number; start_ms: number; end_ms?: number }[], shift: number) => void;
 }
 
 /** Loading the model, its listening (beat tracking, features), charting, charting again busier (nextStar). */
@@ -230,6 +239,7 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     };
     const first = await chartAt(STAR, 'chart');
     const shift = soundShift(first.chart.objects, o.events);
+    o.onRaw?.(STAR, first.chart.objects, shift);
     // The model's own grid (its larger beat tracker) can replace the first one: then the tiles go
     // on that one.
     let on: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'> = o;
@@ -243,7 +253,9 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     let notes = firstNotes;
     const covers = [coverage(tries[0].counts, targets)];
     for (let star = nextStar([STAR], covers[0]); star != null; star = nextStar(tries.map((t) => t.star), covers[covers.length - 1])) {
-      const more = toChart((await chartAt(star, 'again')).chart.objects, 'ultra', on, shift).notes;
+      const again = (await chartAt(star, 'again')).chart.objects;
+      o.onRaw?.(star, again, shift);
+      const more = toChart(again, 'ultra', on, shift).notes;
       tries.push({ star, notes: more, counts: ultraOf(more) });
       notes = splice(tries, targets, on);
       covers.push(coverage(ultraOf(notes), targets));
@@ -349,8 +361,10 @@ export function toChart(objects: { lane: number; start_ms: number; end_ms?: numb
     const len = ob.end_ms != null ? Math.round(((ob.end_ms - ob.start_ms) / 1000) * bps * 1000) / 1000 : 0;
     // The pitch of the sound it's on, when a pitched one was heard within 60 ms (synth playback only).
     const pitched = close(0.06);
-    const n: ChartNote = { t, lane: ob.lane, pitch: pitched?.note ?? 'C5', len: len >= MIN_HOLD ? len : 0.25 };
-    if (len >= MIN_HOLD) n.hold = true;
+    const rings = close(0.05);
+    const hold = len >= MIN_HOLD && !!rings && rings.len >= len * RING;
+    const n: ChartNote = { t, lane: ob.lane, pitch: pitched?.note ?? 'C5', len: hold ? len : 0.25 };
+    if (hold) n.hold = true;
     notes.push(n);
   }
   return { difficulty, lanes: 4, notes };

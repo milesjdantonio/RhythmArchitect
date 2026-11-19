@@ -17,8 +17,10 @@ function busy(beats: number): ChartNote[] {
   return notes;
 }
 
-const opts = (o: Partial<ThinOptions>): ThinOptions => ({ spb: SPB, offset: 0, events: [], onGrid: true, rate: 1.2, minGap: 0.5, share: 0.4, maxChord: 1, holdsAlone: true, ...o });
+const opts = (o: Partial<ThinOptions>): ThinOptions => ({ spb: SPB, offset: 0, events: [], onGrid: true, rate: 1.2, floor: 0, minGap: 0.5, share: 0.4, maxChord: 1, chords: 1, holdsAlone: true, minHold: [0, 0], ...o });
 const rows = (n: ChartNote[]) => [...new Set(n.map((x) => x.t))].sort((a, b) => a - b);
+/** A sound at `sec` (120 BPM, beat 0 at 0 s) that rings `beats` beats. */
+const ring = (sec: number, beats: number) => ({ id: 0, t: sec / SPB, sec, band: 'mid', pitched: true, midi: 60, note: 'C4', bright: 60, strength: 0.6, len: beats, onBeat: true, accent: false }) as SoundEvent;
 
 describe('thinning a chart', () => {
   const src = busy(240); // two minutes
@@ -86,8 +88,18 @@ describe('the trained mapper\'s tiles on the song\'s grid', () => {
       { lane: 0, start_ms: 1200 },
       { lane: 3, start_ms: 1700, end_ms: 2700 },
       { lane: 1, start_ms: 1950, end_ms: 2000 }, // too short to hold
-    ], 'hard', { bpm: BPM, offset: 1.2, events: [] });
+    ], 'hard', { bpm: BPM, offset: 1.2, events: [{ ...ring(1.7, 2), t: 1 }] });
     expect(c.notes.map((n) => [n.t, n.lane, !!n.hold, n.len])).toEqual([[0, 0, false, 0.25], [1, 3, true, 2], [1.5, 1, false, 0.25]]);
+  });
+
+  it('a long note is a hold only where its sound rings (about half of it or more), and at least an 8th', () => {
+    const hold = (len: number, ringBeats: number | null, ms = 1000) => toChart([{ lane: 0, start_ms: 1000, end_ms: 1000 + ms }], 'hard',
+      { bpm: BPM, offset: 0, events: ringBeats == null ? [] : [ring(1, ringBeats)] }).notes[0].hold === true && len > 0;
+    expect(hold(2, 2)).toBe(true);
+    expect(hold(2, 1)).toBe(true); // half of it
+    expect(hold(2, 0.7)).toBe(false); // the sound stopped a third of the way: a tap
+    expect(hold(2, null)).toBe(false); // no sound where it starts
+    expect(hold(0.4, 1, 200)).toBe(false); // under an 8th
   });
 
   it('moves the tiles onto the measured sounds: by their median distance, else by the usual 29 ms', () => {
@@ -119,6 +131,32 @@ describe('the trained mapper\'s tiles on the song\'s grid', () => {
     expect(c.medium.notes.length).toBeLessThan(c.hard.notes.length);
     expect(c.hard.notes.length).toBeLessThanOrEqual(model.length);
     for (const d of ['easy', 'medium', 'hard'] as const) expect(c[d].lanes).toBe(4);
+  });
+
+  it('each step up is about the same jump: tiles, chords and holds come in gradually', () => {
+    // A song's worth of the model at about 4.5 tiles a second, a third of its rows chords, holds every bar.
+    const model: ChartNote[] = [];
+    for (let i = 0; i < 180 * 4; i++) {
+      const t = i / 2;
+      if (i % 8 === 0) { model.push({ t, lane: 0, pitch: 'C5', len: 1.5, hold: true }); continue; }
+      model.push({ t, lane: (i * 3) % 4, pitch: 'C5', len: 0.25 });
+      if (i % 3 === 0) model.push({ t, lane: (i * 3 + 2) % 4, pitch: 'C5', len: 0.25 });
+    }
+    const c = easierCharts(model, { bpm: BPM, offset: 0, events: [], onGrid: true });
+    const n = (d: 'easy' | 'medium' | 'hard' | 'ultra') => c[d].notes.length;
+    // Every step 1.25 to 1.9 times the one below (it was 1.1 from Hard to Ultra, 2 from Medium to Hard).
+    for (const [lo, hi] of [['easy', 'medium'], ['medium', 'hard'], ['hard', 'ultra']] as const) {
+      expect(n(hi) / n(lo)).toBeGreaterThan(1.25);
+      expect(n(hi) / n(lo)).toBeLessThan(1.9);
+    }
+    const chordRows = (d: 'easy' | 'medium' | 'hard' | 'ultra') => { const r = new Map<number, number>(); for (const x of c[d].notes) r.set(x.t, (r.get(x.t) ?? 0) + 1); return [...r.values()].filter((k) => k > 1).length / r.size; };
+    expect(chordRows('easy')).toBe(0);
+    expect(chordRows('medium')).toBeLessThan(0.08);
+    expect(chordRows('hard')).toBeGreaterThan(chordRows('medium'));
+    expect(chordRows('hard')).toBeLessThan(0.2);
+    expect(chordRows('ultra')).toBeGreaterThan(chordRows('hard'));
+    // Easy holds only the long ones: a 1.5-beat hold at 120 BPM (0.75 s) stays, shorter ones don't.
+    expect(c.easy.notes.filter((x) => x.hold).every((x) => x.len >= 1)).toBe(true);
   });
 });
 

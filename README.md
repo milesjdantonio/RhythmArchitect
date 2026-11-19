@@ -8,9 +8,9 @@ finds the track, finds every note in it, and builds a beatmap on four lanes with
 difficulties, each a step up from the last. Every tile is a note in the song, at the moment you
 hear it:
 
-- **Easy**: the notes that stand out most, one at a time, with holds where a sound rings.
-- **Medium**: more of them, closer together.
-- **Hard**: most of the notes, chords of two, taps under held notes.
+- **Easy**: the notes that stand out most, one at a time, with long holds where a sound rings.
+- **Medium**: more of them, closer together, a chord of two on the biggest hits.
+- **Hard**: most of the notes, more chords, shorter holds and taps under them.
 - **Ultra**: every note, chords on the biggest hits.
 
 Then you play it in a world of light that moves with the music, in the spirit of Tetris Effect.
@@ -358,10 +358,16 @@ Before that, two models run in the browser on what was heard (the mapping worker
   browser's cache. Its lowest star rating is usually about this game's Ultra (the whole chart), so
   it charts at that rating; where Ultra would be thin (fast, intense songs, whose hardest stretches
   2★ eases), it charts again busier and each 10 s of the song takes the chart nearest about two
-  tiles a beat. Then every difficulty keeps a subset of its tiles (`thin.ts` `KEEP`): the strongest
-  sounds, spaced out, each stretch of the song keeping its share, each step about half again the
-  one before (Easy about 2 rows a second, Medium 3, Hard 4.6 with chords of two); Ultra keeps nearly
-  all of them (chords of two at most: 5-9 tiles a second, more on fast songs). Songs saved before
+  tiles a beat. Its long notes are holds only where the sound under them rings for about half
+  their length or more (the onset mapper measures how long each sound rings): the model writes
+  long notes out of habit, and charts were a third holds over sounds that had stopped. Then every
+  difficulty keeps a subset of its tiles (`thin.ts` `KEEP`): the strongest sounds, spaced out, each
+  stretch of the song keeping its share, each step about 0.7 of the tiles of the one above (Easy
+  about a third of Ultra, Medium half, Hard 0.7), with chords and holds coming in gradually (none
+  on Easy, a few on Medium's biggest hits, about one row in seven on Hard, all of the model's on
+  Ultra; Easy holds only the long ones). Measured on the two bundled songs (Nov 19), the ladder
+  went from ×1.35, ×1.8 to ×2.2, ×1.1 to ×1.15 (Medium to Hard doubling, Hard to Ultra hardly
+  anything) to about ×1.4 each step, and holds from up to 32% of the tiles to 3-8%. Songs saved before
   Ultra (three charts) are upgraded when they load (`api/upgrade.ts`): the old Medium is Easy, the
   old Hard is Ultra, and their best scores move with them.
   Its tiles come about 29 ms early (measured on a groove with known hit times), so they move onto

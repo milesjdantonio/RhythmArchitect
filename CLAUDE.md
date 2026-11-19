@@ -73,7 +73,10 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 - Every difficulty has 4 lanes, keys D F J K by default (rebindable: `src/lib/keys.ts`; anything
   that shows or reads a key uses the player's binds, never a hard-coded D F J K). Difficulty is density, holds, chords and speed. Four
   steps, each about half again the last: Easy (one at a time), Medium (closer), Hard (chords of two,
-  taps under holds), Ultra (the whole chart). The same ladder everywhere: `thin.ts` `KEEP` (trained
+  taps under holds), Ultra (the whole chart). For the trained mapper, `thin.ts` `KEEP` counts in
+  tiles (Easy ~⅓ of Ultra, Medium ½, Hard 0.7) and brings chords in gradually (Medium a few on the
+  biggest hits, Hard ~15% of rows): the user found Medium→Hard a huge jump and Easy→Medium,
+  Hard→Ultra hardly any; keep every step about the same. The same ladder everywhere: `thin.ts` `KEEP` (trained
   mapper), `charts.ts` `RULES` (onset mapper), `osu.ts`/`Osu.java` (fan charts), `engine.ts`
   (windows, drain). Easy is what Medium was before Ultra, Ultra what Hard was; songs saved with
   three charts are upgraded on load (`src/api/upgrade.ts`; the backend refreshes its built-ins). Note
@@ -141,7 +144,11 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   again a star busier (to 4★, at most three charts, from the same analysis) and each stretch takes
   the chart nearest its target (`splice`). Every difficulty keeps a subset of that (`src/mapping/thin.ts`, `KEEP`),
   and its tiles move onto the onset mapper's measured sounds (`soundShift`: they come ~29 ms early).
-  e2e tests switch it off (localStorage `rythm-architect:no-ensomi`).
+  Its long notes are holds only where the sound under them rings ≥45% of their length (`RING`,
+  `SoundEvent.len`) and they're an 8th or longer: it writes them out of habit, and charts were up
+  to a third holds over sounds that had stopped. To study its output, `onRaw` hands over each chart
+  as the model made it (the Nov 19 study ran it headless on the bundled tracks and re-thinned
+  offline). e2e tests switch it off (localStorage `rythm-architect:no-ensomi`).
 - Only if it's off or fails: with WebGPU the song is split with Demucs (`src/mapping/stems.ts`,
   ~172 MB, `stemModel.ts`; e2e: `rythm-architect:no-stems`), and the onset mapper's own charts
   (`charts.ts`) are used. All the models run on one ONNX Runtime (`src/mapping/ort.ts`); any of
