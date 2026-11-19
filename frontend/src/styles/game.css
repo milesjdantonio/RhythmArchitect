@@ -148,6 +148,18 @@
 .odfx-safe-bar { grid-column: 1 / -1; justify-self: stretch; height: 3px; background: rgb(255 255 255 / 0.12); overflow: hidden; }
 .odfx-safe-bar i { display: block; height: 100%; transform-origin: right; background: hsl(var(--od, 196) var(--ods, 100%) 78%); box-shadow: 0 0 8px hsl(var(--od, 196) var(--ods, 100%) 60%); transition: transform 120ms linear; }
 @media (max-width: 900px) { .odfx-safe { top: auto; bottom: 170px; right: 14px; } }
+/* It ended: its name, lost (red, cracking, letters falling) or spent (drifting up), where the cue was. */
+.odfx-lost { position: absolute; right: clamp(16px, 2.4vw, 60px); top: 50%; display: grid; justify-items: end; gap: 4px; opacity: 0; will-change: transform, opacity; }
+.odfx-lost-word { display: flex; font-family: var(--font-display); font-weight: 300; font-size: clamp(30px, 3vw, 48px); line-height: 1; letter-spacing: 0.16em; text-transform: uppercase;
+  color: hsl(var(--fx) var(--fxs, 100%) 88%); text-shadow: 0 0 22px hsl(var(--fx) var(--fxs, 100%) 58% / 0.9), 0 2px 6px rgb(0 0 0 / 0.9); }
+.odfx-lost-word span { display: inline-block; will-change: transform, opacity; }
+.odfx-lost-sub { font-size: 12px; letter-spacing: 0.6em; text-transform: uppercase; color: hsl(var(--fx) var(--fxs, 100%) 80%); text-shadow: 0 1px 4px rgb(0 0 0 / 0.9); will-change: transform, opacity; }
+.odfx-lost.is-broken .odfx-lost-sub { color: hsl(352 100% 76%); font-size: 14px; font-weight: 500; }
+.odfx-lost.is-broken .odfx-lost-word { color: hsl(352 100% 90%); text-shadow: 0 0 18px hsl(352 100% 58%), 0 0 40px hsl(352 100% 50% / 0.7), 0 2px 6px rgb(0 0 0 / 0.9); }
+/* Broken: the screen's sides flash red (the middle, where the tiles fall, stays clear). */
+.odfx-lost-edge { position: absolute; inset: 0; opacity: 0; will-change: opacity;
+  background: linear-gradient(90deg, hsl(352 100% 50% / 0.55), transparent 22%, transparent 78%, hsl(352 100% 50% / 0.55)); }
+.play.has-dev .odfx-lost { right: calc(330px + 28px); }
 /* It ran out: what it added, counted out under the cue (clear of it: the charge may be full again). */
 .odfx-tally { position: absolute; right: clamp(16px, 2.4vw, 60px); top: 71%; display: grid; justify-items: end; gap: 6px; text-align: right; opacity: 0; }
 .odfx-tally-num { font-family: var(--font-display); font-weight: 200; font-size: clamp(34px, 3.4vw, 54px); line-height: 1; color: hsl(var(--fx) var(--fxs, 100%) 90%);
@@ -280,7 +292,7 @@
 .overlay-card h1 { font-weight: 200; font-size: clamp(30px, 4.4vw, 52px); letter-spacing: 0.06em; text-shadow: 0 0 40px var(--glowA); text-wrap: balance; }
 .overlay-card h1.is-long { font-size: clamp(24px, 2.8vw, 36px); letter-spacing: 0.03em; line-height: 1.2; max-width: 30ch; }
 .overlay-artist { font-weight: 300; letter-spacing: 0.12em; text-transform: uppercase; font-size: 14px; color: var(--ink-soft); }
-.overlay-help { font-size: 15px; font-weight: 400; color: var(--ink-soft); max-width: 44ch; }
+.start-foot { display: flex; gap: var(--space-2); justify-content: center; flex-wrap: wrap; }
 .overlay-card .btn-primary { min-width: 220px; min-height: 54px; margin-top: var(--space-2); }
 .overlay-card .btn-primary kbd { background: rgb(5 8 22 / 0.2); border-color: rgb(5 8 22 / 0.3); color: #050816; }
 .lane-keys { display: flex; gap: var(--space-3); margin: var(--space-3) 0; }
@@ -417,6 +429,7 @@
   /* Phones: the HUD's button is the cue (no keyboard); the tally goes above the callouts. */
   .odfx-ready { display: none; }
   .odfx-tally { top: auto; bottom: 110px; right: 14px; }
+  .odfx-lost { top: auto; bottom: 170px; right: 14px; }
   .callout-num { font-size: 52px; }
   .callout.is-gold .callout-num { font-size: 60px; }
 }

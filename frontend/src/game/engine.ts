@@ -10,6 +10,8 @@ export type Judgement = 'perfect' | 'great' | 'good' | 'miss';
 
 /** Hit windows in seconds (either side of the note). Easier modes are more forgiving. */
 const BASE_WINDOWS = { perfect: 0.045, great: 0.09, good: 0.14 };
+/** Ultra's hit windows (Perfect, Good, then Early/Late; the easier difficulties are a little wider). */
+export const HIT_WINDOWS: Readonly<typeof BASE_WINDOWS> = BASE_WINDOWS;
 // Each difficulty a step up (Easy is what Medium was before Ultra, Ultra what Hard was).
 const LENIENCY: Record<Difficulty, number> = { easy: 1.12, medium: 1.08, hard: 1.04, ultra: 1 };
 // Points, combo and accuracy are main.Score's, the multiplier and holds the game's own (score.ts).
@@ -30,16 +32,29 @@ const STRAY_QUIET = 1;
 /** A hold released this close to its end still counts as completed. */
 const HOLD_GRACE = 0.14;
 
-/** Seconds a tile takes to fall from the top to the hit line at speed 1. */
-export const TRAVEL: Record<Difficulty, number> = { easy: 1.4, medium: 1.3, hard: 1.2, ultra: 1.1 };
 /**
- * Note speed, fixed for every player and every song: tiles fall at 0.85× (a touch slower than
- * TRAVEL). The same fall time on every song keeps reading and reaction time the same; the song's
- * tempo shows in how close the tiles are, not in how fast they fall.
+ * Seconds a tile takes to fall from the top to the hit line on a 120 BPM song. Each difficulty
+ * falls faster than the last (about 0.85 times the time), like a harder map's note speed in Beat
+ * Saber: the reading gets quicker along with the density.
  */
-export const NOTE_SPEED = 0.85;
-/** Seconds a tile takes to reach the hit line on this difficulty. */
-export const fallTime = (d: Difficulty) => TRAVEL[d] / NOTE_SPEED;
+export const TRAVEL: Record<Difficulty, number> = { easy: 1.75, medium: 1.5, hard: 1.28, ultra: 1.08 };
+/** The tempo the fall times are set at. */
+export const TRAVEL_BPM = 120;
+/** How much the tempo moves the speed: a song twice as fast falls 2^0.4 = 1.32 times as fast. */
+const TEMPO_PULL = 0.4;
+/** The tempo's pull is kept within these (a very slow or very fast song). */
+const TEMPO_MIN = 0.8, TEMPO_MAX = 1.2;
+/**
+ * Note speed is not a setting: it comes from the difficulty and the song's tempo. Faster songs fall
+ * faster (so the tiles of a fast song don't crowd together) and slower ones slower, but only part
+ * of the way (TEMPO_PULL), so a song's tempo still shows in how close its tiles are.
+ */
+export function fallTime(d: Difficulty, bpm = TRAVEL_BPM): number {
+  const tempo = Math.min(TEMPO_MAX, Math.max(TEMPO_MIN, (TRAVEL_BPM / Math.max(1, bpm)) ** TEMPO_PULL));
+  return TRAVEL[d] * tempo;
+}
+/** The note speed shown to the player: Easy at 120 BPM is 1.0x. */
+export const noteSpeed = (d: Difficulty, bpm = TRAVEL_BPM) => TRAVEL.easy / fallTime(d, bpm);
 
 export interface LiveNote {
   idx: number;

@@ -14,6 +14,7 @@ import { FrameTrace } from '../components/FrameTrace';
 import { bus } from '../lib/bus';
 import { enterDepth, enterRise, entranceTimes, useEntrance } from '../lib/entrance';
 import { openBank, parse } from '../lib/router';
+import { openHowToPlay } from '../components/HowToPlay';
 import { useSong } from '../library/songs';
 import { setSettings, useSettings } from '../lib/settings';
 import { RiveAnim, type RiveHandle } from '../rive/RiveAnim';
@@ -150,7 +151,10 @@ export function Workspace({ songId, difficulty: routeDifficulty, onSettings }: {
             fallback={<span className="wordmark-fallback">Rythm<span>Architect</span></span>} />
           <h1 className="sr-only">Rythm Architect</h1>
           <div className="head-actions">
-            <motion.button type="button" className="btn btn-ghost btn-icon settings-btn" onClick={onSettings} aria-label="Settings" variants={enterRise} custom={T.settings}><Icon name="gear" /></motion.button>
+            <div className="head-icons">
+              <motion.button type="button" className="btn btn-ghost btn-icon help-btn" onClick={openHowToPlay} aria-label="How to play" title="How to play" variants={enterRise} custom={T.settings}><Icon name="help" /></motion.button>
+              <motion.button type="button" className="btn btn-ghost btn-icon settings-btn" onClick={onSettings} aria-label="Settings" variants={enterRise} custom={T.settings}><Icon name="gear" /></motion.button>
+            </div>
             <motion.button type="button" className="btn btn-sm bank-btn" onClick={openBank} aria-label="Music bank" title="Music bank: every song, A to Z" variants={enterRise} custom={T.settings}>
               <Icon name="notes" size={15} /> Bank
             </motion.button>

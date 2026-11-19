@@ -584,6 +584,32 @@ test.describe('Rythm Architect', () => {
     await expect(settings.getByRole('button', { name: 'Resynced' })).toBeVisible();
   });
 
+  test('How to play opens from the menu and the start card, with the game\'s own numbers @phone', async ({ page }) => {
+    await skipIntro(page);
+    await page.goto('/#/');
+    await page.getByRole('button', { name: 'How to play' }).click();
+    const help = page.getByRole('dialog', { name: 'How to play' });
+    await expect(help.getByRole('tab')).toHaveCount(8);
+    await expect(help.getByRole('tabpanel')).toContainText('Every tile is a note');
+    await help.getByRole('tab', { name: /Overdrive/ }).click();
+    await expect(help.getByRole('tabpanel')).toContainText('about 34 Perfects in a row');
+    await expect(help.getByRole('tabpanel')).toContainText('Space');
+    await help.getByRole('tab', { name: /Difficulty/ }).click();
+    await expect(help.locator('.htp-rung')).toHaveCount(4);
+    await page.keyboard.press('Escape');
+    await expect(help).toBeHidden();
+    // From the start card: the keys go to the dialog, not the game (Enter doesn't start the song).
+    await page.goto('/#/play/demo-neon-blueprint/hard');
+    await expect(startButton(page)).toBeEnabled();
+    await expect(page.locator('.overlay-card .label')).toContainText(/speed \d\.\d×/);
+    await page.locator('.overlay-card').getByRole('button', { name: 'How to play' }).click();
+    await expect(help).toBeVisible();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Escape');
+    await expect(help).toBeHidden();
+    await expect(startButton(page)).toBeVisible();
+  });
+
   test('fails Hard when nothing is played', async ({ page }) => {
     await skipIntro(page);
     await page.goto('/#/play/demo-neon-blueprint/hard');

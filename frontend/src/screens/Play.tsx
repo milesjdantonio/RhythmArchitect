@@ -14,6 +14,7 @@ import { botPlan, type BotMode } from '../game/autoplay';
 import { Icon } from '../components/Icon';
 import { Loader } from '../components/Loader';
 import { Results, type RunResult } from '../components/play/Results';
+import { openHowToPlay } from '../components/HowToPlay';
 import { Game, MAX_OVERDRIVE, OVERDRIVE_LENGTH, OVERDRIVE_LOW, fallTime, gradeFor, laneForCode, multiplierFor, type GameEvent, type Judgement } from '../game/engine';
 import { OVERDRIVE_LOOKS, overdriveCss, overdriveHues } from '../game/overdrive';
 import { POINT_SCALE, holdBonus } from '../game/score';
@@ -237,7 +238,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     if (use3d && host.current) {
       const opts = { mode: 'play' as const, hues: song.hues };
       const s = StageProxy.supported() ? new StageProxy(host.current, opts) : new Stage3D(host.current, opts);
-      s.setTiming(60 / song.bpm, fallTime(difficulty));
+      s.setTiming(60 / song.bpm, fallTime(difficulty, song.bpm));
       // The sky takes the song's colours, unless the Background setting holds a theme.
       const held = themeHues(getSettings().backdrop);
       if (held) s.skyEvent({ type: 'hues', hues: held });
@@ -525,7 +526,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       if (stage.current) stage.current.frame(fail.t, g.notes);
       else if (canvas.current && layout) {
         drawField(canvas.current.getContext('2d')!, layout, {
-          now: fail.t, speed: layout.hitY / fallTime(difficulty), spb: 60 / song.bpm, notes: g.notes,
+          now: fail.t, speed: layout.hitY / fallTime(difficulty, song.bpm), spb: 60 / song.bpm, notes: g.notes,
           pressed: [false, false, false, false], flash: [0, 0, 0, 0], hues: song.hues, keys: laneKeyList(getBinds()).map((x) => x.label), beatPulse: 0, climbs: [],
         });
       }
@@ -556,7 +557,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       c.avg += (lv - c.avg) * Math.min(1, Math.max(0, t - c.now) * 0.6);
       c.level = lv;
       c.now = t;
-      const speed = layout.hitY / fallTime(difficulty);
+      const speed = layout.hitY / fallTime(difficulty, song.bpm);
       drawField(canvas.current.getContext('2d')!, layout, {
         now: t, speed, spb: 60 / song.bpm, notes: g.notes, pressed: pressed.current.map((p, i) => p || g.isHolding(i)),
         flash: flash.current, hues: g.overdriveLevel ? overdriveHues(g.overdriveLevel, t) ?? song.hues : song.hues, keys: laneKeyList(getBinds()).map((k) => k.label), beatPulse: beatPulse.current, climbs: c.starts,
@@ -645,7 +646,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     bus.emit('overdrive', { level: 0 });
     bus.emit('hues', song.hues);
     const spb = 60 / song.bpm;
-    const travel = fallTime(difficulty);
+    const travel = fallTime(difficulty, song.bpm);
     stage.current?.setTiming(spb, travel);
     const leadInBeats = Math.max(4, Math.ceil((travel + 0.4) / spb / 4) * 4);
     try {
@@ -763,6 +764,8 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     const down = (e: KeyboardEvent) => {
       if (e.code === 'Backquote') { e.preventDefault(); toggleDev(); return; }
       if ((e.target as HTMLElement)?.closest?.('.devtools')) return;
+      // A dialog open over the start card (How to play) has the keys.
+      if (document.querySelector('dialog[open]')) return;
       if (e.repeat) { if (e.code === 'Space') e.preventDefault(); return; }
       const p = phaseRef.current;
       if (p === 'ready' && (e.code === 'Space' || e.code === 'Enter')) { e.preventDefault(); start(chosenPractice.current); return; }
@@ -866,7 +869,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
         requestAnimationFrame(spin);
       }
     },
-    retime: () => { if (song) stage.current?.setTiming(60 / song.bpm, fallTime(difficulty)); },
+    retime: () => { if (song) stage.current?.setTiming(60 / song.bpm, fallTime(difficulty, song.bpm)); },
     deleteMap: async () => { await deleteSong(songId); navigate(href.home()); },
   }), [use3d, song, difficulty, songId, callout]);
 
@@ -953,7 +956,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
 
       <AnimatePresence>
         {(phase === 'ready' || phase === 'starting') && song && (
-          <StartCard key="start" song={song} difficulty={difficulty} starting={phase === 'starting'} milestone={MILESTONE} onStart={(p) => start(p ?? null)} onChoose={onChoose} />
+          <StartCard key="start" song={song} difficulty={difficulty} starting={phase === 'starting'} onStart={(p) => start(p ?? null)} onChoose={onChoose} onHelp={openHowToPlay} />
         )}
         {phase === 'paused' && (
           <PauseCard key="paused" practice={practice} onStopPractice={() => { practiceRef.current = null; setPractice(null); stopSong(); resumeAudio().then(() => setPhase('ready')); }} at={clock} of={song ? (song.lengthBeats * 60) / song.bpm : 0} onResume={resume} onRestart={restart} onQuit={() => navigate(href.song(songId, difficulty))} />

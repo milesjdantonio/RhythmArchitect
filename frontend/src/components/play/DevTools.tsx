@@ -131,7 +131,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
           <div><dt>Bar</dt><dd>{beat !== null && beat >= 0 ? `${Math.floor(beat / meter) + 1}.${Math.floor(beat % meter) + 1}` : '–'}</dd></div>
           <div><dt>Section</dt><dd>{section || '–'}</dd></div>
           <div><dt>Tempo</dt><dd>{song.bpm} BPM · {meter}/4</dd></div>
-          <div><dt>Fall</dt><dd>{fallTime(difficulty).toFixed(2)}s</dd></div>
+          <div><dt>Fall</dt><dd>{fallTime(difficulty, song.bpm).toFixed(2)}s</dd></div>
         </dl>
       </section>
 

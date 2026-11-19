@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import type { Difficulty, Song } from '../../api/types';
-import { keyLabel, laneKeyList, useBinds } from '../../lib/keys';
+import { laneKeyList, useBinds } from '../../lib/keys';
 import { laneHue } from '../../game/render';
+import { noteSpeed } from '../../game/engine';
 import { href } from '../../lib/router';
 import { fmtTime } from '../../lib/format';
 import { Icon } from '../Icon';
@@ -35,15 +36,17 @@ export function practiceLoop(song: Song, a: number, b: number, speed: number): P
 }
 
 /**
- * Before a run: the song, the four keys, then a choice: play the song (how to play), or practise
- * a part (which part, how fast). One button starts whichever is chosen, and says which (Enter does
- * the same: `onChoose` tells the screen). Practice takes the place of the how-to-play text, so the
- * card is the same height either way and fits without scrolling.
+ * Before a run: the song (its note speed too: difficulty and tempo set it), the four keys, then a
+ * choice: play the song, or practise a part (which part, how fast). One button starts whichever is
+ * chosen, and says which (Enter does the same: `onChoose` tells the screen). How to play is a
+ * dialog of its own (`onHelp`).
  */
-export function StartCard({ song, difficulty, starting, milestone, onStart, onChoose }: {
-  song: Song; difficulty: Difficulty; starting: boolean; milestone: number; onStart: (practice?: Practice) => void;
+export function StartCard({ song, difficulty, starting, onStart, onChoose, onHelp }: {
+  song: Song; difficulty: Difficulty; starting: boolean; onStart: (practice?: Practice) => void;
   /** What Start would start now (null: the whole song). */
   onChoose?: (practice: Practice | null) => void;
+  /** Opens How to play. */
+  onHelp?: () => void;
 }) {
   const binds = useBinds();
   const [mode, setMode] = useState<'play' | 'practice'>('play');
@@ -62,7 +65,7 @@ export function StartCard({ song, difficulty, starting, milestone, onStart, onCh
   return (
     <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.4 } }}>
       <motion.div className="overlay-card" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6, ease: EASE_OUT }}>
-        <span className="label">{difficulty} · {Math.round(song.bpm)} BPM{sourceNote(song)}</span>
+        <span className="label">{difficulty} · {Math.round(song.bpm)} BPM · speed {noteSpeed(difficulty, song.bpm).toFixed(1)}×{sourceNote(song)}</span>
         <h1 className={song.title.length > 34 ? 'is-long' : undefined}>{song.title}</h1>
         <p className="overlay-artist">{song.artist}</p>
         <div className="lane-keys" aria-label="Keys">
@@ -76,9 +79,7 @@ export function StartCard({ song, difficulty, starting, milestone, onStart, onCh
             <button type="button" role="radio" aria-checked={mode === 'practice'} className={mode === 'practice' ? 'is-on' : ''} onClick={() => setMode('practice')}>Practice a part</button>
           </div>
         )}
-        {!practice ? (
-          <p className="overlay-help">Every tile is a note in the song. Hit it as you hear it; hold the long ones. Every {milestone} in a row lights up the stage, and ×5 starts fever. Accurate hits charge Overdrive: press <kbd>{keyLabel(binds.overdrive)}</kbd> when it's full, and again while it runs, up to three levels (×8). A miss ends it, except in the first few seconds after you press.</p>
-        ) : (
+        {practice && (
             <div className="practice-body">
               <p className="practice-help muted">Drag the start and the end of the loop, and pick a speed. It loops until you pause and stop; nothing is saved and you can't fail.</p>
               <div className="practice-times">
@@ -106,7 +107,10 @@ export function StartCard({ song, difficulty, starting, milestone, onStart, onCh
         <button type="button" className="btn btn-primary" onClick={() => onStart(practice ?? undefined)} autoFocus disabled={starting}>
           <Icon name={practice ? 'retry' : 'play'} /> {starting ? 'Starting' : practice ? `Practise ${practice.label} · ${pct}%` : 'Start'} <kbd>Enter</kbd>
         </button>
-        <a className="btn btn-ghost btn-sm" href={href.song(song.id, difficulty)}><Icon name="back" size={16} /> Back</a>
+        <div className="start-foot">
+          <a className="btn btn-ghost btn-sm" href={href.song(song.id, difficulty)}><Icon name="back" size={16} /> Back</a>
+          {onHelp && <button type="button" className="btn btn-ghost btn-sm" onClick={onHelp}><Icon name="help" size={16} /> How to play</button>}
+        </div>
       </motion.div>
     </motion.div>
   );

@@ -59,6 +59,12 @@ const L = 34; // playfield length (units)
 const laneX = (l: number) => (l - (LANES - 1) / 2) * LW;
 /** Just outside the lanes, either side: where big moments burst from, so they never cover the tiles. */
 const EDGE = W / 2 + 0.4;
+/**
+ * A shockwave from the middle of the hit line crosses every lane on its way out (its band sweeps up
+ * the track, through the falling tiles): while it does, it's drawn at this much of its strength, and
+ * comes up to full once it's past the far end. The board stays readable under Overdrive's pulses.
+ */
+const RING_ON_TRACK = 0.28;
 
 const MAX_NOTES = 220;
 const MAX_SPARKS = 5000;
@@ -852,7 +858,7 @@ export class Stage3D {
       }
       this.flare(side * EDGE, 0.6, 0, c[side < 0 ? 0 : 3], 3 + P * 0.8, 0.5);
     }
-    for (let l = 0; l < LANES; l++) this.ring(laneX(l), 0, c[l], 3.5 + P * 0.6, 0.8 + P * 0.06, l * 0.05);
+    for (let l = 0; l < LANES; l++) this.ring(laneX(l), 0, c[l], 1.8 + P * 0.2, 0.7 + P * 0.04, l * 0.05);
     // Shockwaves across the glass from the hit line: more each level, each wider and later.
     this.ring(0, 0, this.white, 11 + P * 2, 1.1);
     for (let k = 0; k <= Math.round(P); k++) this.ring(0, 0, k % 2 ? this.white : c[(k + 1) % 4], 15 + P * 3 + k * 5, 1.3 + k * 0.14, 0.1 + k * 0.08);
@@ -878,8 +884,8 @@ export class Stage3D {
     // Every pad ignites and kicks, and the hit line blazes (the light itself bursts from the
     // sides above, so the lanes stay clear for the tiles).
     for (let l = 0; l < LANES; l++) {
-      this.flash[l] = Math.max(this.flash[l], 0.6);
-      this.glow[l] = 1;
+      this.flash[l] = Math.max(this.flash[l], 0.45);
+      this.glow[l] = 0.8;
       this.padV[l] += 12 + P * 2;
     }
     this.odLine = 1;
@@ -903,9 +909,11 @@ export class Stage3D {
     this.ring(0, 0, broken ? this.red : this.white, 10, 0.9);
     this.ring(0, 0, c[1], 14, 1.2, 0.1);
     for (const side of [-1, 1]) this.emit(side * EDGE, 0.4, -1, 22, c[side < 0 ? 0 : 3], { speed: 2, up: 3, size: 1.1, life: 1.2, grav: 6, drag: 2, white: 0.3 });
+    // The sparks rain down the track's sides (EDGE), not over the lanes: the tiles keep coming.
     for (let l = 0; l < LANES; l++) {
-      this.emit(laneX(l), 1.2, -0.5, broken ? 16 : 10, broken && l % 2 ? this.red : c[l], { speed: broken ? 2.6 : 1.2, up: broken ? 2 : 0.5, size: 0.9, life: 1.3, grav: broken ? 9 : 4, drag: 1.2, white: 0.15 });
-      this.flash[l] = Math.max(this.flash[l], 0.5);
+      const side = l < 2 ? -1 : 1;
+      this.emit(side * (EDGE + 0.2 + (l % 2) * 0.5), 1.6, -0.5 - (l % 2) * 2, broken ? 16 : 10, broken && l % 2 ? this.red : c[l], { speed: broken ? 2.6 : 1.2, up: broken ? 2 : 0.5, size: 0.9, life: 1.3, grav: broken ? 9 : 4, drag: 1.2, white: 0.15 });
+      this.flash[l] = Math.max(this.flash[l], 0.35);
     }
     if (broken) {
       for (const side of [-1, 1]) this.flare(side * EDGE, 0.5, 0, this.red, 3, 0.4);
@@ -1219,7 +1227,7 @@ export class Stage3D {
     // Overdrive: every hit rings wider, and from level 3 throws glints, more each level.
     if (this.odLevel) {
       const lv = this.pw;
-      this.ring(x, 0, c, 1.6 + lv * 0.4, 0.5);
+      this.ring(x, 0, c, 1.1 + lv * 0.15, 0.45);
       this.emit(x, 0.3, 0, Math.round(4 + lv * 2), c, { speed: 4 + lv, up: 4 + lv * 0.6, size: 0.9, life: 0.5, grav: 6, drag: 3.5, white: 0.45 });
       for (let k = 0; k < lv - 2; k++) this.glint(x + (Math.random() - 0.5) * 0.8, 0.5, -0.2, c, { size: 0.9 });
       this.odLine = Math.max(this.odLine, 0.3 + big * 0.2);
@@ -1698,7 +1706,7 @@ export class Stage3D {
     this.stepClimbs(dt);
     this.tileMat.uniforms.uFever.value = this.fever;
     (this.hitLine.material as THREE.MeshBasicMaterial).opacity = Math.min(1, 0.7 + this.beat * 0.3 + this.odLine * 0.3);
-    this.hitLine.scale.y = 0.7 + this.beat * 0.3 + this.odLine * 1.1;
+    this.hitLine.scale.y = 0.7 + this.beat * 0.3 + Math.min(0.45, this.odLine * 0.5);
     this.hitLine.scale.x = 1 + this.odLine * 0.08;
 
     const f = this.formMat.uniforms;
@@ -1993,7 +2001,10 @@ export class Stage3D {
       const k = r.age / r.life;
       const s = 0.6 + (1 - Math.pow(1 - k, 3)) * r.grow;
       r.mesh.scale.set(s, s, s);
-      r.mat.opacity = (1 - k) * (1 - k) * 0.75;
+      // Radius 0.5 s: a ring across the track (wider than a lane) dims until it's past the far end.
+      const R = s * 0.5;
+      const over = R > LW * 1.2 ? RING_ON_TRACK + (1 - RING_ON_TRACK) * Math.min(1, Math.max(0, (R - L * 0.85) / (L * 0.3))) : 1;
+      r.mat.opacity = (1 - k) * (1 - k) * 0.75 * over;
     }
   }
 

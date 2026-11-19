@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { applyVolumes, resyncPlaying } from '../audio/playback';
 import { DEFAULTS, setSettings, useSettings, type Settings } from '../lib/settings';
-import { NOTE_SPEED } from '../game/engine';
 import { DEFAULT_LANE_KEYS, DEFAULT_OVERDRIVE_KEY, keyLabel, rebind, useBinds } from '../lib/keys';
 import { Icon } from './Icon';
 import { BACKDROP_THEMES } from '../background/themes';
@@ -99,8 +98,8 @@ function Group({ title, children }: { title: string; children: ReactNode }) {
 
 /**
  * Settings: sound, timing, play, visuals and the keys, in framed groups. Changes apply as they
- * happen (and are kept in this browser). Note speed is not here: it's fixed (game/engine.ts,
- * NOTE_SPEED), the same for every song.
+ * happen (and are kept in this browser). Note speed is not here: each difficulty and song sets its
+ * own (game/engine.ts, fallTime).
  */
 export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -145,8 +144,8 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
             <button type="button" className="btn btn-sm set-resync" onClick={resync} aria-live="polite">{resynced ? 'Resynced' : 'Resync'}</button>
           </div>
           <div className="set-row set-fixed">
-            <span className="set-text"><span>Note speed</span><small className="set-hint">The same on every song, so reading never changes. Tempo shows in how close the tiles are.</small></span>
-            <span className="set-value mono">{NOTE_SPEED.toFixed(2)}×</span>
+            <span className="set-text"><span>Note speed</span><small className="set-hint">Set by the map: tiles fall faster on harder difficulties and on faster songs. The start card shows it.</small></span>
+            <span className="set-value">By map</span>
           </div>
         </Group>
 

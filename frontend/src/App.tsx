@@ -5,6 +5,7 @@ import { Intro, shouldShowIntro } from './intro/Intro';
 import { Loader } from './components/Loader';
 import { startServerWatch } from './lib/server';
 import { SettingsDialog } from './components/SettingsDialog';
+import { HowToPlayDialog } from './components/HowToPlay';
 import { Workspace } from './screens/Workspace';
 // The music bank loads with the menu, not on demand: the menu's song plays on into it, and a
 // YouTube song's video needs its spot there the moment the menu's goes (a screen still loading
@@ -76,6 +77,7 @@ export function App() {
         </AnimatePresence>
       </EntranceContext.Provider>
       <SettingsDialog open={settings} onClose={() => setSettings(false)} />
+      <HowToPlayDialog />
     </MotionConfig>
   );
 }

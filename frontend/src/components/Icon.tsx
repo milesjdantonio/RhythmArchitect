@@ -20,6 +20,8 @@ const PATHS = {
   wave: 'M2 12h3l2-6 3 12 3-9 2 5 2-2h5',
   check: 'M5 12.5l4.5 4.5L19 7.5',
   chevron: 'M6 9l6 6 6-6',
+  /** A question mark in a ring: how to play. */
+  help: 'M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM9.6 9.4a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.9v.4M12 16.9v.2',
 } as const;
 
 export type IconName = keyof typeof PATHS;

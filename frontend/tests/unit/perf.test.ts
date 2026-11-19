@@ -116,9 +116,17 @@ describe("the game's profile", () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps the note speed fixed at 0.85', async () => {
-    const { NOTE_SPEED, TRAVEL, fallTime } = await import('../../src/game/engine');
-    expect(NOTE_SPEED).toBe(0.85);
-    expect(fallTime('hard')).toBeCloseTo(TRAVEL.hard / 0.85);
+  it('sets the note speed by difficulty and tempo', async () => {
+    const { TRAVEL, fallTime, noteSpeed } = await import('../../src/game/engine');
+    expect(fallTime('hard')).toBeCloseTo(TRAVEL.hard);
+    expect(noteSpeed('easy')).toBeCloseTo(1);
+    // Each difficulty falls faster than the last, by about the same step.
+    const order = (['easy', 'medium', 'hard', 'ultra'] as const).map((d) => fallTime(d, 128));
+    for (let i = 1; i < 4; i++) expect(order[i] / order[i - 1]).toBeGreaterThan(0.8), expect(order[i] / order[i - 1]).toBeLessThan(0.9);
+    // Faster songs fall faster, part of the way, within limits.
+    expect(fallTime('medium', 180)).toBeLessThan(fallTime('medium', 120));
+    expect(fallTime('medium', 180)).toBeCloseTo(TRAVEL.medium * (120 / 180) ** 0.4);
+    expect(fallTime('medium', 400)).toBeCloseTo(TRAVEL.medium * 0.8);
+    expect(fallTime('medium', 40)).toBeCloseTo(TRAVEL.medium * 1.2);
   });
 });

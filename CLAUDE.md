@@ -46,7 +46,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   1% of a day's per search). Then the **Favorites** drop-down with its own search.
 - The **music bank** is its own screen (`src/screens/MusicBank.tsx`, `#/bank`, `GET /api/library`):
   every song A to Z with a search and a letter rail, opened by the Bank button (♫ icon) under the
-  settings gear. The menu's song keeps playing there; a pick plays right there (the bank stays
+  settings gear (beside the gear: **How to play**, `src/components/HowToPlay.tsx`, a dialog of
+  topics with moving diagrams, also opened from the start card; its numbers come from the rules). The menu's song keeps playing there; a pick plays right there (the bank stays
   open, its "Now playing" card holds a YouTube song's video). Esc goes back to the menu with the
   song that was playing on stage, its preview carrying on (the screens hand it over:
   `handOverPreview` / `takePreview`). No map report.
@@ -76,8 +77,10 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   mapper), `charts.ts` `RULES` (onset mapper), `osu.ts`/`Osu.java` (fan charts), `engine.ts`
   (windows, drain). Easy is what Medium was before Ultra, Ultra what Hard was; songs saved with
   three charts are upgraded on load (`src/api/upgrade.ts`; the backend refreshes its built-ins). Note
-  speed is fixed, not a setting: `NOTE_SPEED` (0.85) in `src/game/engine.ts`, the same fall time on
-  every song (`fallTime`).
+  speed is not a setting: each map sets its own, like Beat Saber (the user asked for it, Nov 18):
+  `fallTime(difficulty, bpm)` in `src/game/engine.ts`, `TRAVEL` per difficulty (each ~0.85 times
+  the last) pulled part of the way by the tempo (`TEMPO_PULL`, clamped). The start card shows it
+  (`noteSpeed`).
 - Scoring is `main.Score`'s rules (Perfect 100, Good 75, Early/Late 50, accuracy, combo) with the
   game's on top: points ×10 (`POINT_SCALE`), the combo multiplier (×1-×5), the held-note bonus,
   **Overdrive** (a charge from accurate hits: Perfect 3, Good 2, Early/Late 1, a finished hold 3,
@@ -94,8 +97,11 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   drains for Eclipse). Its effects: Stage3D (`setOverdrive`, `setOverdriveReady`,
   `setOverdriveLow`: warp streaks, shockwaves, beacons, the flicker), the sky (`overdrive` scene
   event: warp), `components/play/OverdriveFx.tsx` (the screen: an opacity-only flash, the ready cue,
-  the tally; keep DOM shockwaves and big glows out of it, they cost the page frames at the press),
-  and `overdriveSweep` in playback.ts (the song's whoosh, never YouTube). Fever is the combo's ×5. Practice mode (a part looped,
+  the tally, and its name when it ends: lost, cracking in red with the sides flashing; spent,
+  drifting up; keep DOM shockwaves and big glows out of it, they cost the page frames at the press),
+  and `overdriveSweep` in playback.ts (the song's whoosh, never YouTube). Shockwaves from the middle
+  of the hit line dim while they cross the lanes (`RING_ON_TRACK`), and the hit line throbs brighter,
+  not thicker: the board stays readable under the pulses. Fever is the combo's ×5. Practice mode (a part looped,
   at 50%, 75% or 100%, the speeds YouTube has: `PRACTICE_SPEEDS`, `startSong`'s `rate`; the
   stage worker carries its clock on at that rate) is never saved. The browser counts with the same rules
   (`src/game/score.ts`) and records the run; the server checks it against the difficulty's

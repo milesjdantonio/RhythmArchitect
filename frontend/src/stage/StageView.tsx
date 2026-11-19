@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Difficulty, Song } from '../api/types';
 import { audioLevels, songTime } from '../audio/playback';
-import { TRAVEL } from '../game/engine';
+import { fallTime } from '../game/engine';
 import { bus } from '../lib/bus';
 import { isStill, onQuiet } from '../lib/quiet';
 import { isCalm } from '../lib/settings';
@@ -89,7 +89,8 @@ export function StageView({ song, difficulty, previewBeat0 }: Props) {
     if (!s || !song) return;
     const spb = 60 / song.bpm;
     s.setHues(song.hues);
-    s.setTiming(spb, TRAVEL[difficulty] * 1.25);
+    // A little slower than in the game: the preview is something to watch, not to play.
+    s.setTiming(spb, fallTime(difficulty, song.bpm) * 1.15);
     const notes: StageNote[] = song.charts[difficulty].notes.map((n) => ({ lane: n.lane, time: n.t * spb, end: (n.t + (n.hold ? n.len : 0)) * spb, hold: !!n.hold }));
     s.setGhostChart(notes);
     s.setFever(difficulty === 'ultra');

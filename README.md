@@ -137,10 +137,16 @@ the mock: `cd backend && ./mvnw spring-boot:run`, and `VITE_API_BASE_URL=http://
   **called out on the right**: the number slams in and counts up, a streak cuts across, rings and
   shards burst, every hundred in gold. Big moments burst from the sides of the track and tiles draw
   over every effect, so the notes stay readable. Hitting a tile makes no sound: the song is the
-  sound (synth songs play every note of the map themselves).
+  sound (synth songs play every note of the map themselves). Each map sets its own **note speed**,
+  as in Beat Saber: harder difficulties fall faster, and faster songs too (part of the way, so a
+  song's tempo still shows in how close its tiles are); the start card shows it. **How to play**
+  (the ? beside Settings, or the start card) walks through tiles, holds, timing, combo, Overdrive,
+  the signal, the difficulties and practice, each with a moving diagram.
 - **Overdrive.** Accurate hits fill a charge (shown under the multiplier: a Perfect 3, a Good 2,
   Early or Late 1, a hold held to its end 3, out of 100, so about 34 Perfects in a row; a miss takes
-  20). When Overdrive ends, run out or broken, the charge empties with it. When it's full, press
+  20). When Overdrive ends, run out or broken, the charge empties with it, and its name says so on
+  the right: broken by a miss, it cracks in red and its letters fall away while the screen's sides
+  flash red; run out, it drifts up and fades. When it's full, press
   **Space** (or the key you bound, or the HUD's button on touch screens): Overdrive adds +1 to the
   multiplier for the next 48 tiles. Press again whenever the charge fills while it runs to stack it,
   up to three levels: ×5 from the combo plus ×3 from Overdrive is **×8**. At the top it can't be set
