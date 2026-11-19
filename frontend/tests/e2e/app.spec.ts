@@ -540,6 +540,10 @@ test.describe('Rythm Architect', () => {
     expect(Math.abs((await time()) - t1)).toBeLessThan(0.05); // the clock stops while paused
     await page.keyboard.press('Escape');
     await expect(paused).toBeHidden();
+    // Back from the pause: 3, 2, 1 over the held stage (the clock still stopped), then the song carries on.
+    await expect(page.locator('.countdown')).toBeVisible();
+    expect(Math.abs((await time()) - t1)).toBeLessThan(0.05);
+    await expect.poll(time, { timeout: 5000 }).toBeGreaterThan(t1 + 0.3);
   });
 
   test('the Map Syncer checks a track against its map, puts a wrong offset right, and resyncs', async ({ page }) => {

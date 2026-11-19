@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { api } from '../api/client';
 import type { Difficulty, Song } from '../api/types';
 import { learnFromRun } from '../audio/syncer';
-import { audioLevels, handOverPreview, overdriveSweep, pauseAudio, playbackRate, prepareSong, previewSong, resumeAudio, setDuck, songMelody, songTime, startSong, stopSong, unlockAudio, windDown, type PreviewHandle } from '../audio/playback';
+import { COUNT_BEATS, audioLevels, handOverPreview, overdriveSweep, pauseAudio, playbackRate, prepareSong, previewSong, resumeAudio, setDuck, songMelody, songTime, startSong, stopSong, unlockAudio, windDown, type PreviewHandle } from '../audio/playback';
 import { VideoError, YT_STATE, ytIntent, ytOnState, ytStarted } from '../audio/youtube';
 import { ComboCallout, type Callout } from '../components/play/ComboCallout';
 import { DevTools, type DevEffect, type DevProbe } from '../components/play/DevTools';
@@ -34,7 +34,8 @@ import { JudgePool, type JudgePoolHandle } from '../components/play/JudgePool';
 import { forward } from '../background/host';
 import { themeHues } from '../background/themes';
 
-type Phase = 'loading' | 'ready' | 'starting' | 'playing' | 'paused' | 'failing' | 'results' | 'error';
+/** resuming: back from the pause, counting 3, 2, 1 before the song carries on. */
+type Phase = 'loading' | 'ready' | 'starting' | 'playing' | 'paused' | 'resuming' | 'failing' | 'results' | 'error';
 /** A judgement word's kind. */
 type PopupKind = Judgement | 'hold';
 /** The stage's hit burst and hold glow on one pad. */
@@ -711,11 +712,37 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     setPhase('paused');
   }, []);
 
-  const resume = useCallback(async () => {
-    await resumeAudio();
-    lastFrame.current = performance.now();
-    setPhase('playing');
+  /**
+   * Back from the pause: 3, 2, 1 (on the song's beat, half a second to 0.75 s a number) over the
+   * held stage, then the song carries on. Escape during it goes back to the pause.
+   */
+  const resumeTimer = useRef(0);
+  const resume = useCallback(() => {
+    if (phaseRef.current !== 'paused') return;
+    const step = Math.min(0.75, Math.max(0.5, song ? 60 / song.bpm : 0.6)) * 1000;
+    phaseRef.current = 'resuming';
+    setPhase('resuming');
+    let n = COUNT_BEATS;
+    setCount(n);
+    const tick = async () => {
+      if (phaseRef.current !== 'resuming') return;
+      n--;
+      if (n > 0) { setCount(n); resumeTimer.current = window.setTimeout(tick, step); return; }
+      setCount(null);
+      await resumeAudio();
+      lastFrame.current = performance.now();
+      phaseRef.current = 'playing';
+      setPhase('playing');
+    };
+    resumeTimer.current = window.setTimeout(tick, step);
+  }, [song]);
+  const cancelResume = useCallback(() => {
+    clearTimeout(resumeTimer.current);
+    setCount(null);
+    phaseRef.current = 'paused';
+    setPhase('paused');
   }, []);
+  useEffect(() => () => clearTimeout(resumeTimer.current), []);
 
   // A YouTube song paused from inside its player (or by YouTube) pauses the game too.
   useEffect(() => ytOnState((st) => {
@@ -744,7 +771,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       const b = getBinds();
       const bound = b.lanes.includes(e.code) || b.overdrive === e.code;
       // P pauses too, unless it's one of the player's keys.
-      if (e.code === 'Escape' || (e.code === 'KeyP' && !bound)) { if (p === 'playing') pause(); else if (p === 'paused') resume(); return; }
+      if (e.code === 'Escape' || (e.code === 'KeyP' && !bound)) { if (p === 'playing') pause(); else if (p === 'paused') resume(); else if (p === 'resuming') cancelResume(); return; }
       if (p === 'paused' && e.code === 'Space') { e.preventDefault(); resume(); return; }
       if (p !== 'playing' || !game.current) return;
       if (e.code === b.overdrive) { e.preventDefault(); fireOverdrive(); return; }
@@ -764,7 +791,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     addEventListener('keyup', up);
     addEventListener('blur', blur);
     return () => { removeEventListener('keydown', down); removeEventListener('keyup', up); removeEventListener('blur', blur); };
-  }, [start, restart, pause, resume, press, release, toggleDev, fireOverdrive]);
+  }, [start, restart, pause, resume, cancelResume, press, release, toggleDev, fireOverdrive]);
 
   // Touch and mouse: each pointer owns the lane it went down in.
   const laneAt = (clientX: number) => {
@@ -900,7 +927,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
           <JudgePool ref={judgePool} />
 
           <AnimatePresence>
-            {count !== null && phase === 'playing' && (
+            {count !== null && (phase === 'playing' || phase === 'resuming') && (
               <motion.div key={count} className="countdown" initial={{ opacity: 0, scale: 1.5 }} animate={{ opacity: 1, scale: 1 }} exit={pf.uiFx === 'lite' ? { opacity: 0, scale: 0.8 } : { opacity: 0, scale: 0.8, filter: 'blur(8px)' }} transition={{ duration: 0.3, ease: EASE_OUT }}
                 style={{ left: centre, top: hitY * 0.42, x: '-50%', y: '-50%' }}>
                 <span>{count === 0 ? 'Go' : count}</span>

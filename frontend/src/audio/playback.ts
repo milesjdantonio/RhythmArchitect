@@ -342,12 +342,10 @@ function followTick(f: Follow) {
   while (t >= f.nextBeat * spb) {
     const b = f.nextBeat++;
     if (b < from) {
-      const n = from - b - f.early;
-      if (n >= 0) opts.onCount?.(n);
+      // (The count's numbers come with its clicks: startSong.)
       bus.emit('beat', { downbeat: false });
       continue;
     }
-    if (b === from && f.early === 0) opts.onCount?.(0);
     if (b < f.totalBeats) bus.emit('beat', { downbeat: b % f.meter === 0 });
   }
   while (f.mark < f.marks.length && f.marks[f.mark].beat * spb <= t) f.marks[f.mark++].fire();
@@ -397,6 +395,13 @@ export function loadTrack(url: string): Promise<Tone.ToneAudioBuffer> {
   }
   return p;
 }
+
+/**
+ * The count-in's numbers: 3, 2, 1, then Go. Only those beats click (a longer lead-in is silent
+ * before them), and the numbers are scheduled on the same clock as their clicks, so each number
+ * lands on its click.
+ */
+export const COUNT_BEATS = 3;
 
 interface StartOptions {
   leadInBeats: number;
@@ -457,10 +462,14 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
   let step = from * 4;
 
   if (video) {
-    // The count-in clicks still come from here; everything else follows the video.
+    // The count-in (its clicks and numbers) comes from here, on one clock; everything else follows
+    // the video. (Numbers on the video's clock drifted from the clicks when the video was slow to start.)
     if (counting) {
-      for (let n = leadIn; n > early; n--) {
-        scheduled.push(transport.schedule((time) => click.triggerAttackRelease(n - early === 1 ? 'C6' : 'G5', 0.05, time, 0.6), (leadIn - n) * spbR));
+      for (let k = Math.min(COUNT_BEATS, leadIn - early); k >= 0; k--) {
+        scheduled.push(transport.schedule((time) => {
+          if (k >= 1) click.triggerAttackRelease(k === 1 ? 'C6' : 'G5', 0.05, time, 0.6);
+          draw.schedule(() => opts.onCount?.(k), time);
+        }, (leadIn - early - k) * spbR));
       }
     }
     // When video position 0 would play (real time), and where to start it.
@@ -496,8 +505,9 @@ export async function startSong(song: Song, opts: StartOptions): Promise<number>
     if (s < 0) {
       if (s % 4 === 0) {
         const n = -s / 4 - early; // beats left in the count (0: Go)
-        if (counting && n >= 1) click.triggerAttackRelease(n === 1 ? 'C6' : 'G5', 0.05, time, 0.6);
-        draw.schedule(() => { if (n >= 0) opts.onCount?.(n); bus.emit('beat', { downbeat: false }); }, time);
+        // Clicks only on the numbers shown (3, 2, 1), not every beat of a longer lead-in.
+        if (counting && n >= 1 && n <= COUNT_BEATS) click.triggerAttackRelease(n === 1 ? 'C6' : 'G5', 0.05, time, 0.6);
+        draw.schedule(() => { if (n >= 0 && n <= COUNT_BEATS) opts.onCount?.(n); bus.emit('beat', { downbeat: false }); }, time);
       }
       return;
     }
