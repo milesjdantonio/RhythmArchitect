@@ -280,6 +280,22 @@ export interface ChartProgress {
 /** A song mapped by listening in the browser, to be saved (POST /api/songs). */
 export type NewSong = Omit<Song, 'id' | 'createdAt' | 'best' | 'plays' | 'favorite' | 'builtIn'>;
 
+/**
+ * Playing through the controller (POST /api/play, backend PlayController running main.Main):
+ * the model's state after what the player did. `accuracy` is Score's (0..100), `left` the notes
+ * still in Main's queue, `upcoming` the next few (lane, seconds from beat 0).
+ */
+export interface PlayState {
+  score: number; combo: number; maxCombo: number; hits: number; misses: number; accuracy: number;
+  time: number; left: number; upcoming: { lane: number; time: number }[];
+}
+/** A run started: its id, how many notes Main's queue holds, the state. */
+export interface PlayStart { run: string; notes: number; state: PlayState }
+/** A key press (a lane, 0-3, and the song time) or the clock passing (a time alone). */
+export type PlayInput = { lane: number; time: number } | { time: number };
+/** Each press's result (Main's HitResult, null when Main turned the input down), then the state. */
+export interface PlayReply { results: (string | null)[]; state: PlayState }
+
 export interface ScoreSubmit {
   difficulty: Difficulty;
   score: number;

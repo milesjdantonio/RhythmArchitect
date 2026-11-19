@@ -1,7 +1,7 @@
 // Typed client for the songs, search and mapper API. Point VITE_API_BASE_URL at the real
 // backend; when it is empty the app talks to the mock in mock-server/ on the same origin.
 
-import type { FanChartRequest, NewSong, ScoreSubmit, SearchResults, Song, SongList, SongPatch, SongSummary, VideoMatch, VideoResults } from './types';
+import type { FanChartRequest, NewSong, PlayInput, PlayReply, PlayStart, ScoreSubmit, SearchResults, Song, SongList, SongPatch, SongSummary, VideoMatch, VideoResults } from './types';
 import { upgradeSong, upgradeSummary } from './upgrade';
 
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -53,4 +53,8 @@ export const api = {
       .then((r) => (Array.isArray(r?.results) ? r.results.filter((v) => v && typeof v.videoId === 'string') : [])),
   fanChart: (req: FanChartRequest, signal?: AbortSignal) => song(request<Song>('/fan-chart', { method: 'POST', body: JSON.stringify(req), signal })),
   createSong: (s: NewSong) => song(request<Song>('/songs', { method: 'POST', body: JSON.stringify(s) })),
+  /** Starts a run through the controller (main.Main on the server). */
+  startPlay: (songId: string, difficulty: string, part?: { from: number; to: number }) => request<PlayStart>('/play', { method: 'POST', body: JSON.stringify({ songId, difficulty, ...part }) }),
+  /** What the player did since the last call, in order: the model's state comes back. */
+  playInputs: (run: string, inputs: PlayInput[]) => request<PlayReply>(`/play/${encodeURIComponent(run)}/inputs`, { method: 'POST', body: JSON.stringify({ inputs }) }),
 };

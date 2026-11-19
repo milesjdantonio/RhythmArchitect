@@ -138,6 +138,27 @@ class QueueTest
     }
 
     @Test
+    void interleavedEnqueuesAndDequeuesKeepFirstInFirstOut()
+    {
+        queue.enqueue("a");
+        queue.enqueue("b");
+        assertEquals("a", queue.dequeue());
+        queue.enqueue("c");
+        assertEquals("b", queue.peek());
+        assertEquals("b", queue.dequeue());
+        queue.enqueue("d");
+        queue.enqueue("e");
+        assertEquals("c", queue.dequeue());
+        assertEquals(2, queue.getSize());
+        assertEquals("d", queue.dequeue());
+        queue.enqueue("f");
+        assertEquals("e", queue.dequeue());
+        assertEquals("f", queue.dequeue());
+        assertTrue(queue.isEmpty());
+        assertThrows(EmptyQueueException.class, () -> queue.dequeue());
+    }
+
+    @Test
     void manyItemsComeOutInTheOrderTheyWentIn()
     {
         Queue<Integer> numbers = new Queue<>();

@@ -98,16 +98,17 @@
 .hud-mult.is-overdrive { color: hsl(var(--od, 196) var(--ods, 100%) 80%); text-shadow: 0 0 16px hsl(var(--od, 196) var(--ods, 100%) 60%); animation: fever 0.4s ease-in-out infinite alternate; }
 .play.is-overdrive .hud-mult.is-overdrive { font-size: 26px; }
 /* The screen's edges glow in the level's colour while Overdrive runs, deeper each level (opacity
-   only moves); Prism's turns through every colour; running out, it blinks (under 3 a second). */
+   only moves); Prism's holds every colour at once; running out, it blinks (under 3 a second). */
 .play::after { content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 400ms var(--ease-out);
   box-shadow: inset 0 0 calc(60px + var(--odk, 1) * 50px) calc(-24px + var(--odk, 1) * 5px) hsl(var(--od, 196) var(--ods, 100%) 55% / calc(0.5 + var(--odk, 1) * 0.13)),
     inset 0 0 2px calc(var(--odk, 1) * 1px) hsl(var(--od, 196) var(--ods, 100%) 72% / 0.7); }
 .play.is-overdrive::after { opacity: 1; animation: od-edge 0.9s ease-in-out infinite alternate; }
 .play.is-overdrive.od-low::after { animation-duration: 0.22s; }
 .play.od-3::after { box-shadow: inset 70px 0 150px -40px hsl(330 100% 60% / 0.8), inset -70px 0 150px -40px hsl(190 100% 60% / 0.8), inset 0 70px 150px -60px hsl(60 100% 60% / 0.6), inset 0 -70px 150px -60px hsl(140 100% 55% / 0.6), inset 0 0 2px 3px hsl(300 100% 75% / 0.7);
-  animation: od-edge 0.9s ease-in-out infinite alternate, od-hue 2.6s linear infinite; }
+  animation: od-edge 0.9s ease-in-out infinite alternate; }
 @keyframes od-edge { from { opacity: 0.55; } to { opacity: 1; } }
-@keyframes od-hue { to { filter: hue-rotate(360deg); } }
+/* (Prism's edges and rails used to turn with a hue-rotate filter: it cost ~7 fps and a slow frame in
+   twenty at the top level, so its colours stand still here; the stage turns them.) */
 
 /* Overdrive across the screen (OverdriveFx.tsx), over the stage and under the HUD. --fx is the
    hue of the level just reached (or, for the cue, the next one). */
@@ -123,7 +124,7 @@
 .play.is-overdrive .odfx-rails { opacity: calc((var(--odk, 1) - 1) * 0.34); }
 .odfx-rails i { position: absolute; left: 0; right: 0; top: -60px; bottom: -60px; will-change: transform;
   background: repeating-linear-gradient(180deg, transparent 0 52px, hsl(var(--od, 196) var(--ods, 100%) 76% / 0.6) 52px 55px, transparent 55px 60px); animation: od-rails 0.32s linear infinite; }
-.play.od-3 .odfx-rails i { animation: od-rails 0.24s linear infinite, od-hue 2.6s linear infinite; }
+.play.od-3 .odfx-rails i { animation-duration: 0.24s; }
 @keyframes od-rails { to { transform: translateY(60px); } }
 /* The charge is full: the cue, on the right of the lanes, in the next level's colour. */
 .odfx-ready { position: absolute; right: clamp(16px, 2.4vw, 60px); top: 52%; display: grid; justify-items: end; gap: 8px; text-align: right;
@@ -386,6 +387,11 @@
 .results-actions .btn-primary kbd { background: rgb(5 8 22 / 0.2); border-color: rgb(5 8 22 / 0.3); color: #050816; }
 .save-state { min-height: 1.5em; }
 /* Overdrive's line on the results: its pips, the peak and how often, and the points it added. */
+/* The controller's count (main.Main on the server), under the counts. */
+.hud-model { display: grid; gap: 2px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--hair); font-size: 12px; color: var(--ink-soft); }
+.hud-model .label { font-size: 10px; }
+.results-model { margin: 0; max-width: 52ch; text-align: center; }
+.results-model .label { color: var(--ink-soft); }
 .results-od { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 14px; width: 100%; padding: 12px 16px; text-align: left;
   border: 1px solid hsl(var(--od) var(--ods, 100%) 70% / 0.45); border-radius: var(--r-md, 10px); background: hsl(var(--od) calc(var(--ods, 100%) * 0.6) 12% / 0.55); box-shadow: 0 0 26px -12px hsl(var(--od) var(--ods, 100%) 60%); }
 .results-od-text { display: grid; gap: 4px; font-size: 14px; color: var(--ink); }

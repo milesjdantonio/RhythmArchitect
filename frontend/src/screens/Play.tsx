@@ -15,6 +15,8 @@ import { Icon } from '../components/Icon';
 import { Loader } from '../components/Loader';
 import { Results, type RunResult } from '../components/play/Results';
 import { openHowToPlay } from '../components/HowToPlay';
+import { ControllerLink, type LinkStatus } from '../game/controllerLink';
+import type { PlayState } from '../api/types';
 import { Game, MAX_OVERDRIVE, OVERDRIVE_LENGTH, OVERDRIVE_LOW, fallTime, gradeFor, laneForCode, multiplierFor, type GameEvent, type Judgement } from '../game/engine';
 import { OVERDRIVE_LOOKS, overdriveCss, overdriveHues } from '../game/overdrive';
 import { POINT_SCALE, holdBonus } from '../game/score';
@@ -105,6 +107,10 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   // The stage on this thread, or a stand-in for the stage drawing in a worker.
   const stage = useRef<Stage3D | StageProxy | null>(null);
   const game = useRef<Game | null>(null);
+  // The controller (main.Main on the server): every press and the clock go to it; what it counted shows on the panel.
+  const link = useRef<ControllerLink | null>(null);
+  const [model, setModel] = useState<{ state: PlayState | null; status: LinkStatus } | null>(null);
+  useEffect(() => () => link.current?.stop(), []);
   const beat0 = useRef(0);
   const raf = useRef(0);
   const lastFrame = useRef(performance.now());
@@ -311,7 +317,11 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     const g = game.current;
     if (!g || !song) return;
     cancelFrame(raf.current);
+    const end = songTime(beat0.current);
     stopSong();
+    // The controller's count of the run (its last answer), for the results.
+    const counted = link.current;
+    if (counted) void counted.finish(g.failed ? end : end + 1).then((s) => setModel({ state: s, status: counted.status }));
     const accuracy = g.accuracy;
     const grade = gradeFor(accuracy, g.failed);
     const meanOffsetMs = offsets.current.length >= 8 ? (offsets.current.reduce((a, b) => a + b, 0) / offsets.current.length) * 1000 : null;
@@ -477,7 +487,9 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     if (!g) return;
     pressed.current[lane] = true;
     stage.current?.setPressed(lane, true);
-    handle(g.press(lane, at ?? songTime(beat0.current)));
+    const t = at ?? songTime(beat0.current);
+    link.current?.press(lane, t);
+    handle(g.press(lane, t));
   }, [handle]);
   const release = useCallback((lane: number) => {
     const g = game.current;
@@ -535,6 +547,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       return;
     }
     const t = songTime(beat0.current);
+    link.current?.tick(t);
     // The bot also catches up after a pause, so skip it while it is off and nothing is held.
     if (botRef.current !== 'off' || botRelease.current.some(Boolean)) botStep(g, t);
     else { while (botIdx.current < g.notes.length && g.notes[botIdx.current].time < t) botIdx.current++; }
@@ -614,6 +627,11 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     const chart = p ? { ...whole, notes: whole.notes.filter((n) => n.t >= p.from && n.t < p.to) } : whole;
     const g = new Game(chart, song.bpm, difficulty, { noFail: p ? true : getSettings().noFail });
     game.current = g;
+    // The run goes through the controller too (practice: a run of just the stretch, each time round).
+    link.current?.stop();
+    const spbOf = 60 / song.bpm;
+    link.current = new ControllerLink(song.id, difficulty, (state, status) => setModel({ state, status }), p ? { from: p.from * spbOf, to: p.to * spbOf } : undefined);
+    setModel({ state: null, status: 'starting' });
     pressed.current = [false, false, false, false];
     flash.current = [0, 0, 0, 0];
     offsets.current = [];
@@ -906,7 +924,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
           <PlayHud song={song} difficulty={difficulty} section={section} hud={hud} clock={clock} bot={bot} devTools={devTools}
             canPause={phase === 'playing'} onDev={toggleDev} onPause={pause} combo={combo} panel={panel}
             overdriveKey={keyLabel(binds.overdrive)} onOverdrive={fireOverdrive}
-            practice={practice ? `Practice · ${practice.label} · ${Math.round(practice.speed * 100)}%` : undefined} />
+            practice={practice ? `Practice · ${practice.label} · ${Math.round(practice.speed * 100)}%` : undefined} model={model} />
           <ComboCallout callout={callout} step={MILESTONE} />
 
           <AnimatePresence>
@@ -968,7 +986,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       </AnimatePresence>
 
       {phase === 'results' && result && song && (
-        <Results song={song} difficulty={difficulty} result={result} previousBest={prevBest} saving={saving} onRetry={() => { if (!result.assisted) setPrevBest(Math.max(prevBest ?? 0, result.failed ? 0 : result.score) || undefined); restart(); }} />
+        <Results song={song} difficulty={difficulty} result={result} previousBest={prevBest} saving={saving} model={model} onRetry={() => { if (!result.assisted) setPrevBest(Math.max(prevBest ?? 0, result.failed ? 0 : result.score) || undefined); restart(); }} />
       )}
     </div>
   );

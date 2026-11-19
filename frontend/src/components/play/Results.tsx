@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import type { Difficulty, Grade, Song } from '../../api/types';
+import type { Difficulty, Grade, PlayState, Song } from '../../api/types';
 import type { Judgement } from '../../game/engine';
 import { starsFor } from '../../game/engine';
 import { RiveAnim } from '../../rive/RiveAnim';
@@ -35,6 +35,8 @@ interface Props {
   result: RunResult;
   previousBest?: number;
   saving: 'saving' | 'saved' | 'error' | 'skipped';
+  /** What the controller (main.Main on the server) counted for the run. */
+  model?: { state: PlayState | null } | null;
   onRetry: () => void;
 }
 
@@ -63,7 +65,7 @@ const rise = (i: number) => ({
   transition: { duration: 0.7, delay: 0.25 + i * 0.08, ease: EASE_OUT },
 });
 
-export function Results({ song, difficulty, result, previousBest, saving, onRetry }: Props) {
+export function Results({ song, difficulty, result, previousBest, saving, model, onRetry }: Props) {
   const score = useCountUp(result.score);
   const stars = starsFor(result.grade);
   const newBest = !result.failed && !result.assisted && (previousBest === undefined || result.score > previousBest);
@@ -129,6 +131,14 @@ export function Results({ song, difficulty, result, previousBest, saving, onRetr
             </span>
             <span className="results-od-bonus mono">+{Math.round(od.bonus).toLocaleString()}</span>
           </motion.div>
+        )}
+        {/* What the controller (main.Main, Score's rules) counted for the same presses. */}
+        {model?.state && (
+          <motion.p className="results-model muted small" {...rise(5)}>
+            <span className="label">The controller counted</span>{' '}
+            <span className="mono">{model.state.score.toLocaleString()}</span> points (Score: Perfect 100, Good 75, Early/Late 50), {model.state.hits} hits, {model.state.misses} misses,
+            accuracy {model.state.accuracy.toFixed(1)}%, best combo {model.state.maxCombo}
+          </motion.p>
         )}
         {timing !== null && Math.abs(timing) >= 15 && !result.assisted && (
           <p className="muted small">You hit {Math.abs(Math.round(timing))} ms {timing < 0 ? 'early' : 'late'} on average. If that feels wrong, adjust the audio offset in Settings.</p>

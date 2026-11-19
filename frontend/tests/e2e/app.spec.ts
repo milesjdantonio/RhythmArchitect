@@ -476,6 +476,8 @@ test.describe('Rythm Architect', () => {
     await autoplay(page);
     // The run panel, with live counts; a milestone is called out on the right.
     await expect(page.locator('.hud-panel .hud-counts')).toBeVisible();
+    // The presses go through the controller too (main.Main's rules, on the server): its count shows on the panel.
+    await expect(page.locator('.hud-model')).toContainText(/Controller[\s\S]*[1-9][\d,]* · ×\d+ · \d+\.\d% · \d+ left/, { timeout: 20_000 });
     await expect(page.locator('.callout-combo .callout-word')).toContainText('Combo', { timeout: 40_000 });
     // The finale plays before the results.
     await expect(page.locator('.banner-fever .banner-big')).toHaveText(/Full combo|Clear/, { timeout: 70_000 });
@@ -484,6 +486,8 @@ test.describe('Rythm Architect', () => {
     await expect(results.locator('.grade')).toHaveText(/S|A/);
     await expect(results.getByText('New best')).toBeVisible();
     await expect(results.getByText('Score saved.')).toBeVisible();
+    // The controller counted the same run: every note hit, none missed.
+    await expect(results.locator('.results-model')).toContainText(/The controller counted [\d,]+ points .* 0 misses/);
     await expect(results.getByRole('link')).toHaveCount(1); // Play again and Return to main menu, nothing else
     await results.getByRole('link', { name: /Return to main menu/ }).click();
     await expect(page.locator('.now-playing .diff-best').first()).toContainText(/Best (S|A)/);

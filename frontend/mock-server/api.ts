@@ -15,6 +15,8 @@
 //   GET    /api/youtube?title=&artist= -> VideoMatch  (the YouTube video that plays the song)
 //   GET    /api/youtube/search?title=&artist= -> { results: VideoMatch[] }  (the videos to choose from, best first)
 //   POST   /api/fan-chart             FanChartRequest -> Song (201)  (an osu! fan chart, saved)
+//   POST   /api/play                  { songId, difficulty } -> PlayStart (201)  (a run through the controller: main.Main's rules, play.ts)
+//   POST   /api/play/:run/inputs      { inputs: PlayInput[] } -> PlayReply  (key presses and the clock, in order)
 //
 // The mock never makes up a song. A new song plays from YouTube; its tiles come from the browser
 // listening to the video once (then POST /api/songs), or else from a fan-made osu! chart.
@@ -23,7 +25,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { FanChartRequest, NewSong, ScoreSubmit, Song, SongPatch, SongSummary } from '../src/api/types';
+import type { Difficulty, FanChartRequest, NewSong, PlayInput, ScoreSubmit, Song, SongPatch, SongSummary } from '../src/api/types';
+import { runInputs, startRun } from './play';
 import { sortAtoZ } from '../src/library/bank';
 import { DIFFICULTIES } from '../src/api/types';
 import { upgradeSong } from '../src/api/upgrade';
@@ -281,6 +284,25 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
         }
       }
       if (parts[0] === 'health' && parts.length === 1 && method === 'GET') return send(res, 200, { ok: true, storage: 'file', database: 'not set up' });
+      if (parts[0] === 'play' && method === 'POST') {
+        if (parts.length === 1) {
+          const body = (await readJson(req)) as { songId?: unknown; difficulty?: unknown; from?: unknown; to?: unknown };
+          const d = body?.difficulty as Difficulty;
+          if (typeof body?.songId !== 'string' || !DIFFICULTIES.includes(d)) return fail(res, 400, 'Say which song and difficulty');
+          const s = load().find((x) => x.id === body.songId);
+          if (!s) return fail(res, 404, 'No song with that id');
+          const part = 'from' in body || 'to' in body;
+          if (part && !(typeof body.from === 'number' && typeof body.to === 'number' && body.from < body.to)) return fail(res, 400, 'A stretch must start before it ends.');
+          return send(res, 201, startRun(s, d, part ? { from: body.from as number, to: body.to as number } : undefined));
+        }
+        if (parts.length === 3 && parts[2] === 'inputs') {
+          const body = (await readJson(req)) as { inputs?: unknown };
+          if (!Array.isArray(body?.inputs)) return fail(res, 400, 'Send the inputs as a list');
+          if (body.inputs.length > 500) return fail(res, 400, 'Too many inputs at once');
+          const out = runInputs(parts[1], body.inputs as PlayInput[]);
+          return out ? send(res, 200, out) : fail(res, 404, 'That run is over (or never started)');
+        }
+      }
       if (parts[0] === 'library' && parts.length === 1 && method === 'GET') {
         return send(res, 200, { results: librarySongs(load()) });
       }

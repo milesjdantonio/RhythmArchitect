@@ -24,7 +24,13 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   the README's Reflection, Next Steps and Attribution sections follow the course rubric; keep them
   true when things change. `Main` (the controller) and `Score` are Darsh's: don't write them.
   No AI runs on the server. Its built-in songs are `src/main/resources/seed/songs.json` (`node tools/export-seed.mjs` from
-  `frontend/` after they change). Run `./mvnw test` there after changing it.
+  `frontend/` after they change). Run `./mvnw test` there after changing it. Every run (practice
+  too, its stretch via `Song.getChartBetween`) also plays through `Main` on the server
+  (`PlayController`, `POST /api/play`, `/api/play/:run/inputs`; the game's side:
+  `src/game/controllerLink.ts`; the mock's copy of Main's rules: `mock-server/play.ts`): presses
+  and the clock go in, Main's `Score` comes back and the run panel shows it (the course's
+  "view through the controller into the model"). The browser still judges each press at once.
+  Haniya isn't credited in the README (she didn't work on it).
 - The song bank is a JSON file, or Supabase when `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set
   (`SupabaseSongs`: its REST API with Java's own HTTP client, no driver or pool, so boots stay
   fast; `docs/supabase.md`, `docs/supabase.sql`). The browser never talks to Supabase. Keep the

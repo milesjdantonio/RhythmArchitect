@@ -1,6 +1,7 @@
 import { useRef, type Ref } from 'react';
 import { motion } from 'motion/react';
-import type { Difficulty, Song } from '../../api/types';
+import type { Difficulty, PlayState, Song } from '../../api/types';
+import type { LinkStatus } from '../../game/controllerLink';
 import type { BotMode } from '../../game/autoplay';
 import type { Judgement } from '../../game/engine';
 import { fmtTime } from '../../lib/format';
@@ -42,6 +43,8 @@ interface Props {
   onOverdrive: () => void;
   /** Practice mode: what is looping and how fast (nothing is saved). */
   practice?: string;
+  /** What the controller (main.Main on the server) has counted, as it last said. */
+  model?: { state: PlayState | null; status: LinkStatus } | null;
 }
 
 /**
@@ -51,7 +54,7 @@ interface Props {
  * the lanes are narrow and far away, so the panel stays clear of them (they widen toward the
  * bottom of the screen, which is left free). The lanes and the hit line stay centred.
  */
-export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, canPause, onDev, onPause, combo, panel, overdriveKey, onOverdrive, practice }: Props) {
+export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, canPause, onDev, onPause, combo, panel, overdriveKey, onOverdrive, practice, model }: Props) {
   const length = Math.round((song.lengthBeats * 60) / song.bpm);
   const video = song.source.kind === 'youtube';
   return (
@@ -115,8 +118,25 @@ export function PlayHud({ song, difficulty, section, hud, clock, bot, devTools, 
         <dl className="hud-counts">
           {COUNTS.map(([j, label]) => <div key={j} className={`hud-count stat-${j}`}><dt className="label">{label}</dt><dd className="mono">{hud.counts[j]}</dd></div>)}
         </dl>
+        {model && <ModelLine model={model} />}
       </aside>
     </>
+  );
+}
+
+/**
+ * The controller's count, as main.Main on the server keeps it (its Score: points, combo,
+ * accuracy, and the notes left in its queue): the model's own state, shown as it last said.
+ */
+function ModelLine({ model }: { model: { state: PlayState | null; status: LinkStatus } }) {
+  const s = model.state;
+  return (
+    <div className={`hud-model is-${model.status}`} title="Main, the controller, counts the same presses by the model's rules (Score)">
+      <span className="label">Controller</span>
+      {model.status === 'off' && !s ? <span className="muted">not counting (no server)</span>
+        : !s ? <span className="muted">starting</span>
+        : <span className="mono">{s.score.toLocaleString()} · ×{s.combo} · {s.accuracy.toFixed(1)}% · {s.left} left</span>}
+    </div>
   );
 }
 
