@@ -3,6 +3,7 @@
 // after a new map, a new best score or a deletion without refetching everything.
 
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useServer } from '../lib/server';
 import { api, ApiError } from '../api/client';
 import type { Song, SongPatch, SongSummary } from '../api/types';
 
@@ -88,6 +89,8 @@ export function useFavorites(q: string, open: boolean): SearchState & { retry: (
 
 function useQuery(key: string | null, run: (signal: AbortSignal) => Promise<SongSummary[]>): SearchState & { retry: () => void } {
   const v = useSyncExternalStore(subscribe, () => version);
+  // Asked again when the song server comes up (a request that failed while it slept).
+  const { ups } = useServer();
   const [state, setState] = useState<SearchState>({ results: [], status: 'idle' });
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -103,6 +106,6 @@ function useQuery(key: string | null, run: (signal: AbortSignal) => Promise<Song
         });
     }, 160);
     return () => { clearTimeout(timer); ctrl.abort(); };
-  }, [key, v, attempt]);
+  }, [key, v, attempt, ups]);
   return { ...state, retry: () => setAttempt((n) => n + 1) };
 }

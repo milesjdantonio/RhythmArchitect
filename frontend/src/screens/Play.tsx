@@ -18,6 +18,7 @@ import { Game, MAX_OVERDRIVE, OVERDRIVE_LENGTH, OVERDRIVE_LOW, fallTime, gradeFo
 import { OVERDRIVE_LOOKS, overdriveCss, overdriveHues } from '../game/overdrive';
 import { POINT_SCALE, holdBonus } from '../game/score';
 import { getBinds, keyLabel, laneKeyList, useBinds } from '../lib/keys';
+import { useServer } from '../lib/server';
 import { drawField, laneHue, layoutFor, type Layout } from '../game/render';
 import type { RiveHandle } from '../rive/RiveAnim';
 import { FAIL_SECONDS, Stage3D } from '../stage/Stage3D';
@@ -72,6 +73,9 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const [bot, setBotState] = useState<BotMode>('off');
   const { devTools } = useSettings();
   const binds = useBinds();
+  // A sleeping song server: the loader says so while the map waits for it.
+  const server = useServer();
+  const waking = server.state === 'waking' || server.state === 'down';
   /** The dev tools' Overdrive preview: the level the stage shows (looks only, no score). */
   const devOd = useRef(0);
   /** Overdrive across the screen (the flash, shockwaves, the ready cue, the tally). */
@@ -929,7 +933,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
         )}
         {phase === 'loading' && (
           <Loader key="loading" title={song?.title} artist={song?.artist} hues={song?.hues}
-            status={!song ? 'Loading the map' : song.source.kind === 'youtube' ? 'Getting the video ready' : 'Loading the track'} />
+            status={!song ? (waking ? 'Waking the song server' : 'Loading the map') : song.source.kind === 'youtube' ? 'Getting the video ready' : 'Loading the track'} />
         )}
       </AnimatePresence>
 

@@ -4,7 +4,8 @@ import type { Difficulty } from '../api/types';
 import { audioRunning, handOverPreview, previewSong, stopSong, takePreview, unlockAudio, wakeAudio, type PreviewHandle } from '../audio/playback';
 import { setAmbient } from '../audio/ambient';
 import { useQuiet } from '../lib/quiet';
-import { AttractScreen } from '../components/menu/AttractScreen';
+import { AttractScreen } from '../components/menu/AttractScreen';
+import { ServerNote } from '../components/ServerNote';
 import { Favorites } from '../components/menu/Favorites';
 import { Icon } from '../components/Icon';
 import { NameSong } from '../components/menu/NameSong';
@@ -181,6 +182,7 @@ export function Workspace({ songId, difficulty: routeDifficulty, onSettings }: {
           ) : (
             <motion.div key="attract" className="attract-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, scale: 0.98, transition: { duration: 0.22 } }} transition={{ duration: 0.5, ease: EASE_OUT }}>
               <AttractScreen state={songId && status === 'missing' ? 'missing' : songId ? 'loading' : 'idle'} />
+              <ServerNote when={!!songId && status !== 'missing'} className="server-note-stage" />
             </motion.div>
           )}
         </AnimatePresence>

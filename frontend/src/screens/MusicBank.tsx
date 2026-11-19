@@ -12,6 +12,8 @@ import { VideoSlot } from '../components/VideoSlot';
 import { EASE_OUT } from '../lib/motion';
 import { bankReturn, href, navigate } from '../lib/router';
 import { cachedSong, fetchSong, useLibrary } from '../library/songs';
+import { ServerNote } from '../components/ServerNote';
+import { isWaking, useServer } from '../lib/server';
 import { setSettings, useSettings } from '../lib/settings';
 import { bus } from '../lib/bus';
 import { useScrollEdges } from '../lib/useScrollEdges';
@@ -29,6 +31,7 @@ type NowSong = Pick<SongSummary, 'id' | 'title' | 'artist' | 'hues' | 'cover'> &
 
 export function MusicBank() {
   const lib = useLibrary();
+  const server = useServer();
   const [q, setQ] = useState('');
   const shown = useMemo(() => lib.results.filter((s) => matchesSearch(s, q)), [lib.results, q]);
   const groups = useMemo(() => groupByLetter(shown), [shown]);
@@ -181,12 +184,13 @@ export function MusicBank() {
         <motion.div className="bank-panel" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55, delay: 0.05, ease: EASE_OUT }}>
           <FrameTrace r={17} />
           <div ref={scroller} className="bank-scroll" tabIndex={-1} aria-label="Songs, A to Z">
-            {lib.status === 'error' && (
+            {lib.status === 'error' && !isWaking(server.state) && (
               <div className="results-note" role="alert">
                 <p>{lib.error}</p>
                 <button type="button" className="btn btn-sm" onClick={lib.retry}><Icon name="retry" size={15} /> Try again</button>
               </div>
             )}
+            <ServerNote when={lib.status !== 'done'} />
             {lib.status !== 'done' && lib.status !== 'error' && (
               <div className="result-list bank-rows" aria-hidden>{[0, 1, 2, 3, 4, 5].map((i) => <div key={i} className="result skeleton" />)}</div>
             )}

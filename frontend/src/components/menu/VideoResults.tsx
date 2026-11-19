@@ -9,6 +9,7 @@ import { EASE_OUT } from '../../lib/motion';
 import type { VideoSearch } from '../../library/videos';
 import { Icon } from '../Icon';
 import { VideoSlot } from '../VideoSlot';
+import { isWaking, useServer } from '../../lib/server';
 
 /** Quiet's key for a preview: the menu's music and song preview wait, the visuals carry on. */
 const QUIET = 'yt-preview';
@@ -30,6 +31,7 @@ export function VideoResults({ search, busy, onStage, onGenerate }: {
   onGenerate: (video: VideoMatch, from: HTMLElement) => void;
 }) {
   const { results, status } = search;
+  const server = useServer();
   const [playing, setPlaying] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   // The video previewing (for the listeners, which outlive a render), and the latest ask.
@@ -96,7 +98,7 @@ export function VideoResults({ search, busy, onStage, onGenerate }: {
         {looking && <span className="yt-busy muted">Searching</span>}
       </h3>
       {results.length > 0 && <p className="yt-note muted">Preview a video, then generate a beatmap from the one you want.</p>}
-      {status === 'error' && (
+      {status === 'error' && !isWaking(server.state) && (
         <div className="results-note" role="alert">
           <p>{search.error}</p>
           <button type="button" className="btn btn-sm" onClick={search.retry}><Icon name="retry" size={15} /> Try again</button>

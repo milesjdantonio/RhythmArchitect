@@ -17,6 +17,8 @@ import { enterRise } from '../../lib/entrance';
 import { FrameTrace } from '../FrameTrace';
 import { Icon } from '../Icon';
 import { SongRow } from '../SongRow';
+import { ServerNote } from '../ServerNote';
+import { isWaking, useServer } from '../../lib/server';
 import type { ScopeHandle } from '../generate/ListenScope';
 import { GenerateDialog, type Flow } from '../generate/GenerateDialog';
 import { VideoResults } from './VideoResults';
@@ -35,6 +37,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
   const search = useSearch(title, artist);
+  const server = useServer();
   const [flow, setFlow] = useState<Flow | null>(null);
   const [asked, setAsked] = useState({ title: '', artist: '' });
   const [error, setError] = useState<string | null>(null);
@@ -281,7 +284,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       </form>
 
       <div className="search-results" ref={resultsRef} onKeyDown={inList} aria-live="polite" aria-busy={search.status === 'searching'}>
-        {typed && search.status === 'error' && (
+        {typed && search.status === 'error' && !isWaking(server.state) && (
           <div className="results-note" role="alert">
             <p>{search.error}</p>
             <button type="button" className="btn btn-sm" onClick={search.retry}><Icon name="retry" size={15} /> Try again</button>
@@ -296,6 +299,8 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
             </AnimatePresence>
           </ul>
         )}
+        {/* A sleeping server: say so while the searches wait for it. */}
+        <ServerNote when={!!typed && (search.status !== 'done' || videos.status === 'searching' || videos.status === 'error')} />
         {typed && search.status === 'searching' && search.results.length === 0 && (
           <div className="result-list" aria-hidden>{[0, 1].map((i) => <div key={i} className="result skeleton" />)}</div>
         )}

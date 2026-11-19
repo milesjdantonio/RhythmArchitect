@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { ApiError, api } from '../api/client';
 import type { VideoMatch } from '../api/types';
+import { useServer } from '../lib/server';
 
 /** How long the typing must pause before YouTube is searched. */
 export const PAUSE_MS = 900;
@@ -30,6 +31,8 @@ export function useVideoSearch(title: string, artist: string, on: boolean): Vide
   const key = on && t.length >= MIN_TITLE ? keyOf(t, a) : null;
   const [state, setState] = useState<Omit<VideoSearch, 'retry'>>({ results: [], status: 'idle' });
   const [attempt, setAttempt] = useState(0);
+  // Asked again when the song server comes up (a search that failed while it slept).
+  const { ups } = useServer();
   useEffect(() => {
     if (key === null) { setState({ results: [], status: 'idle' }); return; }
     const done = kept.get(key);
@@ -46,6 +49,6 @@ export function useVideoSearch(title: string, artist: string, on: boolean): Vide
         });
     }, PAUSE_MS);
     return () => { clearTimeout(timer); ctrl.abort(); };
-  }, [key, attempt]);
+  }, [key, attempt, ups]);
   return { ...state, retry: () => { if (key) kept.delete(key); setAttempt((n) => n + 1); } };
 }

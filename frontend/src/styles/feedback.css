@@ -126,35 +126,13 @@
 @keyframes live-dot { 50% { opacity: 0.35; transform: scale(0.8); } }
 @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } .scope-counts, .scope-counts > span, .scope-check, .scope-meter > i { transition: none; } .scope-meter > i, .scope-meter::after { animation: none !important; } }
 
-/* Waking the song server (BootScreen): a reactor powering on. The ring fills a segment at a time
-   as the wait goes on, the core pulses, waves ripple out, four lanes charge. Transforms and opacity. */
-.boot { position: fixed; inset: 0; z-index: 40; display: grid; place-content: center; justify-items: center; gap: 22px; padding: 24px 16px;
-  background: radial-gradient(60% 50% at 50% 42%, hsl(var(--hA) 70% 18% / 0.55), transparent 70%), rgb(2 3 10 / 0.86); text-align: center; }
-.boot-reactor { position: relative; width: min(240px, 56vw); aspect-ratio: 1; display: grid; place-items: center; }
-.boot-ring { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.boot-ring path { fill: none; stroke: rgb(255 255 255 / 0.1); stroke-width: 3.2; stroke-linecap: round; transition: stroke 600ms var(--ease-out); }
-.boot-ring path.is-lit { stroke: hsl(calc(var(--hA) + var(--i) * 4) 100% 70%); filter: drop-shadow(0 0 3px hsl(var(--hA) 100% 60%)); animation: boot-seg 2.4s ease-in-out infinite; animation-delay: calc(var(--i) * -0.1s); }
-@keyframes boot-seg { 50% { opacity: 0.55; } }
-.boot-core { width: 26%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, #fff 0 18%, hsl(var(--hA) 100% 72%) 40%, hsl(var(--hB) 100% 55% / 0.3) 70%, transparent 72%);
-  box-shadow: 0 0 40px 6px hsl(var(--hA) 100% 60% / 0.55); animation: boot-core 1.6s ease-in-out infinite; }
-@keyframes boot-core { 50% { transform: scale(0.82); opacity: 0.8; } }
-.boot-wave { position: absolute; inset: 22%; border-radius: 50%; border: 1px solid hsl(var(--hA) 100% 75% / 0.7); animation: boot-wave 2.4s var(--ease-out) infinite; opacity: 0; }
-@keyframes boot-wave { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(2.1); opacity: 0; } }
-.boot-orbit { position: absolute; inset: 9%; animation: boot-spin 3.2s linear infinite; }
-.boot-orbit i { position: absolute; left: 50%; top: -3px; width: 7px; height: 7px; margin-left: -3.5px; border-radius: 50%; background: #fff; box-shadow: 0 0 12px 3px hsl(var(--hB) 100% 70%); }
-@keyframes boot-spin { to { transform: rotate(360deg); } }
-.boot-lanes { display: flex; gap: 10px; height: 46px; }
-.boot-lanes span { position: relative; width: 26px; border: 1px solid var(--hair-strong); border-radius: 4px; overflow: hidden; background: rgb(4 6 16 / 0.8); }
-.boot-lanes i { position: absolute; inset: 0; transform-origin: bottom; background: linear-gradient(0deg, hsl(calc(var(--hA) + var(--i) * 25) 100% 62%), transparent);
-  animation: boot-charge 1.8s ease-in-out infinite; animation-delay: calc(var(--i) * 0.22s); }
-@keyframes boot-charge { 0% { transform: scaleY(0.08); } 60% { transform: scaleY(1); opacity: 1; } 100% { transform: scaleY(1); opacity: 0; } }
-.boot-copy { display: grid; justify-items: center; gap: 10px; max-width: 460px; padding: 18px 22px; border: 1px solid var(--hair-strong); border-radius: var(--r-lg); background: rgb(3 5 14 / 0.85); }
-.boot-title { margin: 0; font-family: var(--font-display); font-weight: 300; font-size: clamp(20px, 2.4vw, 28px); letter-spacing: 0.12em; text-transform: uppercase; }
-.boot-sub { margin: 0; color: var(--ink-soft); font-size: 14px; line-height: 1.5; }
-.boot-clock { color: hsl(var(--hA) 100% 82%); }
-.boot.is-down .boot-ring path.is-lit { stroke: hsl(352 90% 66%); animation: none; filter: none; }
-.boot.is-down .boot-core, .boot.is-down .boot-orbit, .boot.is-down .boot-wave, .boot.is-down .boot-lanes i { animation: none; opacity: 0.35; }
-@media (prefers-reduced-motion: reduce) {
-  .boot-ring path.is-lit, .boot-core, .boot-wave, .boot-orbit, .boot-lanes i { animation: none; }
-  .boot-wave { display: none; }
-}
+/* Waking the song server (ServerNote): a line where something waits on it (the searches, the
+   bank, a song loading), with how long it has been. A free server sleeps; it takes about a minute. */
+.server-note { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 10px 12px; font-size: 13px;
+  border: 1px solid hsl(var(--hA) 100% 75% / 0.3); border-radius: var(--r-sm); background: hsl(var(--hA) 60% 20% / 0.18); }
+.server-note .mono { margin-left: 4px; }
+.server-note-why { flex-basis: 100%; font-size: 12px; padding-left: 18px; }
+.server-note-pulse { width: 8px; height: 8px; border-radius: 50%; background: hsl(var(--hA) 100% 72%); box-shadow: 0 0 8px hsl(var(--hA) 100% 60%); animation: live-dot 1.2s ease-in-out infinite; }
+.server-note.is-down { border-color: rgb(255 111 133 / 0.4); background: rgb(255 111 133 / 0.08); }
+.server-note-stage { position: absolute; left: 50%; bottom: 18%; translate: -50% 0; z-index: 2; width: min(420px, 86%); background: rgb(4 6 16 / 0.85); }
+@media (prefers-reduced-motion: reduce) { .server-note-pulse { animation: none; } }

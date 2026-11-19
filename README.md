@@ -171,10 +171,10 @@ the mock: `cd backend && ./mvnw spring-boot:run`, and `VITE_API_BASE_URL=http://
   new key; keys swap rather than double up; every key shown in the game follows them); and
   **Background**: *Dynamic* (it follows the song, as before) or a fixed colour (Nebula, Ocean,
   Aurora, Rose, Ember, Gold) on the menu and in every song.
-- **Waking the server.** A free server sleeps when nobody plays. If it doesn't answer within a
-  second and a half, the game shows a reactor powering up (a ring that fills as the seconds pass,
-  a pulsing core, four lanes charging, how long it has been) and opens by itself once the server is
-  up, with a retry after three minutes.
+- **Waking the server.** A free server sleeps when nobody plays, and takes about a minute to wake.
+  Nothing waits for it: the menu opens at once, and wherever something is waiting on the server
+  (the searches, Favorites, the music bank, a song loading) a small line says it's waking, with a
+  clock, and offers to try again if it takes too long.
 - **Results.** Grade and score; accuracy and max combo, then Perfect, Great, Good and Miss; *Play
   again* (R) or *Return to main menu* (Esc). The song plays again quietly behind it, and back on
   the menu it plays on from where it was as the song's preview.
@@ -448,7 +448,7 @@ through `GameScore` (`Score` with the game's combo multiplier and held-note bonu
 | Where does the audio come from, legally? | **Figured out** | YouTube's embedded player plays the song; the game never downloads it. It listens once through tab sharing and keeps only the tiles and a loudness curve. |
 | Will the tiles line up with the music? | **Figured out** | Tiles are timed to each sound within a few milliseconds; the Map Syncer corrects a song's offset after a run whose hits were steadily early or late. |
 | JavaFX or the web for the view? | **Figured out** | The web (revised scope). |
-| Can it run for others, not just on our machines? | **Mostly** | The backend runs on Render (Docker) and can keep its songs in Supabase, so they outlive restarts once `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set there ([docs/supabase.md](docs/supabase.md)). Finding songs by name needs a YouTube API key on the server ([docs/youtube-api.md](docs/youtube-api.md)). A sleeping free server shows a waking screen instead of failing. |
+| Can it run for others, not just on our machines? | **Mostly** | The backend runs on Render (Docker) and can keep its songs in Supabase, so they outlive restarts once `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set there ([docs/supabase.md](docs/supabase.md)). Finding songs by name needs a YouTube API key on the server ([docs/youtube-api.md](docs/youtube-api.md)). A sleeping free server is said to be waking wherever something waits on it, instead of failing. |
 | How will the controller connect the view to the model? | **Partly** | Songs: every song the server keeps is a model `Song` first (`SongModel`, `SongWriter`). Scores: every saved run is checked against its `Queue<Note>` and counted again through `Score` (via `GameScore`, `RunReplay`). Play: `Main` is written; routes to play through it are next. |
 
 ### What doesn't work yet
@@ -573,7 +573,7 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `BackendApplication` | Miles D'Antonio | Set up the Spring Boot project (Spring Initializr), then built on it (GenAI-assisted). |
 | `SongController`, `SongStore`, `SongLists`, `NewSongCheck`, `SongModel`, `RunReplay` | Miles D'Antonio | Wrote them (GenAI-assisted): songs (each one taken into the model through `SongWriter`), scores (each run checked against the chart's `Queue<Note>`, then counted again through `GameScore`), search, the music bank. |
 | `SourceController`, `YouTubeService`, `FanChartService`, `Http` | Miles D'Antonio | Wrote them (GenAI-assisted): YouTube lookups (songs only) and osu! fan charts. |
-| `SupabaseSongs`, `HealthController` | Miles D'Antonio | Wrote them (GenAI-assisted): the song bank in Supabase, and the health check the waking screen asks. |
+| `SupabaseSongs`, `HealthController` | Miles D'Antonio | Wrote them (GenAI-assisted): the song bank in Supabase, and the health check (is the server up, where the bank is, and why the database isn't working if it isn't). |
 | `Osu` | Miles D'Antonio | Ported the frontend's osu! reader to Java (GenAI-assisted). |
 | `Matching`, `Text` | Miles D'Antonio | Wrote them (GenAI-assisted): matching names and videos. |
 | `ApiException`, `ApiExceptionHandler`, `CorsConfig` | Miles D'Antonio | Wrote them (GenAI-assisted). |

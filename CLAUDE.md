@@ -30,8 +30,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   fast; `docs/supabase.md`, `docs/supabase.sql`). The browser never talks to Supabase. Keep the
   backend's boot quick (a sleeping free server wakes on the first visit): no startup work beyond
   Spring's own (the bank is read in the background, `SongStore.warm`), and the Docker image keeps
-  its AOT cache step. The app shows `BootScreen` while `/api/health` doesn't answer
-  (`src/lib/server.ts`).
+  its AOT cache step. No screen waits for it: while `/api/health` doesn't answer, the places waiting on the server
+  (searches, Favorites, the bank, a song loading) say so with `ServerNote` (`src/lib/server.ts`).
 - YouTube videos must be songs (`notSongReason` in `mock-server/match.ts`, `Matching` in the
   backend: the same rules and the same test cases). Setting up the API key: `docs/youtube-api.md`.
 

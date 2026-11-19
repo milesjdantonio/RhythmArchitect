@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from 'motion/react';
 import type { Difficulty } from '../../api/types';
 import { href, navigate } from '../../lib/router';
 import { useFavorites } from '../../library/songs';
+import { ServerNote } from '../ServerNote';
+import { isWaking, useServer } from '../../lib/server';
 import { enterRise } from '../../lib/entrance';
 import { useScrollEdges } from '../../lib/useScrollEdges';
 import { FrameTrace } from '../FrameTrace';
@@ -15,6 +17,7 @@ export function Favorites({ onStage, difficulty, enterDelay = 0 }: { onStage?: s
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const favs = useFavorites(q, open);
+  const server = useServer();
   const listRef = useRef<HTMLUListElement>(null);
   useScrollEdges(listRef, [open, favs.results.length > 0]);
   const section = useRef<HTMLElement>(null);
@@ -44,7 +47,8 @@ export function Favorites({ onStage, difficulty, enterDelay = 0 }: { onStage?: s
                 <span className="sr-only">Search favorites</span>
                 <input type="search" placeholder="Search favorites" value={q} autoComplete="off" onChange={(e) => setQ(e.target.value)} />
               </label>
-              {favs.status === 'error' && (
+              <ServerNote when={favs.status === 'searching' || favs.status === 'error'} />
+              {favs.status === 'error' && !isWaking(server.state) && (
                 <div className="results-note" role="alert">
                   <p>{favs.error}</p>
                   <button type="button" className="btn btn-sm" onClick={favs.retry}><Icon name="retry" size={15} /> Try again</button>
