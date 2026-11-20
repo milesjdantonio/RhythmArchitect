@@ -28,7 +28,8 @@ const store = join(root, '.data', 'remap-songs.json');
 const port = 5197;
 const base = `http://localhost:${port}`;
 mkdirSync(outDir, { recursive: true });
-rmSync(store, { force: true });
+// An empty bank (not the mock's built-ins): a song it already has offers no Generate beatmap.
+writeFileSync(store, JSON.stringify({ songs: [] }));
 
 async function bank(path, init) {
   for (let tries = 0; ; tries++) {
@@ -93,10 +94,11 @@ try {
         results.push({ id: s.id, failed: e.message });
       }
     }
-  }, { maxSeconds: Math.round(total * 2 + songs.length * 420 + 300), headless: false, mute: false,
-    // Not --mute-audio: it silences the capture too. The capture keeps the sound off the speakers
-    // (mapOne), and --disable-audio-output renders it without playing it.
-    args: ['--auto-accept-this-tab-capture', '--disable-audio-output', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
+  }, { maxSeconds: Math.round(total * 2 + songs.length * 420 + 300), headless: false, mute: false, edge: true,
+    // Not --mute-audio: it silences the capture too; nor --disable-audio-output: without an audio
+    // device YouTube's player fails now and then (error 5). The capture keeps the sound off the
+    // speakers (mapOne: suppressLocalAudioPlayback).
+    args: ['--auto-accept-this-tab-capture', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
 } finally {
   await server.close();
   rmSync(store, { force: true });
@@ -111,6 +113,8 @@ async function mapOne(context, s) {
   page.on('console', (m) => { if (/\[mapper\]|\[listen\]/.test(m.text())) console.log('  ' + m.text().slice(0, 300)); });
   // The search answers with the song's own video only.
   await page.route('**/api/youtube/search**', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ results: [s.match] }) }));
+  // ...and no mapped song matches (the mock has built-ins of its own, One Dance among them).
+  await page.route('**/api/search?**', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ results: [] }) }));
   await page.addInitScript(() => {
     sessionStorage.setItem('rythm-architect:intro', 'skip');
     // The tab's sound goes to the capture only, not out of the speakers (suppressLocalAudioPlayback).
@@ -133,6 +137,10 @@ async function mapOne(context, s) {
     const res = await req.response();
     if (!res?.ok()) throw new Error(`the page's save was refused: ${res?.status()} ${await res?.text()}`);
     return JSON.parse(req.postData());
+  } catch (e) {
+    // What the page showed when it went wrong.
+    await page.screenshot({ path: join(outDir, `${s.id}.failed.png`) }).catch(() => {});
+    throw e;
   } finally {
     await page.close().catch(() => {});
   }

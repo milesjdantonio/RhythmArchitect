@@ -11,6 +11,8 @@
 //   Extra Chrome flags: { args: ['--auto-accept-this-tab-capture'] }. { mute: false } drops
 //   --mute-audio (pair it with --disable-audio-output to render sound without playing it).
 //   { headless: false } opens a real window (headless Chrome's tab capture carries no sound).
+//   { edge: true } uses Microsoft Edge when it's installed: it plays H.264/AAC, which Playwright's
+//   own Chromium can't (YouTube serves those to some sessions: its player then fails, error 5).
 
 import { chromium } from '@playwright/test';
 import { existsSync, readdirSync, writeFileSync, unlinkSync, readFileSync } from 'node:fs';
@@ -19,6 +21,8 @@ import { tmpdir, homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 
 const LOCK = join(tmpdir(), 'rythm-architect-test-browser.lock');
+
+const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 
 function findChromium() {
   const cache = process.env.PLAYWRIGHT_BROWSERS_PATH || (process.platform === 'win32'
@@ -33,8 +37,7 @@ function findChromium() {
       }
     }
   }
-  const edge = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
-  if (existsSync(edge)) return edge;
+  if (existsSync(EDGE)) return EDGE;
   return undefined; // let Playwright use its own default
 }
 
@@ -64,7 +67,7 @@ function killTree(pid) {
   } catch {}
 }
 
-export async function withBrowser(fn, { maxSeconds = 180, args = [], mute = true, headless = true } = {}) {
+export async function withBrowser(fn, { maxSeconds = 180, args = [], mute = true, headless = true, edge = false } = {}) {
   takeLock();
   let browser;
   let pid;
@@ -86,7 +89,7 @@ export async function withBrowser(fn, { maxSeconds = 180, args = [], mute = true
   try {
     // launchServer exposes the browser process, so its whole tree can be killed if needed.
     server = await chromium.launchServer({
-      executablePath: findChromium(),
+      executablePath: (edge && existsSync(EDGE) ? EDGE : null) ?? findChromium(),
       headless,
       args: [...(mute ? ['--mute-audio'] : []), '--disable-extensions', '--no-first-run', '--disable-background-networking', '--enable-unsafe-swiftshader', ...args],
     });

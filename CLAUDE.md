@@ -227,8 +227,10 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   recording holds, the gaps, the hidden spans and the stretches.
 - **Mapping the bank again** after the mapper changes: `node tools/remap-bank.mjs [--only=<ids>]`
   runs each listened YouTube song through the page's own Generate beatmap → Listen and map in a
-  real browser window, the same video, the sound kept off the speakers (the capture's
-  `suppressLocalAudioPlayback`; `--mute-audio` silences the capture too). It saves the new maps to
+  real Edge window (`withBrowser({ edge: true })`: Playwright's own Chromium can't play H.264/AAC,
+  which YouTube serves some sessions, and its player then fails, error 5), the same video, the sound
+  kept off the speakers (the capture's `suppressLocalAudioPlayback`; `--mute-audio` silences the
+  capture too), the song search answered empty (the mock has its own built-ins). It saves the new maps to
   `.data/remap/`; `--apply` adds each to the live bank and then deletes the old one (bests and
   plays go). Fan charts are left alone unless named in `--only` (One Dance was remade, Nov 19); a map the trained mapper didn't chart is never applied.
 - Keep the API types (`src/api/types.ts`), the mock (`mock-server/api.ts`) and the Spring Boot
