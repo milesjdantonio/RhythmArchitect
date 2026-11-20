@@ -3,7 +3,8 @@
 //
 // Each row (the tiles of one moment) gets a weight: how strongly its sound stood out (the onset
 // mapper's measure of the sound it's on), bigger for chords, and for downbeats and beats when the
-// beat grid is trusted (not for holds: they were kept first, and easier charts filled up with them).
+// beat grid is trusted (not for holds: they were kept first, and easier charts filled up with them),
+// and for a strong sound pushing just ahead of a beat (an anticipation: ANTICIPATION) over that beat.
 // The heaviest rows are kept first, as long as they leave room (`minGap` seconds to the next tile;
 // on easier charts, nothing starting under a hold) and every few seconds of the song keep their
 // share of the harder chart's tiles (so quiet parts stay quieter than choruses). Shares are counted
@@ -79,12 +80,28 @@ export interface ThinOptions {
   follow?: number;
 }
 
+/**
+ * Anticipations (syncopation): a sound off the beat at least ANTICIPATION_CUT strong, leading
+ * within half a beat into a beat whose sound is no stronger (by ANTICIPATION_MARGIN), weighs
+ * ANTICIPATION more, and that beat half as much less: an easier chart keeps the push, not the beat
+ * after it, as people chart it. Without it the beat's extra weight (the grid's) won every time: on
+ * One Dance (whose stabs come a 16th before the beat) Easy kept 9% of its tiles on off 16ths and
+ * Medium 8%, the fan chart 34%; with it 19% and 15%. On the Creative Commons benchmark (Nov 20)
+ * the match with the human charts held (F1 63%) and Easy came off the beat toward theirs (66% →
+ * 58% on the beat; humans' easiest 44%). Chords were left as the model makes them: ours already
+ * match the human charts' share and clustering there (27% / 29%; 61% / 60% within a beat of the
+ * last), and nothing in the sound tells which songs people chart without them.
+ */
+const ANTICIPATION = 0.4;
+const ANTICIPATION_CUT = 0.3;
+const ANTICIPATION_MARGIN = 0.05;
+
 /** What a row weighs extra (or less) for being kept (left out) where the phrase it repeats kept (left out) its twin. */
 const TWIN_KEEP = 0.6;
 
 const WINDOW = 4; // seconds
 
-type Row = { t: number; notes: ChartNote[]; w: number; end: number };
+type Row = { t: number; notes: ChartNote[]; w: number; end: number; s: number; onBeat: boolean };
 
 function rowsOf(notes: ChartNote[]): { t: number; notes: ChartNote[] }[] {
   const rows: { t: number; notes: ChartNote[] }[] = [];
@@ -142,8 +159,22 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     const minHold = Math.max(o.minHold[0], o.minHold[1] / o.spb);
     const notes = r.notes.map((n) => (n.hold && n.len < minHold ? tap(n) : n));
     const len = Math.max(0, ...notes.map((n) => (n.hold ? n.len : 0)));
-    return { t: r.t, notes, w: strengthAt(o.events, sec, cursor) + 0.25 * (r.notes.length - 1) + grid, end: r.t + len };
+    const s = strengthAt(o.events, sec, cursor);
+    return { t: r.t, notes, w: s + 0.25 * (r.notes.length - 1) + grid, end: r.t + len, s, onBeat: !!at?.beat };
   });
+  // Anticipations: a strong sound off the beat, just before a beat whose sound is no stronger,
+  // is the rhythm's push (syncopation): it weighs more, and the beat it leads into less. (Only
+  // where the beat is known: `at` above.)
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.onBeat || r.s < ANTICIPATION_CUT || !(o.place || o.onGrid)) continue;
+    for (let j = i + 1; j < rows.length && rows[j].t - r.t <= 0.51; j++) {
+      const q = rows[j];
+      if (!q.onBeat) continue;
+      if (r.s >= q.s - ANTICIPATION_MARGIN) { r.w += ANTICIPATION; q.w -= ANTICIPATION / 2; }
+      break;
+    }
+  }
 
   // Each phrase follows one kind of sound (the one its rows weigh most in, as the whole chart has
   // them): its rows of that kind weigh more, so an easier chart doesn't hop between the kick and the tune.

@@ -27,7 +27,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Difficulty, FanChartRequest, NewSong, PlayInput, ScoreSubmit, Song, SongPatch, SongSummary } from '../src/api/types';
-import { runInputs, startRun } from './play';
+import { keepRun, runInputs, startRun } from './play';
 import { sortAtoZ } from '../src/library/bank';
 import { DIFFICULTIES } from '../src/api/types';
 import { rechartProblem, upgradeSong } from '../src/api/upgrade';
@@ -284,10 +284,14 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           // A recorded run is checked against the chart it was played on and counted again (the
           // backend runs it through the model's Queue of Notes and main.GameScore; this is the
           // same rules, src/game/score.ts) and that is what's kept.
+          // It must be a run the controller reviewed and passed, kept once (keepRun: PlayController.keep).
+          if (typeof body.run !== 'string') return fail(res, 400, 'Send the run as the game recorded it');
           const chart = song.charts[body.difficulty] ?? { difficulty: body.difficulty, lanes: 4, notes: [] };
-          const counted = body.run !== undefined ? replayRun(body.run) : undefined;
-          const replayed = counted && !runFits(body.run!, chart, song.bpm) ? null : counted;
-          if (replayed === null) return fail(res, 400, 'Bad run');
+          const counted = replayRun(body.run);
+          const replayed = counted && !runFits(body.run, chart, song.bpm) ? null : counted;
+          if (!replayed) return fail(res, 400, 'Bad run');
+          const refusal = keepRun(body.play, song.id, body.difficulty, body.run);
+          if (refusal) return fail(res, refusal.status, refusal.message);
           song.plays += 1;
           // Where the run missed, tile by tile (a checked run's tiles; ignored when they don't fit it).
           if (replayed) addHeat(song, body.difficulty, body.tiles, body.run);
@@ -319,7 +323,8 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           if (!Array.isArray(body?.inputs)) return fail(res, 400, 'Send the inputs as a list');
           if (body.inputs.length > 500) return fail(res, 400, 'Too many inputs at once');
           const out = runInputs(parts[1], body.inputs as PlayInput[], 'run' in body ? body.run : undefined);
-          return out ? send(res, 200, out) : fail(res, 404, 'That run is over (or never started)');
+          if (!out) return fail(res, 404, 'That run is over (or never started)');
+          return 'error' in out && out.error ? fail(res, 400, out.error) : send(res, 200, out);
         }
       }
       if (parts[0] === 'library' && parts.length === 1 && method === 'GET') {

@@ -140,6 +140,7 @@ function ModelLine({ store }: { store: Store<{ state: PlayState | null; status: 
       {model.status === 'off' && !s ? <span className="muted">not reviewing (no server)</span>
         : !s ? <span className="muted">starting</span>
         : !s.confirmed ? <span className="hud-model-bad">run refused · {s.reviewed} presses reviewed</span>
+        : s.review && !s.review.passed ? <span className="hud-model-bad" title={s.review.flags.map((f) => `${f.check}: ${f.detail}`).join('; ')}>flagged: {s.review.flags[0]?.check} · {s.reviewed} presses reviewed</span>
         : <span className="mono">{s.confirmed.score.toLocaleString()} confirmed · {s.reviewed} presses reviewed</span>}
     </div>
   );

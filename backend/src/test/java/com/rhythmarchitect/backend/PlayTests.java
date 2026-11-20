@@ -23,7 +23,8 @@ import com.jayway.jsonpath.JsonPath;
 
 /**
  * Playing through the controller (main.Main) over the API: key presses and the clock go in, the
- * model's Score and queue come back; bad input is turned down without a crash.
+ * model's Score and queue come back; bad input is turned down without a crash. The review
+ * (InputReview) decides what reaches Main and whether a run's score may be kept.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -47,6 +48,71 @@ class PlayTests {
 
     @Autowired
     MockMvc mvc;
+
+    @Autowired
+    com.rhythmarchitect.backend.songs.PlayController play;
+
+    @org.junit.jupiter.api.BeforeEach
+    void realClock() {
+        play.clock(System::currentTimeMillis);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions score(String body) throws Exception {
+        return mvc.perform(post("/api/songs/demo-neon-blueprint/scores").contentType(MediaType.APPLICATION_JSON).content(body));
+    }
+
+    @Test
+    void aScoreIsKeptOnlyFromARunTheControllerReviewedAndPassedOnce() throws Exception {
+        String body = "{\"difficulty\":\"easy\",\"score\":1,\"accuracy\":1,\"maxCombo\":1,\"grade\":\"S\",\"run\":\"PP\"}";
+        // Never played through the controller (or a made-up run id): turned down.
+        score(body).andExpect(status().is(422));
+        score(body.replace("}", ",\"play\":\"made-up\"}")).andExpect(status().is(422));
+        // Played through it: kept, once.
+        String reviewed = Reviewed.play(mvc, play, "demo-neon-blueprint", body);
+        score(reviewed).andExpect(status().isOk()).andExpect(jsonPath("$.best.easy.score").value(2000));
+        score(reviewed).andExpect(status().is(409));
+        // A different run than the one the controller confirmed: turned down.
+        String other = Reviewed.play(mvc, play, "demo-neon-blueprint", body);
+        score(other.replace("\"PP\"", "\"PPP\"")).andExpect(status().is(422));
+        play.clock(System::currentTimeMillis);
+        // Twelve Perfects claimed with no press sent: flagged, and not kept.
+        String run = JsonPath.read(start("demo-neon-blueprint", "easy"), "$.run");
+        send(run, "[{\"time\":0}], \"run\": \"PPPPPPPPPPPP\"")
+            .andExpect(jsonPath("$.state.review.passed").value(false))
+            .andExpect(jsonPath("$.state.review.flags[0].check").value("unpressed hits"));
+        score(body.replace("\"PP\"", "\"PPPPPPPPPPPP\"").replace("}", ",\"play\":\"" + run + "\"}"))
+            .andExpect(status().is(422))
+            .andExpect(jsonPath("$.error").value(org.hamcrest.Matchers.containsString("unpressed hits")));
+    }
+
+    @Test
+    void oneClientCanStartOnlySoManyRuns() throws Exception {
+        play.clock(() -> 5_000_000L);
+        String start = "{\"songId\":\"demo-neon-blueprint\",\"difficulty\":\"easy\"}";
+        for (int i = 0; i < 30; i++) {
+            mvc.perform(post("/api/play").header("X-Forwarded-For", "203.0.113.9").contentType(MediaType.APPLICATION_JSON).content(start))
+                .andExpect(status().isCreated());
+        }
+        mvc.perform(post("/api/play").header("X-Forwarded-For", "203.0.113.9").contentType(MediaType.APPLICATION_JSON).content(start))
+            .andExpect(status().is(429));
+        // What a client writes in front of the address doesn't make it someone else...
+        mvc.perform(post("/api/play").header("X-Forwarded-For", "198.51.100.1, 203.0.113.9").contentType(MediaType.APPLICATION_JSON).content(start))
+            .andExpect(status().is(429));
+        // ...and another client isn't held up by it.
+        mvc.perform(post("/api/play").header("X-Forwarded-For", "203.0.113.10").contentType(MediaType.APPLICATION_JSON).content(start))
+            .andExpect(status().isCreated());
+        // A song id that isn't one: turned down before the bank is read.
+        mvc.perform(post("/api/play").contentType(MediaType.APPLICATION_JSON).content("{\"songId\":\"../../etc\",\"difficulty\":\"easy\"}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void aRunSendingInputsFasterThanTheGameIsHeldUp() throws Exception {
+        play.clock(() -> 7_000_000L);
+        String run = JsonPath.read(start("demo-neon-blueprint", "easy"), "$.run");
+        for (int i = 0; i < 20; i++) send(run, "[]").andExpect(status().isOk());
+        send(run, "[]").andExpect(status().is(429));
+    }
 
     private String start(String song, String difficulty) throws Exception {
         String body = mvc.perform(post("/api/play").contentType(MediaType.APPLICATION_JSON)
@@ -97,8 +163,17 @@ class PlayTests {
         String started = start("demo-neon-blueprint", "easy");
         String run = JsonPath.read(started, "$.run");
         int notes = JsonPath.read(started, "$.notes");
-        // Long after the song: every note went by unplayed.
+        // Long after the song: the review turns it down (nothing that late is a song's clock).
         send(run, "[{\"time\":100000}]")
+            .andExpect(jsonPath("$.state.misses").value(0))
+            .andExpect(jsonPath("$.state.review.passed").value(false))
+            .andExpect(jsonPath("$.state.review.flags[0].check").value("past the end"));
+        // Just after the last note: every note went by unplayed.
+        String song = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/api/songs/demo-neon-blueprint")).andReturn().getResponse().getContentAsString();
+        main.Queue<main.Note> chart = main.SongWriter.chartFor(com.rhythmarchitect.backend.songs.SongModel.of(tools.jackson.databind.json.JsonMapper.builder().build().readTree(song)), main.Difficulty.EASY);
+        double last = 0;
+        while (!chart.isEmpty()) last = Math.max(last, chart.dequeue().getTimeStamp());
+        send(run, "[{\"time\":" + (last + 1) + "}]")
             .andExpect(jsonPath("$.results", hasSize(0)))
             .andExpect(jsonPath("$.state.misses").value(notes))
             .andExpect(jsonPath("$.state.left").value(0))

@@ -32,7 +32,15 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   input reviewer: presses and the clock go to it; the game's judged run goes too and the model
   confirms the score (`RunReplay`: the chart's queue, then `GameScore`: the score at the top). The
   run panel shows the confirmed score and the presses reviewed (the course's "view through the
-  controller into the model"). The browser still judges each press at once. Songs the trained
+  controller into the model"). Every input is reviewed before Main sees it (`InputReview`; the
+  mock's copy `mock-server/review.ts`, the same rules and cases: `InputReviewTests`,
+  `review.test.ts`): malformed, out of order, past the end and double presses never reach Main; a
+  run faster than real time, with more presses than hands make, or claiming hits nobody pressed for
+  is flagged. A best is kept only from a run the controller reviewed and passed, once (the scores
+  route's `play` run id, `PlayController.keep`: 422/409 otherwise), so the game waits for the
+  controller to have the whole run before it sends the score; the backend also limits run starts
+  per client and calls per run (429). Backend tests send scores through `Reviewed.play`. The
+  browser still judges each press at once. Songs the trained
   mapper charted before ladder 2 (`thin.ts` `LADDER`, `report.ladder`) are made again from their
   Ultra when first opened (`upgrade.ts` `rethinSong`, `PUT /api/songs/:id/charts`: every tile must
   be one of their Ultra's).
@@ -66,7 +74,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   every song A to Z with a search and a letter rail, opened by the Bank button (♫ icon) under the
   settings gear (beside the gear: **How to play**, `src/components/HowToPlay.tsx`, a dialog of
   topics with moving diagrams, also opened from the start card; its numbers come from the rules). The menu's song keeps playing there; a pick plays right there (the bank stays
-  open, its "Now playing" card holds a YouTube song's video). Esc goes back to the menu with the
+  open, its "Now playing" card holds a YouTube song's video, and a Play button under it starts the
+  song at the menu's difficulty, as the menu's Play does). Esc goes back to the menu with the
   song that was playing on stage, its preview carrying on (the screens hand it over:
   `handOverPreview` / `takePreview`). No map report.
 - Right = gameplay only: a Rive waiting screen until a song is picked; then the stage (60-75% of the
@@ -195,6 +204,15 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     full mix nearly every sound reads as pitched, so parts can't be told apart better without
     splitting the song (stems.ts). Most human tiles our charts miss aren't in the model's chart
     and aren't on a sound we measured either.
+  - **Anticipations** (`thin.ts` `ANTICIPATION`): a strong sound a 16th or 8th before a beat whose
+    sound is no stronger weighs more than that beat when thinning: the beat's grid bonus made easier
+    charts march on the beat under syncopated songs (One Dance's Easy 9% off 16ths, Medium 8%, the
+    fan chart 34%; now 19% and 15%). CC benchmark unchanged (F1 63%), Easy 66% → 58% on the beat
+    (humans 44%); band strong notes E 80% → 76% (its strong notes are on the beat).
+  - Chords were left as the model makes them (Nov 20): ours match the human charts' share and how
+    they cluster on the CC set (27% vs 29%; 61% vs 60% within a beat of the last); humans range
+    3-64% from song to song (3% and 45% on one song), and neither the sounds' strength nor
+    anything else measured says which songs want them. Gating chords on strength cut them to 3-9%.
   - "Easy from the beat" (rows on the beat weighing more on Easy) was tried and left out: human
     Easy charts put 26-50% of their tiles on the beat, ours already ~40%, and more made them less alike.
 - **Star ratings** (`calibratedCharts`, `starTargets`): every chart is rated with the runtime's
@@ -254,6 +272,11 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   listen (position reads, player states, tab hidden; no audio; `src/mapping/listenLog.ts`);
   `node tools/replay-listen.mjs <log.json>` replays it through the placement and reports what the
   recording holds, the gaps, the hidden spans and the stretches.
+- **A listen's timing against the video varies** from one listen to the next by tens of ms (Nov
+  20: three listens of One Dance landed 0, 46 and 70 ms behind the map before them). The capture
+  tick measures the page's own sound, not YouTube's; a tick through a media element was tried and
+  was further off (its position isn't read like YouTube's). So remakes line up with the old map
+  (`remap-bank.mjs` `lineUp`) and new songs rely on the Map Syncer after a run.
 - **Mapping the bank again** after the mapper changes: `node tools/remap-bank.mjs [--only=<ids>]`
   runs each listened YouTube song through the page's own Generate beatmap → Listen and map in a
   real Edge window (`withBrowser({ edge: true })`: Playwright's own Chromium can't play H.264/AAC,

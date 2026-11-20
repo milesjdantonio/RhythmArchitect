@@ -73,6 +73,18 @@ describe('thinning a chart', () => {
     expect(out).toEqual([two[1]]);
   });
 
+  it('a strong sound pushing just ahead of the beat wins over the beat (syncopation), a faint one doesn\'t', () => {
+    // A 16th before beat 1, and beat 1: only one fits. As loud as each other, the push is kept.
+    const two = [{ t: 0.75, lane: 0, pitch: 'C5', len: 0.25 }, { t: 1, lane: 1, pitch: 'C5', len: 0.25 }];
+    const ev = (sec: number, strength: number) => ({ id: 0, t: sec / SPB, sec, band: 'mid', pitched: false, midi: null, note: null, bright: 60, strength, len: 0.25, onBeat: false, accent: false } as SoundEvent);
+    const o = { rate: 10, share: 1, minGap: 0.3 };
+    expect(thinChart(two, opts({ ...o, events: [ev(0.375, 0.6), ev(0.5, 0.6)] }))).toEqual([two[0]]);
+    // A faint push before a beat: the beat.
+    expect(thinChart(two, opts({ ...o, events: [ev(0.375, 0.2), ev(0.5, 0.2)] }))).toEqual([two[1]]);
+    // Without a beat to go by, neither is a push: the louder wins as ever.
+    expect(thinChart(two, opts({ ...o, onGrid: false, events: [ev(0.375, 0.5), ev(0.5, 0.6)] }))).toEqual([two[1]]);
+  });
+
   it("follows the kind of sound a phrase is mostly on, not whatever is loudest from moment to moment", () => {
     // A tile every 8th; the melody (mid) on most, a kick (low) on a few, a little louder.
     const src = Array.from({ length: 64 }, (_, i) => ({ t: i / 2, lane: i % 4, pitch: 'C5', len: 0.25 }));

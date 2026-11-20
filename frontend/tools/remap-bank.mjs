@@ -4,6 +4,11 @@
 //
 //   node tools/remap-bank.mjs [--api=https://rhythmarchitect.onrender.com] [--only=<id>,<id>] [--apply] [--study]
 //
+// Each new map is lined up with the old one first (lineUp): a listen's timing against the video
+// comes out tens of milliseconds different from one listen to the next (Nov 20: three listens of
+// One Dance landed 0, 46 and 70 ms late of the map before them), and the old map is the better
+// reference (its offset may also have been moved by players' runs: syncer.ts learnFromRun).
+//
 // Without --apply it only listens and maps, saving each new song (the NewSong the page sent) to
 // .data/remap/<old id>.json. With --apply each new map is added to the bank (POST /api/songs),
 // then the old one is deleted (its best scores and plays go with it: the charts changed). A map the
@@ -81,6 +86,8 @@ try {
       const started = Date.now();
       try {
         const sent = await mapOne(context, s);
+        const moved = lineUp(sent, s);
+        if (moved !== null) console.log(`  lined up with the old map: moved ${moved > 0 ? '+' : ''}${Math.round(moved * 1000)} ms`);
         const r = { id: s.id, title: sent.title, artist: sent.artist, bpm: sent.bpm, mapper: sent.report?.mapper ?? '', tiles: Object.fromEntries(Object.entries(sent.charts).map(([k, v]) => [k, v.notes.length])) };
         writeFileSync(join(outDir, `${s.id}.json`), JSON.stringify(sent));
         const trained = /Ensomi/.test(r.mapper);
@@ -109,6 +116,27 @@ try {
 }
 writeFileSync(join(outDir, 'summary.json'), JSON.stringify(results, null, 2));
 console.log(`done: ${results.filter((r) => !r.failed).length} mapped, ${results.filter((r) => r.failed).length} failed (summary: ${join(outDir, 'summary.json')})`);
+
+/**
+ * Moves the new map (its source.offset) to sit where the old one of the same video does: the
+ * shift (within 0.15 s) at which most of their Ultra tiles meet within 8 ms, when that's a clear
+ * peak. Returns the move (seconds), or null when there was none to make or none was clear.
+ */
+function lineUp(sent, old) {
+  const LINE_UP = 0.15;
+  if (!old?.charts?.ultra || sent.source?.videoId !== old.source?.videoId) return null;
+  const at = (song) => song.charts.ultra.notes.map((n) => (song.source?.offset ?? 0) + (n.t * 60) / song.bpm).sort((a, b) => a - b);
+  const a = at(old), b = at(sent);
+  const meet = (sh) => { let n = 0, j = 0; for (const t of a) { while (j < b.length && b[j] < t + sh - 0.008) j++; if (j < b.length && Math.abs(b[j] - t - sh) <= 0.008) n++; } return n; };
+  const profile = [];
+  for (let sh = -LINE_UP; sh <= LINE_UP + 1e-9; sh += 0.002) profile.push({ sh, n: meet(sh) });
+  const best = profile.reduce((x, y) => (y.n > x.n ? y : x));
+  const median = [...profile].sort((x, y) => x.n - y.n)[profile.length >> 1].n;
+  if (best.n < 0.3 * Math.min(a.length, b.length) || best.n < 3 * Math.max(1, median)) return null;
+  if (Math.abs(best.sh) < 0.008) return 0;
+  sent.source.offset = Math.round(((sent.source.offset ?? 0) - best.sh) * 1000) / 1000;
+  return -best.sh;
+}
 
 /** One song through the page's own Generate beatmap → Listen and map; the NewSong it sends. */
 async function mapOne(context, s) {

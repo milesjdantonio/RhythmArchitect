@@ -82,6 +82,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const [clock, setClock] = useState(0);
   const [result, setResult] = useState<RunResult | null>(null);
   const [saving, setSaving] = useState<'saving' | 'saved' | 'error' | 'skipped'>('saving');
+  const [saveError, setSaveError] = useState('');
   const [prevBest, setPrevBest] = useState<number | undefined>();
   const [layout, setLayout] = useState<Layout | null>(null);
   const [use3d] = useState(() => Stage3D.supported());
@@ -333,7 +334,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     stopSong();
     // The controller's count of the run (its last answer), for the results.
     const counted = link.current;
-    if (counted) void counted.finish(g.failed ? end : end + 1).then((s) => setModel({ state: s, status: counted.status }));
+    const finished = counted ? counted.finish(g.failed ? end : end + 1).then((s) => { setModel({ state: s, status: counted.status }); return s; }) : null;
     const accuracy = g.accuracy;
     const grade = gradeFor(accuracy, g.failed);
     const meanOffsetMs = offsets.current.length >= 8 ? (offsets.current.reduce((a, b) => a + b, 0) / offsets.current.length) * 1000 : null;
@@ -347,15 +348,20 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     bus.emit('intensity', g.failed ? 0.05 : 0.5);
     if (assisted.current) { setSaving('skipped'); return; }
     setSaving('saving');
+    setSaveError('');
     // The Map Syncer: hits that were steadily early or late move a YouTube song's map for next time
     // (saved before the score, so the two saves can't undo each other).
     const offset = await learnFromRun(song, offsets.current).catch(() => null);
     if (offset !== null) setSong((s) => (s && s.id === song.id ? { ...s, source: { ...s.source, offset } } : s));
     try {
-      const updated = await api.submitScore(song.id, { difficulty, score: r.score, accuracy, maxCombo: r.maxCombo, grade, run: g.run, tiles: g.tiles() });
+      // The controller has the whole run first: the score is kept only from the run it reviewed.
+      await finished?.catch(() => null);
+      const play = counted?.runId ?? undefined;
+      const updated = await api.submitScore(song.id, { difficulty, score: r.score, accuracy, maxCombo: r.maxCombo, grade, run: g.run, tiles: g.tiles(), ...(play ? { play } : {}) });
       upsert(updated);
       setSaving('saved');
-    } catch {
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : '');
       setSaving('error');
     }
   }, [song, difficulty]);
@@ -997,7 +1003,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       </AnimatePresence>
 
       {phase === 'results' && result && song && (
-        <Results song={song} difficulty={difficulty} result={result} previousBest={prevBest} saving={saving} model={modelStore} onRetry={() => { if (!result.assisted) setPrevBest(Math.max(prevBest ?? 0, result.failed ? 0 : result.score) || undefined); restart(); }} />
+        <Results song={song} difficulty={difficulty} result={result} previousBest={prevBest} saving={saving} saveError={saveError} model={modelStore} onRetry={() => { if (!result.assisted) setPrevBest(Math.max(prevBest ?? 0, result.failed ? 0 : result.score) || undefined); restart(); }} />
       )}
     </div>
   );

@@ -38,6 +38,8 @@ interface Props {
   result: RunResult;
   previousBest?: number;
   saving: 'saving' | 'saved' | 'error' | 'skipped';
+  /** Why it couldn't be saved (the server's words: the controller flagged the run, say). */
+  saveError?: string;
   /** What the controller (main.Main on the server) counted for the run. */
   model?: ReadStore<{ state: PlayState | null } | null>;
   onRetry: () => void;
@@ -68,7 +70,7 @@ const rise = (i: number) => ({
   transition: { duration: 0.7, delay: 0.25 + i * 0.08, ease: EASE_OUT },
 });
 
-export function Results({ song, difficulty, result, previousBest, saving, model: modelStore, onRetry }: Props) {
+export function Results({ song, difficulty, result, previousBest, saving, saveError, model: modelStore, onRetry }: Props) {
   const model = useStore(modelStore ?? NO_MODEL);
   const score = useCountUp(result.score);
   const stars = starsFor(result.grade);
@@ -141,6 +143,7 @@ export function Results({ song, difficulty, result, previousBest, saving, model:
           <motion.p className="results-model muted small" {...rise(5)}>
             <span className="label">Controller</span>{' '}
             {model.state.reviewed} presses reviewed ·{' '}
+            {model.state.review && !model.state.review.passed ? <>flagged: {model.state.review.flags.map((f) => f.check).join(', ')} · </> : null}
             {!model.state.confirmed ? 'the run was refused'
               : model.state.confirmed.score === result.score ? <>score confirmed: <span className="mono">{model.state.confirmed.score.toLocaleString()}</span> ✓</>
               : <>the model counted <span className="mono">{model.state.confirmed.score.toLocaleString()}</span> (not the same)</>}
@@ -150,7 +153,7 @@ export function Results({ song, difficulty, result, previousBest, saving, model:
           <p className="muted small">You hit {Math.abs(Math.round(timing))} ms {timing < 0 ? 'early' : 'late'} on average. If that feels wrong, adjust the audio offset in Settings.</p>
         )}
         <p className="muted small save-state" aria-live="polite">
-          {saving === 'skipped' ? 'Autoplay run: not saved.' : saving === 'saving' ? 'Saving your score' : saving === 'saved' ? 'Score saved.' : "Couldn't save this score."}
+          {saving === 'skipped' ? 'Autoplay run: not saved.' : saving === 'saving' ? 'Saving your score' : saving === 'saved' ? 'Score saved.' : saveError ? `Couldn't save this score: ${saveError}` : "Couldn't save this score."}
         </p>
 
         <motion.div className="results-actions" {...rise(6)}>

@@ -47,6 +47,9 @@ class RechartTests {
     @Autowired
     MockMvc mvc;
 
+    @Autowired
+    com.rhythmarchitect.backend.songs.PlayController play;
+
     static final String ULTRA = "[{\"t\":0,\"lane\":1,\"pitch\":\"C4\",\"len\":0.25},{\"t\":1,\"lane\":2,\"pitch\":\"E4\",\"len\":2,\"hold\":true},"
         + "{\"t\":1,\"lane\":0,\"pitch\":\"C4\",\"len\":0.25},{\"t\":4,\"lane\":3,\"pitch\":\"G4\",\"len\":0.25}]";
     static final String TAP_AT_0 = "[{\"t\":0,\"lane\":1,\"pitch\":\"C4\",\"len\":0.25}]";
@@ -72,7 +75,7 @@ class RechartTests {
         // A best score on Easy and on Ultra.
         for (String d : new String[] { "easy", "ultra" }) {
             mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON)
-                .content("{\"difficulty\":\"" + d + "\",\"score\":1000,\"accuracy\":1,\"maxCombo\":1,\"grade\":\"S\",\"run\":\"P\"}"))
+                .content(Reviewed.play(mvc, play, id, "{\"difficulty\":\"" + d + "\",\"score\":1000,\"accuracy\":1,\"maxCombo\":1,\"grade\":\"S\",\"run\":\"P\"}")))
                 .andExpect(status().isOk());
         }
         return id;

@@ -25,6 +25,8 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import com.rhythmarchitect.backend.songs.PlayController;
+
 /** The routes of docs/api.md against a fresh song bank (the three built-in songs). */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -51,6 +53,14 @@ class ApiTests {
 
     @Autowired
     MockMvc mvc;
+
+    @Autowired
+    PlayController play;
+
+    /** A score body after its run went through the controller (Reviewed.play). */
+    private String reviewed(String song, String body) throws Exception {
+        return Reviewed.play(mvc, play, song, body);
+    }
 
     @Test
     void libraryIsAtoZ() throws Exception {
@@ -83,28 +93,16 @@ class ApiTests {
         mvc.perform(get("/api/favorites").param("q", "fury"))
             .andExpect(jsonPath("$.results[0].id").value(id));
 
-        // Ultra difficulty scores.
-        String ultraRun = "{\"difficulty\":\"ultra\",\"score\":%d,\"accuracy\":0.9,\"maxCombo\":40,\"grade\":\"A\"}";
+        // Hard difficulty scores on Neon Blueprint: a lower one doesn't replace the best.
+        String scored = "demo-neon-blueprint";
+        String hardRun = "{\"difficulty\":\"hard\",\"score\":0,\"accuracy\":0.9,\"maxCombo\":40,\"grade\":\"A\",\"run\":\"%s\"}";
 
-        mvc.perform(post("/api/songs/" + id + "/scores")
-            .contentType(MediaType.APPLICATION_JSON)
-            .content(ultraRun.formatted(5000)))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(scored, hardRun.formatted("PPPPP"))))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.best.ultra.score").value(5000))
+            .andExpect(jsonPath("$.best.hard.score").value(5000))
             .andExpect(jsonPath("$.plays").value(1));
 
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRun.formatted(100)))
-            .andExpect(jsonPath("$.best.ultra.score").value(5000))
-            .andExpect(jsonPath("$.plays").value(2));
-
-        // Hard difficulty scores on Neon Blueprint.
-        String scored = "demo-neon-blueprint";
-        String hardRun = "{\"difficulty\":\"hard\",\"score\":%d,\"accuracy\":0.9,\"maxCombo\":40,\"grade\":\"A\"}";
-
-        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(hardRun.formatted(5000)))
-            .andExpect(jsonPath("$.best.hard.score").value(5000));
-
-        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(hardRun.formatted(100)))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(scored, hardRun.formatted("P"))))
             .andExpect(jsonPath("$.best.hard.score").value(5000))
             .andExpect(jsonPath("$.plays").value(2));
 
@@ -114,7 +112,7 @@ class ApiTests {
         // A recorded Ultra run is counted again through main.GameScore.
         String ultraRecorded = "{\"difficulty\":\"ultra\",\"score\":999999,\"accuracy\":1,\"maxCombo\":99,\"grade\":\"S\",\"run\":\"%s\"}";
 
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("P")))
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(id, ultraRecorded.formatted("P"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.best.ultra.score").value(1000))
             .andExpect(jsonPath("$.best.ultra.maxCombo").value(1))
@@ -122,31 +120,31 @@ class ApiTests {
             .andExpect(jsonPath("$.best.ultra.grade").value("S"))
             .andExpect(jsonPath("$.best.ultra.rules").value("overdrive"));
 
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("P")))
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(id, ultraRecorded.formatted("P"))))
             .andExpect(jsonPath("$.best.ultra.score").value(1000));
 
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("PPZ")))
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(id, ultraRecorded.formatted("PPZ"))))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
 
         // A recorded Hard run is checked against the chart and counted again through main.GameScore.
         String recorded = "{\"difficulty\":\"hard\",\"score\":999999,\"accuracy\":1,\"maxCombo\":99,\"grade\":\"S\",\"run\":\"%s\"}";
 
-        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPPPPPPPPPGEH1500;MLBP")))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(scored, recorded.formatted("PPPPPPPPPPGEH1500;MLBP"))))
             .andExpect(jsonPath("$.best.hard.score").value(18600))
             .andExpect(jsonPath("$.best.hard.maxCombo").value(12))
             .andExpect(jsonPath("$.best.hard.accuracy").value(1275.0 / 1600))
             .andExpect(jsonPath("$.best.hard.grade").value("C"))
             .andExpect(jsonPath("$.best.hard.rules").value("overdrive"));
 
-        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("P")))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(scored, recorded.formatted("P"))))
             .andExpect(jsonPath("$.best.hard.score").value(18600));
 
-        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(recorded.formatted("PPZ")))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(scored, recorded.formatted("PPZ"))))
             .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
 
         // Overdrive: the run in score.test.ts and GameScoreTest (34 Perfects fill the charge, O sets it
         // off: +1 on the multiplier). Set off without a full charge, the run is refused.
-        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted(OVERDRIVE_RUN)))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(scored, ultraRecorded.formatted(OVERDRIVE_RUN))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.best.ultra.score").value(97150))
             .andExpect(jsonPath("$.best.ultra.maxCombo").value(37))
@@ -154,7 +152,7 @@ class ApiTests {
 
         // Refused: Overdrive without a full charge, a grace ended with none running, ended twice.
         for (String bad : new String[] { "PPPO", "PU", "P".repeat(34) + "OUU" }) {
-            mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted(bad)))
+            mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(scored, ultraRecorded.formatted(bad))))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
         }
 
@@ -163,11 +161,11 @@ class ApiTests {
         String[] impossible = { "P".repeat(99), "PH1900;", "PH100;".repeat(11) };
 
         for (String r : impossible) {
-            mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted(r)))
+            mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(scored, ultraRecorded.formatted(r))))
                 .andExpect(status().isBadRequest()).andExpect(jsonPath("$.error").value("Bad run"));
         }
 
-        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(ultraRecorded.formatted("P".repeat(98) + "H1810;")))
+        mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(scored, ultraRecorded.formatted("P".repeat(98) + "H1810;"))))
             .andExpect(status().isOk()).andExpect(jsonPath("$.best.ultra.maxCombo").value(98));
 
         mvc.perform(get("/api/songs/" + scored)).andExpect(jsonPath("$.plays").value(6));

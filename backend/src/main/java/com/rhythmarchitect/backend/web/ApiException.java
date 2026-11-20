@@ -24,4 +24,9 @@ public class ApiException extends RuntimeException {
     public static ApiException notFound(String message) {
         return new ApiException(404, message);
     }
+
+    /** Asked too often (a client starting runs or sending inputs faster than a game does). */
+    public static ApiException tooMany(String message) {
+        return new ApiException(429, message);
+    }
 }

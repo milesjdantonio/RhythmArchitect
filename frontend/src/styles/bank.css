@@ -53,6 +53,7 @@
 .bank-now-label { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--lightA); }
 .bank-now-title { margin: 0; font-family: var(--font-display); font-weight: 300; font-size: 20px; line-height: 1.2; color: var(--ink); overflow-wrap: anywhere; }
 .bank-now-artist { margin: 0; font-size: 13px; color: var(--ink-soft); }
+.bank-now-play { justify-self: stretch; justify-content: center; margin-top: 8px; }
 
 .bank-panel {
   position: relative; min-height: 0; display: flex;

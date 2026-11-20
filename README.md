@@ -106,9 +106,16 @@ state:
 The game also judges each press at once in the browser (`engine.ts`, the same rules as
 `GameScore`), so a slow network never delays a hit; that is the big score on screen, confirmed by
 the model a moment later and counted again before a best is kept. Bad input stops at the
-controller: a lane out of 0-3 or a time that isn't one is turned down by `Main` (`null`, nothing
-counted), and a practice stretch that doesn't start before it ends by `Song.getChartBetween` (a
-400). `PlayTests` checks all of it.
+controller. Every input is reviewed before `Main` sees it (`InputReview`): anything that isn't a
+press or a clock time (a lane 0-3, a time in seconds, nothing else), an input out of order or long
+after the song's last note, and one press sent twice are turned down; a run whose clock ran ahead
+of real time (a whole run sent at once), with more presses in a second than hands make, or whose
+judged run claims hits nobody pressed a key for is flagged. A best is kept only from a run the
+controller reviewed from start to end and passed, and only once (the scores route asks it:
+`PlayController.keep`); one client can start only so many runs, and a run takes inputs only so
+fast. `Main` still turns down a lane out of 0-3 itself, and `Song.getChartBetween` a practice
+stretch that doesn't start before it ends (a 400). `PlayTests` and `InputReviewTests` check all of
+it.
 
 ### Run the view
 
@@ -569,7 +576,7 @@ browser judges each press at once with a TypeScript copy of `GameScore`'s rules
 ### What doesn't work yet
 
 - **`Main` reviews presses by its own rules.** Its windows are wider (0.1, 0.2, 0.3 s against the game's 45, 90, 140 ms) and it takes presses strictly in its queue's order (in a chord, pressing the second lane first is a miss), so its own `Score` isn't the game's. The score shown and saved is `GameScore`'s, which the model confirms from the judged run.
-- **If the server can't be reached mid-run**, the run plays on and the panel says the controller isn't counting (nothing is lost but its count).
+- **If the server can't be reached mid-run**, the run plays on and the panel says the controller isn't counting, and its score isn't kept (a best comes only from a run the controller reviewed; a server restart during a run loses it the same way).
 - **Songs mapped on the deployed site don't last until Supabase is set up there**: the Render service's song file is reset when it restarts; with `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` set the bank is kept in Supabase ([docs/supabase.md](docs/supabase.md)).
 - **Searching YouTube by name on the deployed site** needs `YOUTUBE_API_KEY` set on Render ([docs/youtube-api.md](docs/youtube-api.md)); pasting a YouTube link works without it. Without the key, a pasted link is checked as a song by its title and channel only.
 - **Practice and Overdrive run in the browser's copy of the rules** like the rest of play (Overdrive is checked again on the server; practice runs are never saved).
@@ -667,14 +674,16 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `src/test/main/MainTest.java` | Sarah Schallon | Controller construction, difficulty defaults, hit windows, invalid input, missed notes and upcoming-note preservation (GenAI-assisted). |
 | `src/test/main/GameScoreTest.java` | Miles D'Antonio | `GameScore` on the same run the browser's test uses (GenAI-assisted). |
 | `backend/src/test/.../ApiTests.java` | Miles D'Antonio | Every route against a fresh song bank (GenAI-assisted). |
-| `backend/src/test/.../PlayTests.java` | Miles D'Antonio | Playing through the controller: a press reaching Darsh's `Main`, the clock missing notes, practice's stretch, and bad input turned down (GenAI-assisted). |
+| `backend/src/test/.../PlayTests.java` | Miles D'Antonio | Playing through the controller: a press reaching Darsh's `Main`, the clock missing notes, practice's stretch, bad input turned down, a score kept only from a reviewed run (once), and the limits on starting runs and sending inputs (GenAI-assisted). |
 | `backend/src/test/.../MappingTests.java` | Miles D'Antonio | Name matching, the song check and the osu! port (GenAI-assisted). |
 | `backend/src/test/.../RechartTests.java` | Miles D'Antonio | Older songs' charts made again on the new difficulty ladder: kept only when every tile was in their Ultra (GenAI-assisted). |
 | `backend/src/test/.../songs/RunReplayTests.java` | Miles D'Antonio | A recorded run checked against the chart and counted again through `GameScore`, Overdrive's grace included (GenAI-assisted). |
 | `backend/src/test/.../SupabaseTests.java` | Miles D'Antonio | The song bank in Supabase, against a stand-in for its REST API (GenAI-assisted). |
+| `backend/src/test/.../songs/InputReviewTests.java` | Miles D'Antonio | The controller's review of a run's inputs: malformed, out of order, past the end, double presses, faster than real time, too many presses, hits nobody pressed for (GenAI-assisted). |
 | `backend/src/test/.../HeatTests.java` | Miles D'Antonio | Where players miss: each checked run's tiles counted per tile, tiles that don't fit ignored (GenAI-assisted). |
 | `backend/src/test/.../BackendApplicationTests.java` | Miles D'Antonio | The app starts (generated by Spring Initializr). |
 | `frontend/tests/unit/engine.test.ts` | Miles D'Antonio | The game rules: judging, holds, combo, score, each tile's result in chart order (GenAI-assisted). |
+| `frontend/tests/unit/review.test.ts` | Miles D'Antonio | The controller's review, the mock backend's copy of the server's (GenAI-assisted). |
 | `frontend/tests/unit/heat.test.ts` | Miles D'Antonio | Where players miss, the mock backend's copy of the server's rules (GenAI-assisted). |
 | `frontend/tests/unit/notes.test.ts` | Miles D'Antonio | Basic Pitch hearing a melody note by note, at its pitch and length (GenAI-assisted). |
 | `frontend/tests/unit/score.test.ts` | Miles D'Antonio | The score rules (`Score`'s, with the multiplier and holds), checked against `GameScore` (GenAI-assisted). |

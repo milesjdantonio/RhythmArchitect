@@ -50,6 +50,9 @@ export class ControllerLink {
     this.onState(s, status);
   }
 
+  /** The controller's id for this run (the scores route keeps a best only from a run it reviewed). */
+  get runId(): string | null { return this.status === 'off' ? null : this.run; }
+
   /** A key press in `lane` at `time` (seconds of song from beat 0). */
   press(lane: number, time: number) {
     if (this.status === 'off' || this.dead) return;

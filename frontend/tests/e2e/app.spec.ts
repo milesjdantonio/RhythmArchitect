@@ -378,6 +378,12 @@ test.describe('Rythm Architect', () => {
     await expect(page).toHaveURL(/#\/bank$/);
     await page.keyboard.press('Escape');
     await expect(page.locator('#now-title')).toHaveText('Ink and Fury');
+    // Play under the picked song starts it, as the menu's Play does.
+    await page.getByRole('button', { name: 'Music bank' }).click();
+    await page.locator('.bank-group .result', { hasText: 'Neon Blueprint' }).click();
+    await expect(page.locator('.bank-now-title')).toHaveText('Neon Blueprint');
+    await page.getByRole('link', { name: 'Play Neon Blueprint' }).click();
+    await expect(page).toHaveURL(/#\/play\/[^/]+\/medium$/);
   });
 
   test('the song on stage plays on in the music bank, a pick plays there, and the menu carries on with it', async ({ page, request }) => {

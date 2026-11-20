@@ -37,9 +37,11 @@ public class SongController {
     private static final Logger log = LoggerFactory.getLogger(SongController.class);
 
     private final SongStore store;
+    private final PlayController play;
 
-    public SongController(SongStore store) {
+    public SongController(SongStore store, PlayController play) {
         this.store = store;
+        this.play = play;
     }
 
     @GetMapping("/songs")
@@ -167,6 +169,8 @@ public class SongController {
      * game's model classes (RunReplay: the difficulty's Queue of Notes from SongModel, then
      * main.GameScore, Score with the multiplier and holds on top), and that is what's kept, marked
      * "rules": "overdrive"; a best from before (older points: before Score, or before the x10 scale and Overdrive) gives way to any such run.
+     * The run must be one the controller reviewed and passed (`play`: its run id; PlayController.keep,
+     * InputReview), and its score is kept once: anything else is turned down (422) and not counted.
      */
     @PostMapping("/songs/{id}/scores")
     public ObjectNode score(@PathVariable String id, @RequestBody JsonNode body) {
@@ -175,15 +179,15 @@ public class SongController {
         if (level == null || !NewSongCheck.finite(body.path("score"))) {
             throw ApiException.badRequest("Bad score");
         }
-        boolean recorded = body.has("run");
-        String runText = recorded ? body.path("run").asString(null) : null;
+        if (!body.path("run").isString()) throw ApiException.badRequest("Send the run as the game recorded it");
+        String runText = body.path("run").asString();
+        String playRun = body.path("play").isString() ? body.path("play").asString() : null;
         return store.write(all -> {
             ObjectNode song = store.find(all, id).orElseThrow(SongController::missing);
-            RunReplay.Result replayed = null;
-            if (recorded) {
-                replayed = RunReplay.of(runText, chartOf(song, level));
-                if (replayed == null) throw ApiException.badRequest("Bad run");
-            }
+            RunReplay.Result replayed = RunReplay.of(runText, chartOf(song, level));
+            if (replayed == null) throw ApiException.badRequest("Bad run");
+            // The controller's review: a run it saw from start to end, passed, its score not kept before.
+            play.keep(playRun, id, difficulty, runText);
             song.put("plays", song.path("plays").asInt(0) + 1);
             // Where the run missed, tile by tile (a checked run's `tiles`; ignored when they don't fit it).
             if (replayed != null && body.has("tiles")) TileHeat.add(song, difficulty, body.path("tiles").asString(null), runText);

@@ -46,6 +46,9 @@ class HeatTests {
     @Autowired
     MockMvc mvc;
 
+    @Autowired
+    com.rhythmarchitect.backend.songs.PlayController play;
+
     private static ObjectNode song(int tiles) {
         ObjectNode s = JSON.createObjectNode();
         var notes = s.putObject("charts").putObject("hard").putArray("notes");
@@ -86,13 +89,13 @@ class HeatTests {
         String run = "PPPPPPPPPPGEH1500;MLBP";
         String tiles = "PPPPPPPPPPGEMLP" + "-".repeat(n - 15);
         String body = "{\"difficulty\":\"hard\",\"score\":1,\"accuracy\":1,\"maxCombo\":1,\"grade\":\"S\",\"run\":\"%s\",\"tiles\":\"%s\"}";
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(body.formatted(run, tiles)))
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(Reviewed.play(mvc, play, id, body.formatted(run, tiles))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.heat.hard.runs").value(1))
             .andExpect(jsonPath("$.heat.hard.miss[12]").value(1))
             .andExpect(jsonPath("$.heat.hard.seen[15]").value(0));
         // Tiles that don't fit: the score still counts, the heat doesn't move.
-        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(body.formatted(run, "PPP")))
+        mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(Reviewed.play(mvc, play, id, body.formatted(run, "PPP"))))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.heat.hard.runs").value(1));
     }

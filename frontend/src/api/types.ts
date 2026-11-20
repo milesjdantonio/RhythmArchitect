@@ -301,8 +301,19 @@ export type NewSong = Omit<Song, 'id' | 'createdAt' | 'best' | 'plays' | 'favori
 export interface PlayState {
   confirmed: { score: number; accuracy: number; maxCombo: number } | null;
   reviewed: number;
+  /**
+   * The controller's review of the inputs (backend InputReview): passed, what it flagged (each
+   * check, its first detail, how often), and how many inputs it turned down before Main saw them.
+   * A best is kept only from a run that passed.
+   */
+  review?: PlayReview;
   score: number; combo: number; maxCombo: number; hits: number; misses: number; accuracy: number;
   time: number; left: number; upcoming: { lane: number; time: number }[];
+}
+export interface PlayReview {
+  passed: boolean;
+  flags: { check: string; detail: string; count: number }[];
+  refused: number;
 }
 /** A run started: its id, how many notes Main's queue holds, the state. */
 export interface PlayStart { run: string; notes: number; state: PlayState }
@@ -323,6 +334,8 @@ export interface TileHeat {
 
 export interface ScoreSubmit {
   difficulty: Difficulty;
+  /** The controller's run id (POST /api/play): the score is kept only if it reviewed that run and it passed. */
+  play?: string;
   score: number;
   accuracy: number;
   maxCombo: number;
