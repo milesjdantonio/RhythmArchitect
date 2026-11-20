@@ -73,6 +73,29 @@ describe('thinning a chart', () => {
     expect(out).toEqual([two[1]]);
   });
 
+  it("follows the kind of sound a phrase is mostly on, not whatever is loudest from moment to moment", () => {
+    // A tile every 8th; the melody (mid) on most, a kick (low) on a few, a little louder.
+    const src = Array.from({ length: 64 }, (_, i) => ({ t: i / 2, lane: i % 4, pitch: 'C5', len: 0.25 }));
+    const events = src.map((n, i) => ({ ...ring(n.t * SPB, 0.25), band: (i % 4 === 1 ? 'low' : 'mid') as SoundEvent['band'], strength: i % 4 === 1 ? 0.7 : 0.6 }));
+    const base = opts({ events, onGrid: false, rate: 1.2, share: 0.3, minGap: 0.2 });
+    const kind = (t: number) => events.find((e) => Math.abs(e.t - t) < 0.01)?.band ?? null;
+    const lows = (out: ChartNote[]) => out.filter((n) => kind(n.t) === 'low').length / out.length;
+    const loud = thinChart(src, base), led = thinChart(src, { ...base, kind, phrase: (t) => Math.floor(t / 8), follow: 0.6 });
+    expect(lows(loud)).toBeGreaterThan(0.5);
+    expect(lows(led)).toBeLessThan(0.2);
+  });
+
+  it('a repeated phrase keeps what the phrase it repeats kept', () => {
+    // Two phrases of the same rhythm (16 beats apart), sounds of their own strengths.
+    const src = Array.from({ length: 64 }, (_, i) => ({ t: i / 2, lane: i % 4, pitch: 'C5', len: 0.25 }));
+    const events = src.map((n, i) => ({ ...ring(n.t * SPB, 0.25), strength: 0.3 + 0.6 * ((i * 0.618) % 1) }));
+    const base = opts({ events, onGrid: false, rate: 100, share: 0.4, minGap: 0.2 });
+    const twin = (t: number) => (t >= 16 ? t - 16 : null);
+    const at = (out: ChartNote[], from: number) => new Set(out.filter((n) => n.t >= from && n.t < from + 16).map((n) => n.t - from));
+    const alike = (out: ChartNote[]) => { const a = at(out, 0), b = at(out, 16); return [...b].filter((x) => a.has(x)).length / Math.max(1, b.size); };
+    expect(alike(thinChart(src, { ...base, twin }))).toBeGreaterThan(alike(thinChart(src, base)) + 0.2);
+  });
+
   it('a chord down to one keeps the hold, else moves off the last lane', () => {
     const c = [{ t: 0, lane: 1, pitch: 'C5', len: 0.25 }, { t: 0, lane: 2, pitch: 'C5', len: 1, hold: true }];
     expect(capChord(c, 1, -1)[0].lane).toBe(2);

@@ -206,6 +206,25 @@ class SupabaseTests {
     }
 
     @Test
+    void aBuiltInDeletedThereStaysDeletedWhenItComesBack() throws IOException {
+        // The bank in Supabase holds one song (the built-ins were deleted). A server that boots while
+        // it's out starts its file from the seed; when Supabase answers, only the songs added
+        // meanwhile go up, not the seed's built-ins.
+        table.put("kept", (ObjectNode) json.readTree("{\"id\":\"kept\",\"sort_key\":1,\"song_data\":{\"id\":\"kept\",\"title\":\"Kept\",\"artist\":\"A\"}}"));
+        Path file = Files.createTempDirectory("rythm-supabase").resolve("songs.json");
+        down = true;
+        SongStore s = store(file, "secret");
+        s.retryAfter(0);
+        assertEquals("file", s.storage());
+        assertTrue(s.read(all -> all.stream().anyMatch(x -> x.path("builtIn").asBoolean(false))), "the file started from the seed");
+        ObjectNode added = s.add((ObjectNode) json.readTree("{\"title\":\"Meanwhile\",\"artist\":\"A\",\"source\":{\"kind\":\"youtube\",\"videoId\":\"mmm\"}}"));
+        down = false;
+        assertEquals("supabase", s.storage());
+        assertEquals(java.util.Set.of("kept", added.path("id").asString()), table.keySet(), "no built-in came back");
+        assertEquals(List.of(added.path("id").asString(), "kept"), s.read(SupabaseTests::ids));
+    }
+
+    @Test
     void saysWhenTheKeyOrUrlIsTheWrongOne() {
         SupabaseSongs publishable = new SupabaseSongs(json, url, "sb_publishable_abc", "songs");
         assertTrue(publishable.settingsProblem().contains("publishable"));

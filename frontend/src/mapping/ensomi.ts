@@ -14,6 +14,8 @@ import type { Ort } from './ort';
 import { cachedSource } from './ensomiModel';
 import { KEEP, thinChart } from './thin';
 import { flowChart } from './lanes';
+import { barOf, beatAt, beatMap, beatPlace, snapSec, type BeatMap } from './beatmap';
+import { findRepeats, twinSec, type Repeats } from './repeats';
 
 export { KEEP };
 // The runtime finds these beside its own module, which a bundler moves; so they're handed to it.
@@ -73,6 +75,10 @@ export interface TrainedOptions {
   events: SoundEvent[];
   /** The beat grid is trusted (Easy and Medium then favour tiles on the beat). */
   onGrid: boolean;
+  /** Beats per bar (4 when not given). */
+  meter?: number;
+  /** The beat tracker's own beats (seconds): the beat map tiles are placed on (beatmap.ts). */
+  beats?: number[];
   gpu: boolean;
   /** Where it's got: loading the model, listening to the song (its own beat tracking), charting it (0..1 of the song charted). */
   onStage?: (stage: TrainedStage, p?: number) => void;
@@ -83,12 +89,15 @@ export interface TrainedOptions {
    * like its tiles: return the song's grid and sounds measured again on it to place the tiles
    * there, or null to keep the first grid (the worker decides: see listen.worker.ts).
    */
-  regrid?: (grid: BeatGrid) => Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'> | null;
+  regrid?: (grid: BeatGrid) => Placing | null;
   title?: string;
   artist?: string;
   /** Each chart the model makes, as it made it (its objects in ms, before they're moved and thinned), with the shift it gets: for tools that study its output. */
   onRaw?: (star: number, objects: { lane: number; start_ms: number; end_ms?: number }[], shift: number) => void;
 }
+
+/** What the tiles are placed by: the song's grid, its sounds, and the beat tracker's beats. */
+export type Placing = Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'meter' | 'beats'>;
 
 /** Loading the model, its listening (beat tracking, features), charting, charting again busier (nextStar). */
 export type TrainedStage = 'load' | 'listen' | 'chart' | 'again';
@@ -243,32 +252,36 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     o.onRaw?.(STAR, first.chart.objects, shift);
     // The model's own grid (its larger beat tracker) can replace the first one: then the tiles go
     // on that one.
-    let on: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'> = o;
+    let on: Placing = o;
     const own = o.regrid ? osuGrid(first.osu, songMs / 1000) : null;
-    if (own && o.regrid) on = o.regrid({ ...own, offset: Math.round((own.offset + shift) * 1000) / 1000 }) ?? o;
+    if (own && o.regrid) {
+      const again = o.regrid({ ...own, offset: Math.round((own.offset + shift) * 1000) / 1000 });
+      if (again) on = { ...again, beats: o.beats };
+    }
+    const place = placer(on);
     // Ultra a stretch at a time (see ultraTargets): charted again busier while too little is met.
     const targets = ultraTargets(on.events, on.bpm, songMs / 1000);
-    const ultraOf = (notes: ChartNote[]) => perWindow(easierCharts(notes, on).ultra.notes, on, targets.length);
-    const firstNotes = toChart(first.chart.objects, 'ultra', on, shift).notes;
+    const ultraOf = (notes: ChartNote[]) => perWindow(place.easier(notes).ultra.notes, on, targets.length);
+    const firstNotes = place.chart(first.chart.objects, shift);
     const tries = [{ star: STAR, notes: firstNotes, counts: ultraOf(firstNotes) }];
     let notes = firstNotes;
     const covers = [coverage(tries[0].counts, targets)];
     for (let star = nextStar([STAR], covers[0]); star != null; star = nextStar(tries.map((t) => t.star), covers[covers.length - 1])) {
       const again = (await chartAt(star, 'again')).chart.objects;
       o.onRaw?.(star, again, shift);
-      const more = toChart(again, 'ultra', on, shift).notes;
+      const more = place.chart(again, shift);
       tries.push({ star, notes: more, counts: ultraOf(more) });
       notes = splice(tries, targets, on);
       covers.push(coverage(ultraOf(notes), targets));
     }
-    const charts = easierCharts(notes, on);
+    const charts = place.easier(notes);
     for (const d of DIFFS) o.onProgress?.({ difficulty: d, done: 1, total: 1, tiles: charts[d].notes.length });
     const v = models.capabilities.model_version;
     const pct = (x: number) => `${Math.round(x * 100)}%`;
     const stars = tries.length > 1
       ? `${tries.map((t) => `${t.star}★`).join(' + ')} by stretch of the song (Ultra met ${pct(covers[0])} of its ${targets.reduce((a, b) => a + b, 0)}-tile target at ${STAR}★; ${tries.slice(1).map((t, i) => `with ${t.star}★ ${pct(covers[i + 1])}`).join(', ')})`
       : `${STAR}★ (Ultra met ${pct(covers[0])} of its target)`;
-    return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${stars}; each difficulty a subset; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds)` };
+    return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${stars}; each difficulty a subset; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds${place.note})` };
   } finally {
     await models.dispose().catch(() => {});
   }
@@ -326,12 +339,82 @@ export function soundShift(objects: { start_ms: number }[], events: { sec: numbe
   return Math.round(d[d.length >> 1] * 1000) / 1000;
 }
 
+/**
+ * What a row of the kind of sound its phrase follows weighs extra in an easier chart (thin.ts
+ * `follow`). Against the human charts of the Creative Commons benchmark (Nov 19), Easy hopped
+ * between kinds of sound (the band under each tile) 29% of the time against the humans' 20%; at
+ * 0.3, 24% (Easy's F1 against their Easy charts 54% → 55%). At 0.6 it hopped 21%, but on the
+ * synthetic band (map-bench) Easy and Medium then caught about 5 points fewer of the strong notes
+ * (kick, snare, bass and melody together); at 0.3 they catch as many as without it. A row on the
+ * beat weighing more on Easy ("Easy from the beat") was tried and left
+ * out: human Easy charts put 26-50% of their tiles on the beat, ours already 41%, and more made
+ * them less alike.
+ */
+const FOLLOW = 0.3;
+
+/** The song's beat map and repeated phrases, found once for all its charts. */
+export interface Placed { map: BeatMap | null; repeats: Repeats | null }
+
+/**
+ * Everything the model's tiles are placed by, found once: the beat map (from the beat tracker's
+ * beats: beatmap.ts) and the repeated phrases on it (repeats.ts). `chart` turns the model's objects
+ * into Ultra's tiles; `easier` makes every difficulty from them.
+ */
+export function placer(on: Placing) {
+  const secs = [...on.events].map((e) => e.sec).sort((a, b) => a - b);
+  const map = on.beats?.length ? beatMap({ beats: on.beats }, secs, { spb: 60 / on.bpm, offset: on.offset, meter: on.meter ?? 4 }) : null;
+  const placed: Placed = { map, repeats: map ? findRepeats(map, on.events) : null };
+  const tiled = map ? map.division.filter((d) => d > 0).length / Math.max(1, map.division.length) : 0;
+  const triplets = map ? map.division.filter((d) => d === 3 || d === 6).length / Math.max(1, map.division.length) : 0;
+  return {
+    placed,
+    chart: (objects: { lane: number; start_ms: number; end_ms?: number }[], shift: number) => toChart(objects, 'ultra', on, shift, map).notes,
+    easier: (notes: ChartNote[]) => easierCharts(notes, on, placed),
+    /** For the report: how much of the song has its own grid, and the repeats found. */
+    note: map ? `; tiles on the beat map's 16ths or triplets where its sounds follow them (${Math.round(tiled * 100)}% of the song, triplets ${Math.round(triplets * 100)}%), ${placed.repeats?.of.size ?? 0} repeated phrases charted alike` : '',
+  };
+}
+
 /** Each difficulty keeps some of the model's rows (KEEP). */
-export function easierCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'>): Record<Difficulty, Chart> {
+export function easierCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'>, placed?: Placed): Record<Difficulty, Chart> {
   const spb = 60 / o.bpm;
+  const map = placed?.map ?? null, repeats = placed?.repeats ?? null;
+  const events = [...o.events].sort((a, b) => a.sec - b.sec);
+  const secOf = (t: number) => o.offset + t * spb;
+  const soundAt = (sec: number, lim: number) => {
+    let lo = 0, hi = events.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (events[m].sec < sec) lo = m + 1; else hi = m; }
+    return [events[lo - 1], events[lo]].filter((e) => e && Math.abs(e.sec - sec) < lim).sort((a, b) => Math.abs(a.sec - sec) - Math.abs(b.sec - sec))[0];
+  };
+  // Where a moment sits in the music's own beat, its sound's kind and its phrase, its twin.
+  const place = map ? (t: number) => {
+    const sec = secOf(t), at = beatPlace(map, sec), i = Math.round(beatAt(map, sec));
+    return { beat: at === 'beat', half: at === 'half', downbeat: at === 'beat' && ((i - map.downbeat) % map.meter + map.meter) % map.meter === 0 };
+  } : undefined;
+  const kind = (t: number) => soundAt(secOf(t), 0.05)?.band ?? null;
+  const phrase = (t: number) => (map ? Math.floor(barOf(map, beatAt(map, secOf(t))) / 2) : Math.floor(t / 8));
+  const twin = repeats ? (t: number) => { const s = twinSec(repeats, secOf(t)); return s == null ? null : (s - o.offset) / spb; } : undefined;
+  const pitch = (n: ChartNote) => soundAt(secOf(n.t), 0.03)?.midi ?? null;
   // Each difficulty's tiles, then its lanes flowed for its own speed (lanes.ts: thinning keeps the
-  // model's lanes, written for its whole chart).
-  const chart = (d: Difficulty): Chart => ({ difficulty: d, lanes: 4, notes: flowChart(thinChart(model, { ...KEEP[d], spb, offset: o.offset, events: o.events, onGrid: o.onGrid }), d, spb) });
+  // model's lanes, written for its whole chart), a repeated phrase's tiles in their twins' lanes.
+  const chart = (d: Difficulty): Chart => {
+    const kept = thinChart(model, {
+      ...KEEP[d], spb, offset: o.offset, events: o.events, onGrid: o.onGrid,
+      ...(place ? { place } : {}),
+      ...(twin ? { twin } : {}),
+      ...(d !== 'ultra' ? { kind, phrase, follow: FOLLOW } : {}),
+    });
+    const sorted = [...kept].sort((a, b) => a.t - b.t);
+    const tol = 0.03 / spb;
+    const twinNote = twin ? (n: ChartNote) => {
+      const tw = twin(n.t);
+      if (tw == null) return undefined;
+      let lo = 0, hi = sorted.length;
+      while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m].t < tw) lo = m + 1; else hi = m; }
+      return [sorted[lo - 1], sorted[lo]].find((x) => x && x !== n && Math.abs(x.t - tw) <= tol && x.t < n.t);
+    } : undefined;
+    return { difficulty: d, lanes: 4, notes: flowChart(kept, d, spb, { twin: twinNote, pitch }) };
+  };
   return { easy: chart('easy'), medium: chart('medium'), hard: chart('hard'), ultra: chart('ultra') };
 }
 
@@ -341,7 +424,7 @@ export function easierCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' |
  * it, on a 16th when it's within 20 ms of one and the grid holds there); others keep their own
  * time, on a 16th when within 12 ms of one where the grid holds.
  */
-export function toChart(objects: { lane: number; start_ms: number; end_ms?: number }[], difficulty: Difficulty, o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events'>, shift = 0): Chart {
+export function toChart(objects: { lane: number; start_ms: number; end_ms?: number }[], difficulty: Difficulty, o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events'>, shift = 0, map: BeatMap | null = null): Chart {
   const bps = o.bpm / 60;
   const events = [...o.events].sort((a, b) => a.sec - b.sec);
   const notes: ChartNote[] = [];
@@ -360,7 +443,14 @@ export function toChart(objects: { lane: number; start_ms: number; end_ms?: numb
     for (let k = Math.max(0, j - 4); k < Math.min(events.length, j + 5) && !holds; k++) {
       holds = Math.abs(events[k].sec - sec) < 0.5 && Math.abs(events[k].t * 4 - Math.round(events[k].t * 4)) < 1e-6;
     }
-    const t = Math.max(0, on ? on.t : holds && Math.abs(raw - q) / bps < 0.012 ? q : Math.round(raw * 1000) / 1000);
+    // On the beat map, the stretch's own grid (16ths or triplets) where its sounds follow one: the
+    // sound's time (or the tile's own) moved onto it when within 20 ms (12 ms for its own).
+    // (Where it has no grid, the straight grid's placement as before.)
+    const heard = on ? on.sec : sec;
+    const moved = map ? snapSec(map, heard, on ? 0.02 : 0.012) : heard;
+    const snapped = moved !== heard ? moved : null;
+    const t = Math.max(0, snapped != null ? Math.round((snapped - o.offset) * bps * 1000) / 1000
+      : on ? on.t : holds && Math.abs(raw - q) / bps < 0.012 ? q : Math.round(raw * 1000) / 1000);
     const len = ob.end_ms != null ? Math.round(((ob.end_ms - ob.start_ms) / 1000) * bps * 1000) / 1000 : 0;
     // The pitch of the sound it's on, when a pitched one was heard within 60 ms (synth playback only).
     const pitched = close(0.06);

@@ -41,6 +41,44 @@ describe('lane flow', () => {
     expect(out.filter((n) => n.t === 2).map((n) => n.lane).sort()).toEqual([0, 3]);
   });
 
+  it('plays a repeated phrase in the lanes its twin was played in', () => {
+    // The same rhythm twice, 8 beats apart; the model wrote the repeat in other lanes.
+    const first = [0, 2, 1, 3, 2, 0, 1, 3], again = [3, 1, 0, 2, 0, 3, 2, 1];
+    const src: ChartNote[] = [
+      ...first.map((lane, i) => ({ t: i, lane, pitch: 'C5', len: 0.25 })),
+      ...again.map((lane, i) => ({ t: 8 + i, lane, pitch: 'C5', len: 0.25 })),
+    ];
+    const twin = (n: ChartNote) => (n.t >= 8 ? src.find((m) => m.t === n.t - 8) : undefined);
+    const out = flowChart(src, 'hard', SPB, { twin });
+    const lanes = (from: number) => out.filter((n) => n.t >= from && n.t < from + 8).map((n) => n.lane);
+    const same = lanes(8).filter((l, i) => l === lanes(0)[i]).length;
+    // (A pull, not a copy: a twin's lane still gives way to a big leap or a quick repeat; on the
+    // human-chart benchmark repeats then share their lanes about as often as the humans' do.)
+    expect(same).toBeGreaterThanOrEqual(5);
+    // Without twins, the repeat stays mostly the model's.
+    const free = flowChart(src, 'hard', SPB);
+    expect(free.filter((n) => n.t >= 8).filter((n, i) => n.lane === free[i].lane).length).toBeLessThan(4);
+  });
+
+  it('moves the lanes with the tune where the model moved against it', () => {
+    // A tune going up and down by steps; the model's lanes go the other way each time.
+    const midi = [60, 62, 64, 65, 67, 65, 64, 62];
+    const src = Array.from({ length: 64 }, (_, i) => {
+      const up = midi[(i + 1) % 8] > midi[i % 8];
+      return { t: i, lane: up ? 3 - (i % 2) : i % 2, pitch: 'C5', len: 0.25, i };
+    });
+    const pitch = (n: ChartNote) => midi[(n as unknown as { i: number }).i % 8];
+    const against = (out: ChartNote[]) => {
+      let n = 0;
+      for (let i = 1; i < out.length; i++) {
+        const dl = out[i].lane - out[i - 1].lane, dp = pitch(out[i]) - pitch(out[i - 1]);
+        if (dl && dp && Math.sign(dl) !== Math.sign(dp)) n++;
+      }
+      return n;
+    };
+    expect(against(flowChart(src, 'medium', SPB, { pitch }))).toBeLessThan(against(flowChart(src, 'medium', SPB)));
+  });
+
   it('keeps the model\'s lanes where they already play well', () => {
     // A walk up and down, a step at a time, spaced out: nothing to fix.
     const walk = [0, 1, 2, 3, 2, 1];

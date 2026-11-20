@@ -194,6 +194,9 @@ public class SongStore {
                     rows.forEach(r -> have.add(r.path("id").asString("")));
                     for (int i = carry.size() - 1; i >= 0; i--) {
                         ObjectNode s = carry.get(i);
+                        // Not the built-ins: the file got those from the seed while Supabase was
+                        // out, and one missing from Supabase was deleted there (it stays deleted).
+                        if (s.path("builtIn").asBoolean(false)) continue;
                         if (!have.contains(s.path("id").asString(""))) { next.addFirst(s); added = true; }
                     }
                 }

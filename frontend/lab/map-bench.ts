@@ -22,7 +22,8 @@ async function mapAudio(pcm: Float32Array, sr: number, title: string) {
   const o = await import('../src/mapping/ort');
   const gpu = await o.hasWebGpu();
   const { trackBeats, gridFromBeats } = await import('../src/mapping/beats');
-  const grid = gridFromBeats(await trackBeats(o.ort, pcm, sr, { providers: gpu ? ['webgpu', 'wasm'] : ['wasm'] }));
+  const tracked = await trackBeats(o.ort, pcm, sr, { providers: gpu ? ['webgpu', 'wasm'] : ['wasm'] });
+  const grid = gridFromBeats(tracked);
   const result = automap(pcm, sr, { grid });
   const sameBeat = (a: number, b: number) => [1, 2, 0.5].some((k) => Math.abs(a / b / k - 1) < 0.04);
   let on: Grid = { bpm: result.bpm, offset: result.offset };
@@ -31,13 +32,13 @@ async function mapAudio(pcm: Float32Array, sr: number, title: string) {
   let raw = { notes: 0, long: 0 };
   const out = await trainedCharts(o.ort, pcm, sr, {
     onRaw: (star, objects) => { if (star === 2) raw = { notes: objects.length, long: objects.filter((x) => x.end_ms != null && x.end_ms - x.start_ms >= 120).length }; },
-    base: ENSOMI_BASE, title, bpm: result.bpm, offset: result.offset, events: result.events, onGrid: result.onBeatGrid, gpu,
+    base: ENSOMI_BASE, title, bpm: result.bpm, offset: result.offset, events: result.events, onGrid: result.onBeatGrid, meter: result.meter, beats: tracked.beats, gpu,
     regrid: (g) => {
       model = g.bpm;
       if (result.gridUsed && (sameBeat(result.bpm, g.bpm) || result.onBeatGrid)) return null;
       const again = automap(pcm, sr, { grid: { ...g, confidence: 1, fit: 1 } });
       on = { bpm: again.bpm, offset: again.offset };
-      return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid };
+      return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid, meter: again.meter };
     },
   });
   return { charts: out.charts, grid: on, tracker: grid?.bpm ?? null, fit: grid?.fit ?? null, beat: result.report.beat ?? '', onset: result.bpm, model: model as number | null, gridUsed: result.gridUsed, gpu, rawLong: raw.notes ? raw.long / raw.notes : 0 };

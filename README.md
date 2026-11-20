@@ -416,6 +416,17 @@ Before that, two models run in the browser on what was heard (the mapping worker
   edge-to-edge jumps. Measured against 26 human charts (`patterns.ts`, `tools/map-human.mjs`), the
   flowed charts sit within the human range on lane movement, quick repeats, jumps, one-hand runs,
   lane balance and repeated patterns.
+  Then three things that human charts do (measured against the same 26 charts, Nov 19):
+  - *An exact rhythm.* The beat tracker's own beats make a beat map (`beatmap.ts`), so a song
+    whose tempo drifts still has an exact grid in each stretch, 16ths or triplets, and tiles go onto
+    it (within 20 ms) wherever its sounds clearly follow one: 44% of the tiles sit exactly on it,
+    from 12%. The check is strict: a looser one found a "grid" in random sounds.
+  - *Repeats charted alike* (`repeats.ts`): a phrase that repeats an earlier one keeps the same
+    moments and leans toward the same lanes (45% of repeated tiles in the same lane, from 37%;
+    the humans' charts: 43%).
+  - *Lanes that go with the tune*, and easier charts that follow one kind of sound through a
+    phrase rather than hopping between the kick and the melody (Easy hopped 30% of the time; the
+    humans' Easy charts 19%; ours now 24%, without catching fewer of the strong notes).
 - **If the trained mapper fails**: with WebGPU, Demucs (`stems.ts`) splits the song into drums,
   bass, vocals and other so the onset mapper finds each part's sounds on its own (model about 172 MB,
   cached likewise), and `charts.ts` picks the tiles as described above.
@@ -432,7 +443,8 @@ frontend/               the game: everything below runs from here (npm scripts, 
     api/                types (the backend contract) and the client
     audio/              playback (Tone.js: real tracks, synth songs, previews), YouTube, the menu's music
     mapping/            the Generate pipeline: listening, the beat tracker, the onset mapper, the
-                        trained mapper, charts, osu! fan charts, loudness and visual cues
+                        trained mapper, the beat map and repeated phrases, charts, osu! fan
+                        charts, loudness and visual cues
     library/            the songs cache, search and the music bank's letter groups
     game/               rules (engine.ts), autoplay, the 2D fallback renderer
     stage/              the three.js stage (Stage3D.ts, with its shaders, textures and particle forms),
@@ -660,7 +672,8 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `frontend/tests/unit/automap.test.ts`, `automap-band.test.ts` | Miles D'Antonio | The onset mapper and its note-finding benchmark (GenAI-assisted). |
 | `frontend/tests/unit/beats.test.ts` | Miles D'Antonio | The beat tracker's grid and inputs (GenAI-assisted). |
 | `frontend/tests/unit/trained.test.ts` | Miles D'Antonio | The trained mapper's charts: thinning, timing (GenAI-assisted). |
-| `frontend/tests/unit/lanes.test.ts` | Miles D'Antonio | The lane flow: fewer quick repeats and leaps, no tile moved in time, held lanes and chords left alone (GenAI-assisted). |
+| `frontend/tests/unit/lanes.test.ts` | Miles D'Antonio | The lane flow: fewer quick repeats and leaps, no tile moved in time, held lanes and chords left alone, repeats in their twins' lanes, lanes with the tune (GenAI-assisted). |
+| `frontend/tests/unit/beatmap.test.ts` | Miles D'Antonio | The beat map (a drifting tempo followed, triplets taken where the sounds follow them, no grid in scattered sounds, double- and half-time trackers) and repeated phrases (GenAI-assisted). |
 | `frontend/tests/unit/upgrade.test.ts` | Miles D'Antonio | Older songs upgraded to four charts and to the new ladder, and the check the server makes (GenAI-assisted). |
 | `frontend/tests/unit/sync.test.ts` | Miles D'Antonio | The Map Syncer's math (GenAI-assisted). |
 | `frontend/tests/unit/youtube.test.ts` | Miles D'Antonio | The YouTube player's clock (GenAI-assisted). |

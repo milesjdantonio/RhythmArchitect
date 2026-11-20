@@ -10,7 +10,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 - Read [README.md](README.md) for the layout, [docs/api.md](docs/api.md) for the backend contract,
   [docs/resources.md](docs/resources.md) for tools and rules.
 - Code by area: `src/audio/` (playback.ts, youtube.ts, ambient.ts), `src/mapping/` (the Generate
-  pipeline: listening, beats, automap, charts, ensomi (the trained mapper), thin, osu), `src/library/` (song cache, search, bank),
+  pipeline: listening, beats, automap, charts, ensomi (the trained mapper), beatmap, repeats, thin,
+  lanes, osu), `src/library/` (song cache, search, bank),
   `src/game/` (rules), `src/stage/` (3D stage), `src/background/`, `src/intro/`, `src/screens/`,
   `src/components/` (shared, plus `menu/`, `play/`, `generate/`). The mock backend and the songs it
   starts with are in `mock-server/`.
@@ -38,7 +39,11 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   Haniya isn't credited in the README (she didn't work on it).
 - The song bank is a JSON file, or Supabase when `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are set
   (`SupabaseSongs`: its REST API with Java's own HTTP client, no driver or pool, so boots stay
-  fast; `docs/supabase.md`, `docs/supabase.sql`). The browser never talks to Supabase. Keep the
+  fast; `docs/supabase.md`, `docs/supabase.sql`). The browser never talks to Supabase. The live
+  bank holds real songs only: the user had the built-in test tracks (Neon Blueprint, Ink and Fury,
+  The Restless Stacks) deleted from it on Nov 19. They stay in the seed and the mock as test
+  fixtures; the seed fills only an empty bank, and coming back from a Supabase outage never
+  carries built-ins over (`loadRemote`). Keep the
   backend's boot quick (a sleeping free server wakes on the first visit): no startup work beyond
   Spring's own (the bank is read in the background, `SongStore.warm`), and the Docker image keeps
   its AOT cache step (its training start and `CMD` share one fixed heap, `-Xmx384m`: a heap
@@ -167,6 +172,31 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   to a third holds over sounds that had stopped. To study its output, `onRaw` hands over each chart
   as the model made it (the Nov 19 study ran it headless on the bundled tracks and re-thinned
   offline). e2e tests switch it off (localStorage `rythm-architect:no-ensomi`).
+- Its tiles are placed by `placer` (`ensomi.ts`), built once per song from the grid, the sounds
+  and the beat tracker's own beats (`beats`, from the worker):
+  - **The beat map** (`src/mapping/beatmap.ts`): each beat where the song really has it (the
+    tracker's beats at the grid's level, smoothed, lined up with the attacks), so a drifting or
+    played song has an exact grid in every stretch, not one straight grid that runs off it. Each
+    stretch takes 16ths or triplets (8th or 16th) where its sounds follow them, or none; a sound goes
+    onto it within 20 ms (a tile's own time, 12 ms). The check is strict on purpose (`EXPLAINS`,
+    `CHANCE`: clearly more sounds on its points than chance): a looser one found a "grid" in random
+    sounds on half the beats. Human charts are no timing target: their tiles sit 13-30 ms off the
+    sounds on most of the benchmark's songs (some drift through the song); they read tight because
+    they're evenly spaced, which this gives ours.
+  - **Repeats** (`src/mapping/repeats.ts`): a 2-bar phrase whose sounds (rhythm by band, harmony)
+    repeat an earlier one's (`PHRASE_SIMILAR`) is charted alike: thinning keeps or leaves its rows
+    as its twin's were (`thin.ts` `twin`), and lane flow pulls each tile to its twin's lane
+    (`TWIN_COST`, a pull, not a copy: humans share lanes on repeats ~43% of the time, ours 45%).
+  - **Lanes with the tune** (`lanes.ts` `CONTOUR_COST`): a step against the pitch costs a little
+    (humans 47% with / 42% against; ours 45/39, from 42/44).
+  - **Following one kind of sound**: on Easy, Medium and Hard each phrase favours the band its rows
+    weigh most in (`FOLLOW` 0.3: Easy hopped between kinds 29% of the time, humans 20%; now 24%;
+    0.6 gave 21% but caught 5 points fewer of the synthetic band's strong notes on Easy and Medium). In a
+    full mix nearly every sound reads as pitched, so parts can't be told apart better without
+    splitting the song (stems.ts). Most human tiles our charts miss aren't in the model's chart
+    and aren't on a sound we measured either: hearing more is what would close the rest.
+  - "Easy from the beat" (rows on the beat weighing more on Easy) was tried and left out: human
+    Easy charts put 26-50% of their tiles on the beat, ours already ~40%, and more made them less alike.
 - Only if it's off or fails: with WebGPU the song is split with Demucs (`src/mapping/stems.ts`,
   ~172 MB, `stemModel.ts`; e2e: `rythm-architect:no-stems`), and the onset mapper's own charts
   (`charts.ts`) are used. All the models run on one ONNX Runtime (`src/mapping/ort.ts`); any of
@@ -195,6 +225,12 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   listen (position reads, player states, tab hidden; no audio; `src/mapping/listenLog.ts`);
   `node tools/replay-listen.mjs <log.json>` replays it through the placement and reports what the
   recording holds, the gaps, the hidden spans and the stretches.
+- **Mapping the bank again** after the mapper changes: `node tools/remap-bank.mjs [--only=<ids>]`
+  runs each listened YouTube song through the page's own Generate beatmap → Listen and map in a
+  real browser window, the same video, the sound kept off the speakers (the capture's
+  `suppressLocalAudioPlayback`; `--mute-audio` silences the capture too). It saves the new maps to
+  `.data/remap/`; `--apply` adds each to the live bank and then deletes the old one (bests and
+  plays go). Fan charts are left alone unless named in `--only` (One Dance was remade, Nov 19); a map the trained mapper didn't chart is never applied.
 - Keep the API types (`src/api/types.ts`), the mock (`mock-server/api.ts`) and the Spring Boot
   backend (`backend/`) in step. No AI runs on the server.
 - If it can't listen, an osu! fan chart is the fallback (`mock-server/sources.ts`,
@@ -279,7 +315,12 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   `node tools/map-bench.mjs` (the whole pipeline in a browser on the synthetic band of
   `tests/bench/band.ts`, 76-188 BPM clean and rough, then the bundled tracks): tempo right on every
   band, tiles on real notes, strong notes caught per difficulty, the ladder's steps and holds.
-  Nov 19: tempo 16/16, on-note 100%, strong caught E 80% M 93% H 96% U 96%, every step ×1.3-1.55.
+  Nov 19 (with the beat map, repeats and following): tempo 16/16, on-note E 100% M 98% H 98% U 96%
+  (the 76 BPM band's Ultra 79%: the model's own chart there, read at 152), strong caught E 79% M 82%
+  H 97% U 98% (before them: 80/84/98/98), every step ×1.22-1.73.
+  The human-chart study behind them (Nov 19): one browser run saved what the steps after the model
+  work from (its raw charts, the sounds, the tracker's beats) for every Creative Commons song, then
+  each idea was replayed offline against the human charts in seconds; do it that way again.
 - Against human charts: `python -I tools/fetch-cc-sets.py <folder outside the repo>` (Creative
   Commons songs with osu!mania 4K charts; credits in NOTICE.md; their audio is never committed),
   then `node tools/map-human.mjs <folder>`. Nov 19 (26 charts, 19 songs): timing F1 63% at the

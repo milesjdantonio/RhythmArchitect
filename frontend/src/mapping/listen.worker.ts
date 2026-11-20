@@ -40,6 +40,8 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
   try {
     const { pcm, sr, split, trained } = e.data;
     let grid: ReturnType<typeof import('./beats').gridFromBeats> | undefined;
+    // The tracker's own beats: the trained mapper places its tiles on them (beatmap.ts).
+    let beats: number[] | undefined;
     let gridError: string | undefined;
     let stems: Record<PartName, Float32Array> | null = null;
     let gpu = false;
@@ -50,7 +52,9 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       gpu = await o.hasWebGpu();
       post({ progress: 'finding the beat' });
       const { trackBeats, gridFromBeats } = await import('./beats');
-      grid = gridFromBeats(await trackBeats(o.ort, pcm, sr, { providers: gpu ? ['webgpu', 'wasm'] : ['wasm'] }));
+      const tracked = await trackBeats(o.ort, pcm, sr, { providers: gpu ? ['webgpu', 'wasm'] : ['wasm'] });
+      beats = tracked.beats;
+      grid = gridFromBeats(tracked);
     } catch (err) {
       gridError = err instanceof Error ? err.message : String(err);
       console.warn('[mapper] carrying on without the beat tracker', err);
@@ -87,7 +91,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       const out = await trainedCharts(ort!, pcm, sr, {
         base: trained!.base, title: trained!.title, artist: trained!.artist,
         bpm: result.bpm, offset: result.offset, events: result.events,
-        onGrid: result.onBeatGrid, gpu,
+        onGrid: result.onBeatGrid, meter: result.meter, beats, gpu,
         onStage: (stage, p) => post({ stage, p }),
         onProgress: (p) => post({ chart: p }),
         regrid: (g) => {
@@ -101,7 +105,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
           const again = automap(pcm, sr, { grid: { ...g, confidence: 1, fit: 1 }, stems });
           again.report.beat = `the trained mapper's beat tracker: ${g.bpm} BPM, ${g.meter}/4 (used: ${why}) · ${result.report.beat ?? 'no beat tracker'}`;
           regridded = again;
-          return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid };
+          return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid, meter: again.meter };
         },
       });
       post({ trained: regridded ? { ...out, result: regridded } : unused ? { ...out, mapper: `${out.mapper}; ${unused}` } : out });

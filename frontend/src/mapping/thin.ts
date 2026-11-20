@@ -65,7 +65,22 @@ export interface ThinOptions {
   events: SoundEvent[];
   /** Beat 0 in seconds (events are in seconds into the audio). */
   offset: number;
+  /**
+   * Where a moment (beats) sits in the music's own beat (the beat map: beatmap.ts), when it's
+   * known: on a beat, an 8th after one, a bar's downbeat. Without it, the song's straight grid
+   * says (and only when `onGrid`).
+   */
+  place?: (t: number) => { beat: boolean; half: boolean; downbeat: boolean };
+  /** The moment (beats) a row repeats, in an earlier phrase (repeats.ts): kept or left out as that one was. */
+  twin?: (t: number) => number | null;
+  /** The kind of sound a row is on (its band), and its phrase: rows of the kind a phrase follows weigh `follow` more. */
+  kind?: (t: number) => string | null;
+  phrase?: (t: number) => number;
+  follow?: number;
 }
+
+/** What a row weighs extra (or less) for being kept (left out) where the phrase it repeats kept (left out) its twin. */
+const TWIN_KEEP = 0.6;
 
 const WINDOW = 4; // seconds
 
@@ -113,17 +128,40 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
   const cursor = { i: 0 };
   const rows: Row[] = src.map((r) => {
     const sec = o.offset + r.t * o.spb;
-    // On a beat or half-beat: within 20 ms of one (tiles are put on the grid only where it holds).
-    const tol = Math.max(0.01, 0.02 / o.spb);
-    const pos = r.t - Math.floor(r.t + tol);
-    const grid = !o.onGrid ? 0 : Math.abs(pos) < tol || pos > 1 - tol ? 0.2 : Math.abs(pos - 0.5) < tol ? 0.1 : 0;
-    const bar = o.onGrid && grid === 0.2 && Math.round(r.t) % 4 === 0 ? 0.1 : 0;
+    // On a beat or half-beat: on the beat map when there is one, else within 20 ms of one on the
+    // straight grid (only when it's right: tiles are put on it only where it holds).
+    let at = o.place?.(r.t);
+    if (!at && o.onGrid) {
+      const tol = Math.max(0.01, 0.02 / o.spb);
+      const pos = r.t - Math.floor(r.t + tol);
+      const beat = Math.abs(pos) < tol || pos > 1 - tol;
+      at = { beat, half: !beat && Math.abs(pos - 0.5) < tol, downbeat: beat && Math.round(r.t) % 4 === 0 };
+    }
+    const grid = !at ? 0 : at.beat ? 0.2 + (at.downbeat ? 0.1 : 0) : at.half ? 0.1 : 0;
     // Holds too short for this difficulty are taps here.
     const minHold = Math.max(o.minHold[0], o.minHold[1] / o.spb);
     const notes = r.notes.map((n) => (n.hold && n.len < minHold ? tap(n) : n));
     const len = Math.max(0, ...notes.map((n) => (n.hold ? n.len : 0)));
-    return { t: r.t, notes, w: strengthAt(o.events, sec, cursor) + 0.25 * (r.notes.length - 1) + grid + bar, end: r.t + len };
+    return { t: r.t, notes, w: strengthAt(o.events, sec, cursor) + 0.25 * (r.notes.length - 1) + grid, end: r.t + len };
   });
+
+  // Each phrase follows one kind of sound (the one its rows weigh most in, as the whole chart has
+  // them): its rows of that kind weigh more, so an easier chart doesn't hop between the kick and the tune.
+  if (o.kind && o.phrase && o.follow) {
+    const kinds = rows.map((r) => o.kind!(r.t));
+    const lead = new Map<number, Map<string, number>>();
+    rows.forEach((r, i) => {
+      const k = kinds[i];
+      if (!k) return;
+      const ph = o.phrase!(r.t);
+      const m = lead.get(ph) ?? new Map<string, number>();
+      m.set(k, (m.get(k) ?? 0) + r.w);
+      lead.set(ph, m);
+    });
+    const top = new Map<number, string>();
+    for (const [ph, m] of lead) top.set(ph, [...m.entries()].sort((a, b) => b[1] - a[1])[0][0]);
+    rows.forEach((r, i) => { if (kinds[i] && top.get(o.phrase!(r.t)) === kinds[i]) r.w += o.follow!; });
+  }
 
   // Each window's share of the source's tiles: `share` of them, within `floor` and `rate` a second.
   const first = rows[0].t * o.spb, lastT = rows[rows.length - 1].t * o.spb;
@@ -133,27 +171,45 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
   const win = (r: Row) => Math.floor((r.t * o.spb) / WINDOW);
   const inWin = new Map<number, number>();
   for (const r of rows) inWin.set(win(r), (inWin.get(win(r)) ?? 0) + r.notes.length);
-  const budget = new Map<number, number>();
-  for (const [k, n] of inWin) budget.set(k, Math.max(1, Math.round(n * keep)));
-  // Chords: the heaviest rows with more than one tile, up to `chords` of the rows kept.
-  let chordsLeft = o.maxChord < 2 ? 0 : o.chords >= 1 ? Infinity : Math.round(o.chords * keep * rows.length);
-
   const gapBeats = o.minGap / o.spb;
-  const kept: { r: Row; notes: ChartNote[] }[] = [];
   let prevLane = -1;
-  for (const r of [...rows].sort((a, b) => b.w - a.w || a.t - b.t)) {
-    const k = win(r);
-    if ((budget.get(k) ?? 0) <= 0) continue;
-    const clash = kept.some(({ r: q }) => Math.abs(q.t - r.t) < gapBeats || (o.holdsAlone && (
-      // nothing starts while a kept hold is held, and a hold doesn't run over a kept tile
-      (q.end > q.t && r.t > q.t && r.t < q.end + gapBeats)
-      || (r.end > r.t && q.t > r.t && q.t < r.end + gapBeats))));
-    if (clash) continue;
-    const chord = r.notes.length > 1 && chordsLeft > 0;
-    const notes = capChord(r.notes, chord ? o.maxChord : 1, prevLane);
-    if (notes.length > 1) chordsLeft--;
-    kept.push({ r, notes });
-    budget.set(k, (budget.get(k) ?? 0) - notes.length);
+  /** The heaviest rows that fit, by the rules above. */
+  const select = (weight: (r: Row) => number) => {
+    const budget = new Map<number, number>();
+    for (const [k, n] of inWin) budget.set(k, Math.max(1, Math.round(n * keep)));
+    // Chords: the heaviest rows with more than one tile, up to `chords` of the rows kept.
+    let chordsLeft = o.maxChord < 2 ? 0 : o.chords >= 1 ? Infinity : Math.round(o.chords * keep * rows.length);
+    const kept: { r: Row; notes: ChartNote[] }[] = [];
+    for (const r of [...rows].sort((a, b) => weight(b) - weight(a) || a.t - b.t)) {
+      const k = win(r);
+      if ((budget.get(k) ?? 0) <= 0) continue;
+      const clash = kept.some(({ r: q }) => Math.abs(q.t - r.t) < gapBeats || (o.holdsAlone && (
+        // nothing starts while a kept hold is held, and a hold doesn't run over a kept tile
+        (q.end > q.t && r.t > q.t && r.t < q.end + gapBeats)
+        || (r.end > r.t && q.t > r.t && q.t < r.end + gapBeats))));
+      if (clash) continue;
+      const chord = r.notes.length > 1 && chordsLeft > 0;
+      const notes = capChord(r.notes, chord ? o.maxChord : 1, prevLane);
+      if (notes.length > 1) chordsLeft--;
+      kept.push({ r, notes });
+      budget.set(k, (budget.get(k) ?? 0) - notes.length);
+    }
+    return kept;
+  };
+  let kept = select((r) => r.w);
+  // A repeated phrase keeps what the phrase it repeats kept: a row whose twin was kept weighs
+  // more, one whose twin was left out weighs less (a twin within 30 ms of where it should be).
+  if (o.twin && keep < 1) {
+    const keptAt = kept.map(({ r }) => r.t).sort((a, b) => a - b);
+    const allAt = rows.map((r) => r.t).sort((a, b) => a - b);
+    const tol = 0.03 / o.spb;
+    const nudge = new Map<Row, number>();
+    for (const r of rows) {
+      const tw = o.twin(r.t);
+      if (tw == null || !near(allAt, tw, tol)) continue;
+      nudge.set(r, near(keptAt, tw, tol) ? TWIN_KEEP : -TWIN_KEEP);
+    }
+    if (nudge.size) kept = select((r) => r.w + (nudge.get(r) ?? 0));
   }
   kept.sort((a, b) => a.r.t - b.r.t);
   // A single tile taken from a chord: not the lane of the row before when it can help it.
@@ -171,6 +227,13 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     return out.map((n) => (drop.has(n) ? tap(n) : n));
   }
   return out;
+}
+
+/** Whether a sorted list has a value within `tol` of `x`. */
+function near(sorted: number[], x: number, tol: number): boolean {
+  let lo = 0, hi = sorted.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] < x) lo = m + 1; else hi = m; }
+  return (lo < sorted.length && Math.abs(sorted[lo] - x) <= tol) || (lo > 0 && Math.abs(sorted[lo - 1] - x) <= tol);
 }
 
 /** A hold as a tap (the same note). */

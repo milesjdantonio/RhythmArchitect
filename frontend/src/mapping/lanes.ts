@@ -38,11 +38,30 @@ const JUMP_COST = 1.5;
 /** Completing four lanes that repeat the four before them (a staircase going round). */
 const REPEAT_COST = 0.8;
 const RECENT = 8;
+/** A tile in a repeated phrase off its twin's lane (the tile at its place in the phrase it repeats: repeats.ts). */
+export const TWIN_COST = 1.6;
+/** A step against the tune: the pitch goes up (by CONTOUR_STEP semitones or more) and the lane left, or down and right. */
+export const CONTOUR_COST = 0.35;
+const CONTOUR_STEP = 2;
+const CONTOUR_GAP = 0.6;
+
+/** What lane flow can go by beyond the tiles' times: a tile's twin (already flowed: it comes earlier), a tile's pitch (MIDI). */
+export interface FlowHints<T> {
+  twin?: (n: T) => T | undefined;
+  pitch?: (n: T) => number | null;
+}
 
 /** A chart's tiles (beats; `spb` seconds a beat) with their lanes flowed: copies, the rest as they were. */
-export function flowChart(notes: ChartNote[], difficulty: Difficulty, spb: number): ChartNote[] {
+export function flowChart(notes: ChartNote[], difficulty: Difficulty, spb: number, hints?: FlowHints<ChartNote>): ChartNote[] {
   const copies = notes.map((n) => ({ ...n }));
-  return flowLanes(copies, difficulty, (n) => n.t, (n) => n.t + (n.hold ? n.len : 0), spb);
+  // The hints are about the notes given; flowing works on the copies.
+  const of = new Map(copies.map((c, i) => [c, notes[i]]));
+  const back = new Map(notes.map((n, i) => [n, copies[i]]));
+  const h: FlowHints<ChartNote> | undefined = hints && {
+    twin: hints.twin && ((c) => { const tw = hints.twin!(of.get(c)!); return tw && back.get(tw); }),
+    pitch: hints.pitch && ((c) => hints.pitch!(of.get(c)!)),
+  };
+  return flowLanes(copies, difficulty, (n) => n.t, (n) => n.t + (n.hold ? n.len : 0), spb, h);
 }
 
 /**
@@ -53,8 +72,9 @@ export function flowChart(notes: ChartNote[], difficulty: Difficulty, spb: numbe
 export function flowLanes<T extends { lane: number; hold?: boolean }>(notes: T[], difficulty: Difficulty,
   at: (n: T) => number = (n) => (n as unknown as { sec: number }).sec,
   end: (n: T) => number = (n) => at(n) + ((n as unknown as { len?: number }).len ?? 0),
-  scale = 1): T[] {
+  scale = 1, hints?: FlowHints<T>): T[] {
   const f = FLOW[difficulty];
+  let prevPitch: number | null = null;
   const sorted = [...notes].sort((a, b) => at(a) - at(b) || a.lane - b.lane);
   const heldUntil = [-Infinity, -Infinity, -Infinity, -Infinity];
   const recent: number[] = [];
@@ -67,12 +87,19 @@ export function flowLanes<T extends { lane: number; hold?: boolean }>(notes: T[]
     while (j < sorted.length && (at(sorted[j]) - at(sorted[i])) * scale < 0.002) j++;
     const row = sorted.slice(i, j);
     const t = at(row[0]) * scale;
+    const pitch = row.length === 1 && hints?.pitch ? hints.pitch(row[0]) : null;
     if (row.length === 1) {
       const n = row[0];
+      const twin = hints?.twin?.(n);
       let best = n.lane, bestCost = Infinity;
       for (let lane = 0; lane < 4; lane++) {
         if (heldUntil[lane] > t + 1e-6) continue;
         let cost = lane === n.lane ? 0 : MOVE_COST;
+        if (twin && lane !== twin.lane) cost += TWIN_COST;
+        if (prev && prev.lanes.length === 1 && pitch != null && prevPitch != null && t - prev.t < CONTOUR_GAP && Math.abs(pitch - prevPitch) >= CONTOUR_STEP) {
+          const dl = lane - prev.lanes[0];
+          if (dl !== 0 && Math.sign(dl) !== Math.sign(pitch - prevPitch)) cost += CONTOUR_COST;
+        }
         if (prev) {
           const gap = t - prev.t;
           if (prev.lanes.includes(lane) && gap < f.jack) cost += f.jackCost * (1 - gap / f.jack) + 0.5;
@@ -100,6 +127,7 @@ export function flowLanes<T extends { lane: number; hold?: boolean }>(notes: T[]
     if (history.length > 8) history.shift();
     while (recent.length > RECENT) recent.shift();
     prev = { t, lanes };
+    prevPitch = pitch;
     i = j;
   }
   return notes;
