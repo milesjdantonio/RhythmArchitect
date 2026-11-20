@@ -352,7 +352,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     const offset = await learnFromRun(song, offsets.current).catch(() => null);
     if (offset !== null) setSong((s) => (s && s.id === song.id ? { ...s, source: { ...s.source, offset } } : s));
     try {
-      const updated = await api.submitScore(song.id, { difficulty, score: r.score, accuracy, maxCombo: r.maxCombo, grade, run: g.run });
+      const updated = await api.submitScore(song.id, { difficulty, score: r.score, accuracy, maxCombo: r.maxCombo, grade, run: g.run, tiles: g.tiles() });
       upsert(updated);
       setSaving('saved');
     } catch {

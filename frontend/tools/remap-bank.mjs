@@ -2,7 +2,7 @@
 // would: Generate beatmap → Listen and map in a real browser window (tab capture needs one; the
 // song plays once, not out loud), the trained mapper charting it.
 //
-//   node tools/remap-bank.mjs [--api=https://rhythmarchitect.onrender.com] [--only=<id>,<id>] [--apply]
+//   node tools/remap-bank.mjs [--api=https://rhythmarchitect.onrender.com] [--only=<id>,<id>] [--apply] [--study]
 //
 // Without --apply it only listens and maps, saving each new song (the NewSong the page sent) to
 // .data/remap/<old id>.json. With --apply each new map is added to the bank (POST /api/songs),
@@ -23,6 +23,10 @@ const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.spli
 const API = (arg('api') ?? 'https://rhythmarchitect.onrender.com').replace(/\/$/, '');
 const only = arg('only')?.split(',');
 const apply = process.argv.includes('--apply');
+// --study: each listen also saves what the steps after the model worked from (the model's raw
+// charts, the sounds, the beats, the notes heard; never the audio) to .data/remap/<id>.study.json,
+// for replaying them offline against human charts.
+const study = process.argv.includes('--study');
 const outDir = join(root, '.data', 'remap');
 const store = join(root, '.data', 'remap-songs.json');
 const port = 5197;
@@ -115,13 +119,14 @@ async function mapOne(context, s) {
   await page.route('**/api/youtube/search**', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ results: [s.match] }) }));
   // ...and no mapped song matches (the mock has built-ins of its own, One Dance among them).
   await page.route('**/api/search?**', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ results: [] }) }));
-  await page.addInitScript(() => {
+  await page.addInitScript((STUDY) => {
     sessionStorage.setItem('rythm-architect:intro', 'skip');
+    if (STUDY) localStorage.setItem('rythm-architect:study', '1');
     // The tab's sound goes to the capture only, not out of the speakers (suppressLocalAudioPlayback).
     const share = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getDisplayMedia = (o = {}) =>
       share({ ...o, audio: { ...(typeof o.audio === 'object' ? o.audio : {}), suppressLocalAudioPlayback: true } });
-  });
+  }, study);
   try {
     await page.goto(`${base}/#/`);
     await page.locator('#song-title').fill(s.match.songTitle);
@@ -136,6 +141,11 @@ async function mapOne(context, s) {
     problem.catch(() => {});
     const res = await req.response();
     if (!res?.ok()) throw new Error(`the page's save was refused: ${res?.status()} ${await res?.text()}`);
+    if (study) {
+      const data = await page.evaluate(() => window.__rythmStudy);
+      if (data) writeFileSync(join(outDir, `${s.id}.study.json`), JSON.stringify(data));
+      else console.log('  (no study data came back)');
+    }
     return JSON.parse(req.postData());
   } catch (e) {
     // What the page showed when it went wrong.

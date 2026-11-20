@@ -21,7 +21,7 @@ export type ToMapper = {
   sr: number;
   split: boolean;
   /** Chart with the trained mapper, its files read from `base`. */
-  trained?: { base: string; title?: string; artist?: string };
+  trained?: { base: string; title?: string; artist?: string; study?: boolean };
 };
 export type FromMapper =
   | { progress: string; p?: number }
@@ -88,7 +88,10 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       // Its tempo when its grid isn't used, for the dev tools: whether the two trackers agree is
       // what a half- or double-tempo fix would have to go on (none is guessed at yet).
       let unused: string | undefined;
+      // (Dev: what the steps after the model work from, handed back with the charts: ensomiModel.ts STUDY_KEY.)
+      const raws: { star: number; objects: { lane: number; start_ms: number; end_ms?: number }[]; shift: number }[] = [];
       const out = await trainedCharts(ort!, pcm, sr, {
+        ...(trained!.study ? { onRaw: (star: number, objects: { lane: number; start_ms: number; end_ms?: number }[], shift: number) => raws.push({ star, objects: objects.map((x) => ({ lane: x.lane, start_ms: x.start_ms, end_ms: x.end_ms })), shift }) } : {}),
         base: trained!.base, title: trained!.title, artist: trained!.artist,
         bpm: result.bpm, offset: result.offset, events: result.events,
         onGrid: result.onBeatGrid, meter: result.meter, beats, gpu,
@@ -108,7 +111,18 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
           return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid, meter: again.meter };
         },
       });
-      post({ trained: regridded ? { ...out, result: regridded } : unused ? { ...out, mapper: `${out.mapper}; ${unused}` } : out });
+      let study: unknown;
+      if (trained!.study) {
+        const { hearNotes } = await import('./notes');
+        const r = regridded ?? result;
+        study = {
+          seconds: pcm.length / sr, tracked: { beats: beats ?? [] }, regridded: !!regridded, raws, mapper: out.mapper,
+          on: { bpm: r.bpm, offset: r.offset, meter: r.meter, events: r.events, onGrid: r.onBeatGrid, gridUsed: r.gridUsed, lengthBeats: r.lengthBeats, sections: r.report.sections, beat: r.report.beat },
+          notes: await hearNotes(ort!, pcm, sr, { providers: gpu ? ['webgpu', 'wasm'] : ['wasm'] }).catch(() => []),
+        };
+      }
+      const done = regridded ? { ...out, result: regridded } : unused ? { ...out, mapper: `${out.mapper}; ${unused}` } : out;
+      post({ trained: study ? { ...done, study } : done });
     } catch (err) {
       console.warn('[mapper] the trained mapper failed', err);
       post({ trainedFailed: err instanceof Error ? err.message : String(err) });

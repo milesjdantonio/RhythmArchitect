@@ -194,9 +194,38 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     0.6 gave 21% but caught 5 points fewer of the synthetic band's strong notes on Easy and Medium). In a
     full mix nearly every sound reads as pitched, so parts can't be told apart better without
     splitting the song (stems.ts). Most human tiles our charts miss aren't in the model's chart
-    and aren't on a sound we measured either: hearing more is what would close the rest.
+    and aren't on a sound we measured either.
   - "Easy from the beat" (rows on the beat weighing more on Easy) was tried and left out: human
     Easy charts put 26-50% of their tiles on the beat, ours already ~40%, and more made them less alike.
+- **Star ratings** (`calibratedCharts`, `starTargets`): every chart is rated with the runtime's
+  `starRating` (osu!mania's star rating) and saved as `Chart.stars` (the start card and the dev
+  tools show it). Easy is thinned to `EASY_STARS` (0.95) on every song, Medium and Hard to even
+  steps of stars between it and the song's Ultra (KEEP's share and rate scaled only 0.7-1.4; one
+  that would crowd the difficulty above it stays as KEEP made it). By share alone the same
+  difficulty ranged 0.85-1.11 / 1.14-1.50 / 1.57-2.14 stars from song to song; now 0.86-1.02 /
+  1.19-1.39 / 1.57-2.03, the tile steps as even as before (×1.22-1.85 on the synthetic band). Fixed
+  targets for all three (1.38, 1.9) broke the ladder (Hard ×1.05 under a 2.2-star Ultra, Easy to
+  Medium doubled): don't go back to them. Ultra (the whole chart, 2.0-3.1 stars) is rated, not
+  thinned. By osu!'s names our Ultra is a Normal; making it harder is the user's call.
+- Tried on Nov 20 and left out (measured on the Creative Commons charts and One Dance's):
+  - **Basic Pitch** (`notes.ts`, Spotify, 230 KB) hears notes under 16% of the human tiles the
+    onset mapper doesn't (59% → 75% heard), but the tiles come from the trained mapper: its notes
+    merged into the sounds made the beat map and the repeats worse (tiles exactly on the grid 44% →
+    28%), and as holds on ringing notes or as tiles added where Ultra is short they moved nothing
+    (F1 64% → 64%, human holds we also hold 15% → 17%). It stays for the mapping studies.
+  - **The voice split off** (Demucs, then Basic Pitch on it): on One Dance it heard notes under 6
+    more points of the human tiles (about chance: its notes are 4 a second) for 2 minutes of
+    splitting on the user's laptop chip.
+  - **The model's own controls** (`@ensomi/runtime` 0.4.0 `controls`): `long_notes` NATURAL is what
+    it does anyway, HALF made fewer holds survive RING and matched the humans' less; per-section
+    stars in place of splicing whole charts met Ultra's targets less on the one fast song that
+    needed it (81% against 86%).
+- **Mapping studies** (dev): with localStorage `rythm-architect:study` (`ensomiModel.ts` STUDY_KEY)
+  a listen also hands back what the steps after the model work from (its raw charts, the sounds,
+  the beats, the notes heard; never the audio) as `window.__rythmStudy`;
+  `node tools/remap-bank.mjs --only=<id> --study` saves it to `.data/remap/<id>.study.json`, to
+  replay ideas offline against human charts. The user asked that real-listen tests remake only One
+  Dance until a change is judged good (Nov 20).
 - Only if it's off or fails: with WebGPU the song is split with Demucs (`src/mapping/stems.ts`,
   ~172 MB, `stemModel.ts`; e2e: `rythm-architect:no-stems`), and the onset mapper's own charts
   (`charts.ts`) are used. All the models run on one ONNX Runtime (`src/mapping/ort.ts`); any of
@@ -317,9 +346,9 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   `node tools/map-bench.mjs` (the whole pipeline in a browser on the synthetic band of
   `tests/bench/band.ts`, 76-188 BPM clean and rough, then the bundled tracks): tempo right on every
   band, tiles on real notes, strong notes caught per difficulty, the ladder's steps and holds.
-  Nov 19 (with the beat map, repeats and following): tempo 16/16, on-note E 100% M 98% H 98% U 96%
-  (the 76 BPM band's Ultra 79%: the model's own chart there, read at 152), strong caught E 79% M 82%
-  H 97% U 98% (before them: 80/84/98/98), every step ×1.22-1.73.
+  Nov 20 (with star calibration): tempo 16/16, on-note E 100% M 97% H 98% U 96% (the 76 BPM band's
+  Ultra 79%: the model's own chart there, read at 152), strong caught E 80% M 82% H 97% U 98%,
+  every step ×1.22-1.85.
   The human-chart study behind them (Nov 19): one browser run saved what the steps after the model
   work from (its raw charts, the sounds, the tracker's beats) for every Creative Commons song, then
   each idea was replayed offline against the human charts in seconds; do it that way again.
@@ -330,6 +359,16 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   5 half/double (a choice of counting), 3 off where both trackers agree (likely mistimed unranked
   charts). Holds: human median 15% (0-78%: no agreement), ours 6/8/10/12% (E/M/H/U). Lanes
   (`patterns.ts`): move 1.08 a step (human 1.10), quick jumps 3% (8%), balance 30% (29%).
+- Against human charts of real pop songs: `node tools/map-pop.mjs [--songs=<map.json>]` (the
+  bank's maps, or a remap's dry run, against fan-made osu!mania 4K charts of the same songs: chart
+  text only, cached in `.data/pop-charts/`). Charts timed at another tempo than the song's are left
+  out (One Dance's at 141 and 92 BPM: mistimed and an edit). Nov 20: Hotline Bling F1 80% against
+  a human Hard (2.92★), its humans' gaps 27-29% swung against our 9%.
+- Where players miss: the game sends each scored run's tiles (`engine.ts` `tiles()`), the server
+  keeps per tile how often runs reached and missed it (`Song.heat`; backend `TileHeat`, mock
+  `game/heat.ts`, cleared when a chart changes); the dev tools show a song's most missed tiles, and
+  `node tools/heat-report.mjs` sums the bank's by pattern (quick repeats, leaps, chords, holds) per
+  difficulty, to tune the mapper's rules from real play.
 - After changing `src/mapping/automap.ts` or `charts.ts`, run `npm run map`. The band benchmark (`tests/unit/automap-band.test.ts`) must keep finding the notes (legato ones too).
 - Before finishing (in `frontend/`): `npx tsc -b`, `npm test`, `npm run test:e2e`, `npm run build`.
   On this Windows box run vitest from a path that starts with an upper-case `C:` (a lower-case

@@ -126,7 +126,11 @@ public class SongController {
             ObjectNode nextCharts = next.putObject("charts");
             for (Difficulty d : Difficulty.values()) {
                 String name = SongModel.name(d);
-                if (!charts.path(name).path("notes").equals(song.path("charts").path(name).path("notes"))) best.remove(name);
+                if (!charts.path(name).path("notes").equals(song.path("charts").path(name).path("notes"))) {
+                    best.remove(name);
+                    // Its tiles are other tiles now: where players missed the old ones says nothing.
+                    if (next.path("heat") instanceof ObjectNode h) h.remove(name);
+                }
                 ObjectNode c = nextCharts.putObject(name);
                 c.put("difficulty", name);
                 c.put("lanes", 4);
@@ -181,6 +185,8 @@ public class SongController {
                 if (replayed == null) throw ApiException.badRequest("Bad run");
             }
             song.put("plays", song.path("plays").asInt(0) + 1);
+            // Where the run missed, tile by tile (a checked run's `tiles`; ignored when they don't fit it).
+            if (replayed != null && body.has("tiles")) TileHeat.add(song, difficulty, body.path("tiles").asString(null), runText);
             ObjectNode best = song.path("best") instanceof ObjectNode b ? b : song.putObject("best");
             JsonNode prev = best.path(difficulty);
             long score = replayed != null ? replayed.score() : Math.round(body.path("score").asDouble());

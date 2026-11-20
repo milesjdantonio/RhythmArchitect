@@ -61,6 +61,8 @@ export interface Trained {
   mapper: string;
   /** The song measured again on the model's beat grid, when that replaced the first grid (see TrainedOptions.regrid). */
   result?: import('./automap').AutomapResult;
+  /** Dev (STUDY_KEY): what the steps after the model worked from, for replaying offline. */
+  study?: unknown;
 }
 
 /** A beat grid: tempo, the seconds into the audio of a downbeat, beats per bar. */
@@ -261,7 +263,7 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     const place = placer(on);
     // Ultra a stretch at a time (see ultraTargets): charted again busier while too little is met.
     const targets = ultraTargets(on.events, on.bpm, songMs / 1000);
-    const ultraOf = (notes: ChartNote[]) => perWindow(place.easier(notes).ultra.notes, on, targets.length);
+    const ultraOf = (notes: ChartNote[]) => perWindow(place.ultra(notes).notes, on, targets.length);
     const firstNotes = place.chart(first.chart.objects, shift);
     const tries = [{ star: STAR, notes: firstNotes, counts: ultraOf(firstNotes) }];
     let notes = firstNotes;
@@ -274,14 +276,14 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
       notes = splice(tries, targets, on);
       covers.push(coverage(ultraOf(notes), targets));
     }
-    const charts = place.easier(notes);
+    const charts = await place.calibrated(notes, rt.starRating);
     for (const d of DIFFS) o.onProgress?.({ difficulty: d, done: 1, total: 1, tiles: charts[d].notes.length });
     const v = models.capabilities.model_version;
     const pct = (x: number) => `${Math.round(x * 100)}%`;
     const stars = tries.length > 1
       ? `${tries.map((t) => `${t.star}★`).join(' + ')} by stretch of the song (Ultra met ${pct(covers[0])} of its ${targets.reduce((a, b) => a + b, 0)}-tile target at ${STAR}★; ${tries.slice(1).map((t, i) => `with ${t.star}★ ${pct(covers[i + 1])}`).join(', ')})`
       : `${STAR}★ (Ultra met ${pct(covers[0])} of its target)`;
-    return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${stars}; each difficulty a subset; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds${place.note})` };
+    return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${stars}; each difficulty a subset, the easier ones thinned to their star ratings: ${DIFFS.map((d) => `${d[0].toUpperCase()} ${charts[d].stars?.toFixed(2)}★`).join(' ')}; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds${place.note})` };
   } finally {
     await models.dispose().catch(() => {});
   }
@@ -370,6 +372,10 @@ export function placer(on: Placing) {
     placed,
     chart: (objects: { lane: number; start_ms: number; end_ms?: number }[], shift: number) => toChart(objects, 'ultra', on, shift, map).notes,
     easier: (notes: ChartNote[]) => easierCharts(notes, on, placed),
+    /** Ultra alone (the targets' measure while charting again busier). */
+    ultra: (notes: ChartNote[]) => thinner(notes, on, placed)('ultra'),
+    /** Every difficulty, the easier ones thinned to their star targets (starTargets). */
+    calibrated: (notes: ChartNote[], rate: RateChart) => calibratedCharts(notes, on, placed, rate),
     /** For the report: how much of the song has its own grid, and the repeats found. */
     note: map ? `; tiles on the beat map's 16ths or triplets where its sounds follow them (${Math.round(tiled * 100)}% of the song, triplets ${Math.round(triplets * 100)}%), ${placed.repeats?.of.size ?? 0} repeated phrases charted alike` : '',
   };
@@ -377,6 +383,15 @@ export function placer(on: Placing) {
 
 /** Each difficulty keeps some of the model's rows (KEEP). */
 export function easierCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'>, placed?: Placed): Record<Difficulty, Chart> {
+  const make = thinner(model, o, placed);
+  return { easy: make('easy'), medium: make('medium'), hard: make('hard'), ultra: make('ultra') };
+}
+
+/**
+ * Makes one difficulty from the model's chart (`scale` times KEEP's share and rate: calibrate's
+ * dial), everything about the song worked out once.
+ */
+export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'>, placed?: Placed): (d: Difficulty, scale?: number) => Chart {
   const spb = 60 / o.bpm;
   const map = placed?.map ?? null, repeats = placed?.repeats ?? null;
   const events = [...o.events].sort((a, b) => a.sec - b.sec);
@@ -397,9 +412,11 @@ export function easierCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' |
   const pitch = (n: ChartNote) => soundAt(secOf(n.t), 0.03)?.midi ?? null;
   // Each difficulty's tiles, then its lanes flowed for its own speed (lanes.ts: thinning keeps the
   // model's lanes, written for its whole chart), a repeated phrase's tiles in their twins' lanes.
-  const chart = (d: Difficulty): Chart => {
+  return (d: Difficulty, scale = 1): Chart => {
+    const k = KEEP[d];
     const kept = thinChart(model, {
-      ...KEEP[d], spb, offset: o.offset, events: o.events, onGrid: o.onGrid,
+      ...k, ...(scale !== 1 ? { share: Math.min(1, k.share * scale), rate: k.rate * scale, floor: k.floor * scale } : {}),
+      spb, offset: o.offset, events: o.events, onGrid: o.onGrid,
       ...(place ? { place } : {}),
       ...(twin ? { twin } : {}),
       ...(d !== 'ultra' ? { kind, phrase, follow: FOLLOW } : {}),
@@ -415,8 +432,72 @@ export function easierCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' |
     } : undefined;
     return { difficulty: d, lanes: 4, notes: flowChart(kept, d, spb, { twin: twinNote, pitch }) };
   };
-  return { easy: chart('easy'), medium: chart('medium'), hard: chart('hard'), ultra: chart('ultra') };
 }
+
+/**
+ * Star targets (osu!mania's star rating: @ensomi/runtime starRating). Easy is thinned to EASY_STARS
+ * on every song (the median of what KEEP made, Nov 20: by share alone it ranged 0.85-1.11 stars
+ * from song to song); Medium and Hard to even steps of stars between it and the song's own Ultra
+ * (the whole chart, rated, not thinned: 2.0-3.1 stars). Fixed targets for all three (1.38 and 1.9)
+ * were tried first and broke the ladder: on a song whose Ultra is 2.2 stars, Hard at 1.9 sat right
+ * under it (×1.05 the tiles) and Easy to Medium doubled; on a sparse one Easy outgrew Medium.
+ */
+export const EASY_STARS = 0.95;
+const STAR_SPREAD = 0.06;
+/** Calibration only nudges KEEP: its share and rate scaled within these. */
+const SCALE: [number, number] = [0.7, 1.4];
+/** Each difficulty keeps at least this many times the tiles of the one below it (else it stays as KEEP made it). */
+const MIN_STEP = 1.15;
+
+/** The star targets of a song whose Ultra is rated `ultra`. */
+export function starTargets(ultra: number): Record<Exclude<Difficulty, 'ultra'>, number> {
+  const r = Math.max(1.1, Math.cbrt(ultra / EASY_STARS));
+  return { easy: EASY_STARS, medium: EASY_STARS * r, hard: EASY_STARS * r * r };
+}
+
+/** A chart's star rating (beats from `offset`, `bpm`), by the runtime's `starRating`. */
+export type RateChart = (chart: { duration_ms: number; objects: { lane: number; start_ms: number; end_ms?: number }[] }) => Promise<number>;
+export async function chartStars(notes: ChartNote[], g: { bpm: number; offset: number }, rate: RateChart): Promise<number> {
+  if (!notes.length) return 0;
+  const spb = 60 / g.bpm;
+  const objects = notes.map((n) => ({ lane: n.lane, start_ms: Math.max(0, Math.round((g.offset + n.t * spb) * 1000)), ...(n.hold ? { end_ms: Math.round((g.offset + (n.t + n.len) * spb) * 1000) } : {}) }));
+  const end = Math.max(...objects.map((x) => x.end_ms ?? x.start_ms));
+  return Math.round((await rate({ duration_ms: end + 1000, objects })) * 100) / 100;
+}
+
+/**
+ * Every difficulty, each easier one thinned to its star target (starTargets: KEEP's share and rate
+ * scaled within SCALE, halving the step, at most CALIBRATE tries, the nearest kept), each with its
+ * rating. One that would leave less than MIN_STEP between it and its neighbours stays as KEEP made it.
+ */
+export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
+  const make = thinner(model, o, placed);
+  const out = {} as Record<Difficulty, Chart>;
+  const ultra = make('ultra');
+  out.ultra = { ...ultra, stars: await chartStars(ultra.notes, o, rate) };
+  const targets = starTargets(out.ultra.stars ?? EASY_STARS * 2.6);
+  // Hard first: each easier one is kept under the one above it.
+  for (const d of ['hard', 'medium', 'easy'] as const) {
+    const want = targets[d];
+    const plain = make(d);
+    let chart = plain, stars = await chartStars(chart.notes, o, rate);
+    const plainStars = stars;
+    let best = { chart, stars };
+    let lo = stars > want ? SCALE[0] : 1, hi = stars > want ? 1 : SCALE[1];
+    for (let i = 0; i < CALIBRATE && Math.abs(stars - want) > STAR_SPREAD; i++) {
+      const scale = (lo + hi) / 2;
+      chart = make(d, scale);
+      stars = await chartStars(chart.notes, o, rate);
+      if (Math.abs(stars - want) < Math.abs(best.stars - want)) best = { chart, stars };
+      if (stars > want) hi = scale; else lo = scale;
+    }
+    const above = out[d === 'hard' ? 'ultra' : d === 'medium' ? 'hard' : 'medium'];
+    if (best.chart.notes.length * MIN_STEP > above.notes.length && plain.notes.length < best.chart.notes.length) best = { chart: plain, stars: plainStars };
+    out[d] = { ...best.chart, stars: best.stars };
+  }
+  return { easy: out.easy, medium: out.medium, hard: out.hard, ultra: out.ultra };
+}
+const CALIBRATE = 7;
 
 /**
  * The model's objects (lane, ms), moved `shift` seconds later, as a chart in beats on the song's

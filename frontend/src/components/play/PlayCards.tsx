@@ -65,7 +65,7 @@ export function StartCard({ song, difficulty, starting, onStart, onChoose, onHel
   return (
     <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, transition: { duration: 0.4 } }}>
       <motion.div className="overlay-card" initial={{ y: 14, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ duration: 0.6, ease: EASE_OUT }}>
-        <span className="label">{difficulty} · {Math.round(song.bpm)} BPM · speed {noteSpeed(difficulty, song.bpm).toFixed(1)}×{sourceNote(song)}</span>
+        <span className="label">{difficulty}{song.charts[difficulty]?.stars ? ` · ${song.charts[difficulty].stars!.toFixed(1)}★` : ''} · {Math.round(song.bpm)} BPM · speed {noteSpeed(difficulty, song.bpm).toFixed(1)}×{sourceNote(song)}</span>
         <h1 className={song.title.length > 34 ? 'is-long' : undefined}>{song.title}</h1>
         <p className="overlay-artist">{song.artist}</p>
         <div className="lane-keys" aria-label="Keys">

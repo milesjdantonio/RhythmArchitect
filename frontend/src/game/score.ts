@@ -32,7 +32,8 @@ import type { Chart } from '../api/types';
 /** main.HitResult. */
 export type HitResult = 'PERFECT' | 'GOOD' | 'EARLY' | 'LATE' | 'MISS';
 
-const CODE: Record<HitResult, string> = { PERFECT: 'P', GOOD: 'G', EARLY: 'E', LATE: 'L', MISS: 'M' };
+/** A tile's letter in a run (and in its tiles: engine.ts tiles()). */
+export const CODE: Record<HitResult, string> = { PERFECT: 'P', GOOD: 'G', EARLY: 'E', LATE: 'L', MISS: 'M' };
 export const CHARGE_FULL = 100;
 export const MAX_OVERDRIVE = 3;
 export const OVERDRIVE_LENGTH = 48;

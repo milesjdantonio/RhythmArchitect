@@ -12,6 +12,15 @@ const CACHE = 'rythm-architect-models-v1';
 
 /** localStorage switch that turns the trained mapper off (tests set it; a player could too). */
 export const NO_ENSOMI_KEY = 'rythm-architect:no-ensomi';
+/**
+ * Dev only: with this set, a listen also hands back what the steps after the model work from (its
+ * raw charts, the sounds, the beats, the notes heard; never the audio), as window.__rythmStudy, for
+ * replaying them offline against human charts (tools/remap-bank.mjs --study).
+ */
+export const STUDY_KEY = 'rythm-architect:study';
+export function studyWanted(): boolean {
+  try { return localStorage.getItem(STUDY_KEY) === '1'; } catch { return false; }
+}
 /** Dev: a base URL to read the model's files from instead (a local copy). */
 const BASE_KEY = 'rythm-architect:ensomi-base';
 

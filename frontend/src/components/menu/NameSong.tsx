@@ -5,7 +5,7 @@ import type { Difficulty, Song, SongSummary, VideoMatch } from '../../api/types'
 import { stopSong, unlockAudio } from '../../audio/playback';
 import { canListen, ListenError, listenTo, mapHeard, requestTabAudio } from '../../mapping/listen';
 import { canSplit, prefetchStemModel } from '../../mapping/stemModel';
-import { ensomiBase, prefetchEnsomi } from '../../mapping/ensomiModel';
+import { ensomiBase, prefetchEnsomi, studyWanted } from '../../mapping/ensomiModel';
 import { ytCue, ytPause, VideoError } from '../../audio/youtube';
 import { holdQuiet } from '../../lib/quiet';
 import { fallbackNote, listenProblem, songFromListening, type Charted } from '../../mapping/generate';
@@ -168,7 +168,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       }
       const mapped = await mapHeard(heard.pcm, heard.sr, {
         split: await split,
-        trained: base ? { base, title: video.songTitle, artist: video.songArtist } : undefined,
+        trained: base ? { base, title: video.songTitle, artist: video.songArtist, ...(studyWanted() ? { study: true } : {}) } : undefined,
         onProgress: (what, p) => scope.current?.mapping(what, p),
         onStage: (stage, p) => scope.current?.trained(stage, p),
         onChart: (p) => scope.current?.progress(p),
@@ -184,6 +184,8 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       // The trained mapper charts it from the audio; if it can't, the onset mapper's own charts.
       setFlow({ step: 'chart', video, progress: 0.75 });
       const trained = mapped.trained ? await mapped.trained : null;
+      // (Dev: what the steps after the model worked from, for tools/remap-bank.mjs --study.)
+      if (trained && 'study' in trained && trained.study) (window as unknown as { __rythmStudy?: unknown }).__rythmStudy = trained.study;
       if (signal?.aborted) return;
       const r = mapped.result;
       const charted: Charted = trained && 'charts' in trained

@@ -56,6 +56,12 @@ the repository (nothing of them is committed or shipped with the game):
   `beatthis-mel-filter.bin` and `beatthis-hann-window.bin` are from Beat This! (CPJKU, MIT; the notice
   ships with the model as `BeatThis-LICENSE.txt`). Run with [@ensomi/runtime](https://github.com/ensomi-labs/runtime)
   (Apache-2.0); its WebAssembly core and resampler tables are bundled into the site.
+- **Basic Pitch** note transcription by Spotify ([spotify/basic-pitch](https://github.com/spotify/basic-pitch),
+  Bittner et al., ICASSP 2022), Apache-2.0. `frontend/public/models/basic-pitch.onnx` is its
+  `basic_pitch/saved_models/icassp_2022/nmp.onnx` (230 KB, unchanged); the licence is beside it as
+  `basic-pitch-LICENSE.txt`. Its note decoding is ported to `frontend/src/mapping/notes.ts`
+  (from `@spotify/basic-pitch`'s `toMidi.ts`, Apache-2.0: the onset-led part, with exact window timing).
+  Used by the dev tools' mapping studies, not by a normal listen.
 - Runtime libraries: [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) (MIT),
   [demucs-web](https://github.com/timcsy/demucs-web) (MIT) and [fflate](https://github.com/101arrowz/fflate) (MIT).
 

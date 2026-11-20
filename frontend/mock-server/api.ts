@@ -32,6 +32,7 @@ import { sortAtoZ } from '../src/library/bank';
 import { DIFFICULTIES } from '../src/api/types';
 import { rechartProblem, upgradeSong } from '../src/api/upgrade';
 import { replayRun, runFits } from '../src/game/score';
+import { addHeat } from '../src/game/heat';
 import { gradeFor } from '../src/game/engine';
 import { builtInSongs } from './songs/builtins';
 import { fanSong } from '../src/mapping/osu';
@@ -270,7 +271,7 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           // A difficulty whose chart changed loses its best score (it was set on another chart).
           for (const d of DIFFICULTIES) {
             const same = JSON.stringify(song.charts[d]?.notes ?? []) === JSON.stringify(u.charts[d].notes);
-            if (!same) delete song.best[d];
+            if (!same) { delete song.best[d]; if (song.heat) delete song.heat[d]; }
             song.charts[d] = { difficulty: d, lanes: 4, notes: u.charts[d].notes };
           }
           song.report = { ...song.report, ladder: u.ladder };
@@ -288,6 +289,8 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           const replayed = counted && !runFits(body.run!, chart, song.bpm) ? null : counted;
           if (replayed === null) return fail(res, 400, 'Bad run');
           song.plays += 1;
+          // Where the run missed, tile by tile (a checked run's tiles; ignored when they don't fit it).
+          if (replayed) addHeat(song, body.difficulty, body.tiles, body.run);
           const prev = song.best[body.difficulty];
           const score = replayed ? replayed.score : Math.round(body.score);
           if (!prev || (replayed && prev.rules !== 'overdrive') || score > prev.score) {

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Difficulty, Song } from '../../api/types';
+import { DIFFICULTIES, type Difficulty, type Song } from '../../api/types';
+import { mostMissed } from '../../game/heat';
 import { audioLevels, resyncPlaying } from '../../audio/playback';
 import { syncStatus, syncedOffset } from '../../audio/syncer';
 import { fallTime, type Game } from '../../game/engine';
@@ -202,6 +203,13 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
           <div><dt>Confidence</dt><dd>{Math.round(song.report.confidence * 100)}%</dd></div>
           <div><dt>Tiles</dt><dd>{song.charts.easy.notes.length} / {song.charts.medium.notes.length} / {song.charts.hard.notes.length} / {song.charts.ultra.notes.length}</dd></div>
           <div><dt>Cues</dt><dd>{cues.length}</dd></div>
+          {song.charts[difficulty].stars != null && <div><dt>Stars</dt><dd>{DIFFICULTIES.map((d) => `${d[0].toUpperCase()} ${song.charts[d].stars?.toFixed(2) ?? '-'}`).join(' · ')}</dd></div>}
+          {song.heat?.[difficulty] && (
+            <div><dt>Missed most</dt><dd>{mostMissed(song, difficulty).map((x) => {
+              const n = song.charts[difficulty].notes[x.index];
+              return `${n ? ((n.t * 60) / song.bpm).toFixed(1) : '?'} s lane ${n ? n.lane + 1 : '?'}: ${x.miss}/${x.seen}`;
+            }).join(' · ') || 'nothing yet'} ({song.heat[difficulty]!.runs} runs)</dd></div>
+          )}
         </dl>
         <p className="dev-note mono">{song.report.sections.map((s) => `${s.label} @${s.beat}`).join(' · ')}</p>
         {listenLog && (

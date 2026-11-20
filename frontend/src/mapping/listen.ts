@@ -315,7 +315,7 @@ export interface Mapped {
 export interface MapOptions {
   split?: boolean;
   /** Chart with the trained mapper (ensomi.ts), its files read from `base` (ensomiModel.ts). */
-  trained?: { base: string; title?: string; artist?: string };
+  trained?: { base: string; title?: string; artist?: string; study?: boolean };
   onProgress?: (what: string, p?: number) => void;
   /** Where the trained mapper has got (charting: 0..1 of the song), and each difficulty once made. */
   onStage?: (stage: TrainedStage, p?: number) => void;

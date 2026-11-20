@@ -243,6 +243,7 @@ public class SongStore {
             for (ObjectNode fresh : seed) {
                 if (!fresh.path("id").asString("").equals(s.path("id").asString())) continue;
                 s.set("charts", fresh.get("charts"));
+                TileHeat.clear(s);
                 ObjectNode best = json.createObjectNode();
                 if (s.path("best").has("medium")) best.set("easy", s.path("best").get("medium"));
                 if (s.path("best").has("hard")) best.set("ultra", s.path("best").get("hard"));

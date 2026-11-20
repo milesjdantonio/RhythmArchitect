@@ -2,7 +2,7 @@
 // Times are seconds from beat 0 of the song.
 
 import type { Chart, ChartNote, Difficulty, Grade } from '../api/types';
-import { CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_GRACE, OVERDRIVE_LENGTH, RunScore, multiplierFor, type HitResult } from './score';
+import { CHARGE_FULL, CODE, MAX_OVERDRIVE, OVERDRIVE_GRACE, OVERDRIVE_LENGTH, RunScore, multiplierFor, type HitResult } from './score';
 
 export { multiplierFor, CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_GRACE, OVERDRIVE_LENGTH };
 
@@ -144,6 +144,15 @@ export class Game {
 
   /** The run so far, for the server to replay through Score (score.ts). */
   get run() { return this.scoring.run; }
+  /**
+   * Each tile's result in the chart's own order (the letter the run has for it: P G E L M; "-"
+   * where the run never reached it): sent with the run, the server keeps where players miss (TileHeat).
+   */
+  tiles(): string {
+    const out = new Array<string>(this.notes.length).fill('-');
+    for (const n of this.notes) if (n.judged) out[n.idx] = CODE[hitResultFor(n.judged, n.delta ?? 0)];
+    return out.join('');
+  }
 
   /** The combo's multiplier plus the Overdrive level (×1 to ×8). */
   get multiplier() { return this.scoring.multiplier; }

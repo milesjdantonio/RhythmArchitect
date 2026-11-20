@@ -20,7 +20,7 @@
     "video:overdrive": "node tools/video/record-overdrive.mjs"
   },
   "dependencies": {
-    "@ensomi/runtime": "0.3.2",
+    "@ensomi/runtime": "0.4.0",
     "@rive-app/canvas": "^2.49.0",
     "demucs-web": "1.0.2",
     "motion": "^14.9.0",

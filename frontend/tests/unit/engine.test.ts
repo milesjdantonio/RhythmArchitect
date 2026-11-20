@@ -16,6 +16,21 @@ const chart: Chart = {
 };
 
 describe('game engine', () => {
+  it("lists each tile's result in the chart's own order, the run's letters for them", () => {
+    // The chart stored out of time order: the tiles string follows the stored order.
+    const shuffled: Chart = { ...chart, notes: [chart.notes[3], chart.notes[0], chart.notes[4], chart.notes[1], chart.notes[2]] };
+    const g = new Game(shuffled, 120, 'hard', { noFail: true });
+    g.press(0, 0.01); // t 0: perfect
+    g.update(0.9); // t 1 (lane 1) passes unhit: a miss
+    g.press(2, 1.0); g.release(2, 2.0); // t 2: the hold
+    expect(g.tiles()).toHaveLength(5);
+    // Stored order: t 3 (not reached yet), t 0, t 6 (not reached), t 1, t 2.
+    expect(g.tiles()).toMatch(/^-P-MP$/);
+    // The same letters as the run (in whatever order the run judged them).
+    const letters = (s: string) => [...s.replace(/H\d+;/g, '')].filter((c) => 'PGELM'.includes(c)).sort().join('');
+    expect(letters(g.tiles())).toBe(letters(g.run));
+  });
+
   it('judges by timing', () => {
     const g = new Game(chart, 120, 'hard');
     expect(g.press(0, 0.01)[0]).toMatchObject({ type: 'judge', judgement: 'perfect' });

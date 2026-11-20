@@ -24,6 +24,8 @@ export interface Chart {
   difficulty: Difficulty;
   lanes: number;
   notes: ChartNote[];
+  /** Its osu!mania star rating (how hard it plays), when the trained mapper made it. */
+  stars?: number;
 }
 
 /** Where a song's audio comes from. */
@@ -169,6 +171,8 @@ export interface Song {
   best: Partial<Record<Difficulty, BestScore>>;
   plays: number;
   favorite: boolean;
+  /** Where players miss, per difficulty (the server keeps it from checked runs: game/heat.ts). */
+  heat?: Partial<Record<Difficulty, TileHeat>>;
   /** Seeded test content; it can't be deleted from the dev tools. */
   builtIn?: boolean;
 }
@@ -310,6 +314,13 @@ export interface PlayReply { results: (string | null)[]; state: PlayState }
 /** A song's charts made again on today's ladder (PUT /api/songs/:id/charts): every tile one of its Ultra's. */
 export interface ChartsUpdate { charts: Record<Difficulty, Chart>; ladder: number }
 
+/** A difficulty's heat: how many runs were counted, and per tile (in the chart's order) how often one reached it and missed it. */
+export interface TileHeat {
+  runs: number;
+  seen: number[];
+  miss: number[];
+}
+
 export interface ScoreSubmit {
   difficulty: Difficulty;
   score: number;
@@ -321,6 +332,11 @@ export interface ScoreSubmit {
    * B one let go. The server counts it again and keeps that score, accuracy and max combo.
    */
   run?: string;
+  /**
+   * Each tile's letter in the chart's own order (P G E L M; "-" not reached: engine.ts tiles()),
+   * with `run`: the server keeps where players miss (Song.heat); ignored when it doesn't fit.
+   */
+  tiles?: string;
 }
 
 export interface SongList {
