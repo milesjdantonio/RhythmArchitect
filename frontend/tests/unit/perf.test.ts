@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { FollowClock } from '../../src/audio/clock';
-import { PROFILES, frameGate, gameProfile, setPerf } from '../../src/lib/perf';
+import { PROFILES, frameGate, gameProfile, isWebKit, setPerf } from '../../src/lib/perf';
 
 describe('the slewing video clock', () => {
   /** Plays 20 s with reports every 250 ms; returns the largest step between frames beyond real time, and the worst error. */
@@ -113,6 +113,19 @@ describe("the game's profile", () => {
     expect(gameProfile()).toBe('webgpu');
     vi.stubGlobal('navigator', {});
     expect(gameProfile()).toBe('unified');
+    vi.unstubAllGlobals();
+  });
+
+  it("is A (WebGL) on Safari's engine even with WebGPU: its WebGPU draws the stage wrongly", () => {
+    const safari = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15';
+    const iosChrome = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/131.0 Mobile/15E148 Safari/604.1';
+    const macChrome = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+    const edge = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0';
+    expect([safari, iosChrome, macChrome, edge].map((ua) => isWebKit(ua))).toEqual([true, true, false, false]);
+    vi.stubGlobal('navigator', { gpu: {}, userAgent: safari });
+    expect(gameProfile()).toBe('unified');
+    vi.stubGlobal('navigator', { gpu: {}, userAgent: macChrome });
+    expect(gameProfile()).toBe('webgpu');
     vi.unstubAllGlobals();
   });
 

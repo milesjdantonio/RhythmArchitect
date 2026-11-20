@@ -44,7 +44,8 @@ export const HIGHWAY_FRAG = /* glsl */ `
     float inLane = 1.0 - smoothstep(0.32, 0.5, abs(fract(lanePos) - 0.5));
     col += hue * g * exp(-max(d, 0.0) * 0.1) * (0.5 + inLane * 0.6);
     // A section change sends a band of light away down the field.
-    float sweep = exp(-pow((d - uSweep * uLen) * 0.5, 2.0)) * step(0.001, uSweep) * (1.0 - uSweep);
+    float sw = (d - uSweep * uLen) * 0.5;
+    float sweep = exp(-sw * sw) * step(0.001, uSweep) * (1.0 - uSweep);
     col += mix(hue, vec3(1.0), 0.2) * sweep * 0.6;
     // Fever: the glass turns gold-white and shimmers.
     if (uFever > 0.0) {
@@ -78,11 +79,12 @@ export const WALL_FRAG = /* glsl */ `
     float reach = uReach * (uLen + 2.0);
     float lit = smoothstep(reach + 1.2, reach - 0.6, d) * uLit;
     float fade = smoothstep(uLen + 0.5, uLen * 0.88, d) * smoothstep(-2.0, 0.5, d);
-    float a = pow(1.0 - h, 2.6) * fade * lit * (0.5 + uBeat * 0.35 + uFever * 0.3);
+    float a = pow(max(0.0, 1.0 - h), 2.6) * fade * lit * (0.5 + uBeat * 0.35 + uFever * 0.3);
     vec3 c = mix(uColor, vec3(1.0, 0.85, 0.55), uFever * 0.6);
     vec3 col = c * (1.0 + (1.0 - h) * 0.8) * a;
-    float front = exp(-pow(d - reach, 2.0) * 0.6) * (1.0 - smoothstep(0.85, 1.0, uReach)) * uLit * fade;
-    col += mix(c, vec3(1.0), 0.5) * front * pow(1.0 - h, 1.4) * 1.6;
+    float fr = d - reach;
+    float front = exp(-fr * fr * 0.6) * (1.0 - smoothstep(0.85, 1.0, uReach)) * uLit * fade;
+    col += mix(c, vec3(1.0), 0.5) * front * pow(max(0.0, 1.0 - h), 1.4) * 1.6;
     // The climb: summed over the bands, then saturated so a busy run never whites out the walls.
     float far = 1.0 - smoothstep(uLen * 0.9, uLen, d);
     float body = 0.1 + 0.9 * pow(max(0.0, 1.0 - h), 1.7);
@@ -157,7 +159,7 @@ export const TILE_FRAG = /* glsl */ `
   varying vec3 vView;
   varying float vTop;
   void main() {
-    float rim = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.2);
+    float rim = pow(max(0.0, 1.0 - abs(dot(normalize(vNormal), normalize(vView)))), 2.2);
     float top = smoothstep(-0.12, 0.12, vTop);
     vec3 c = vColor * (0.55 + top * 0.75) + vec3(1.0) * rim * 1.1 + vColor * rim * 0.8;
     c = mix(c, c * vec3(1.15, 1.0, 0.75) + vec3(0.12, 0.08, 0.0), uFever * 0.5);
@@ -190,7 +192,7 @@ export const SPARK_FRAG = /* glsl */ `
   void main() {
     vec2 p = gl_PointCoord - 0.5;
     float r = length(p);
-    float a = smoothstep(0.5, 0.0, r);
+    float a = 1.0 - smoothstep(0.0, 0.5, r);
     a *= a;
     gl_FragColor = vec4(vColor * (0.9 + a * 1.4), a * vAlpha);
     #include <tonemapping_fragment>
@@ -250,7 +252,8 @@ export const RIBBON_VERT = /* glsl */ `
     p.y += aSide * w;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
     float run = fract(aT * 1.4 - uTime * (0.14 + s * 0.12) * dir + s);
-    float spark = exp(-pow((run - 0.5) * 10.0, 2.0));
+    float sp = (run - 0.5) * 10.0;
+    float spark = exp(-sp * sp);
     vec3 col = mix(uHueA, uHueB, fract(s * 3.7 + aT * 0.8));
     vColor = mix(col, vec3(1.0, 0.78, 0.42), uFever * 0.7) + vec3(spark * 0.45);
     vAlpha = sin(aT * 3.14159) * (0.06 + 0.12 * uBeat + 0.1 * uBass + 0.36 * spark + 0.25 * uPulse + 0.08 * uFever);
@@ -274,7 +277,7 @@ export const WORLD_FRAG = /* glsl */ `
   varying float vAlpha;
   varying vec3 vColor;
   void main() {
-    float a = smoothstep(0.5, 0.05, length(gl_PointCoord - 0.5));
+    float a = 1.0 - smoothstep(0.05, 0.5, length(gl_PointCoord - 0.5));
     gl_FragColor = vec4(vColor, a * vAlpha);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>

@@ -138,11 +138,11 @@ export function wall(u: Uniforms, params: THREE.MaterialParameters, maxClimb: nu
     const lit = smoothstep(reach.add(1.2), reach.sub(0.6), d).mul(n.uLit);
     const fade = smoothstep(n.uLen.add(0.5), n.uLen.mul(0.88), d).mul(smoothstep(-2, 0.5, d));
     const oneH = float(1).sub(h);
-    const a = pow(oneH, 2.6).mul(fade).mul(lit).mul(n.uBeat.mul(0.35).add(0.5).add(n.uFever.mul(0.3)));
+    const a = pow(max(0, oneH), 2.6).mul(fade).mul(lit).mul(n.uBeat.mul(0.35).add(0.5).add(n.uFever.mul(0.3)));
     const c = mix(n.uColor, vec3(1, 0.85, 0.55), n.uFever.mul(0.6));
     const col = c.mul(oneH.mul(0.8).add(1)).mul(a).toVar();
     const front = exp(sq(d.sub(reach)).mul(-0.6)).mul(float(1).sub(smoothstep(0.85, 1, n.uReach))).mul(n.uLit).mul(fade);
-    col.addAssign(mix(c, vec3(1), 0.5).mul(front).mul(pow(oneH, 1.4)).mul(1.6));
+    col.addAssign(mix(c, vec3(1), 0.5).mul(front).mul(pow(max(0, oneH), 1.4)).mul(1.6));
     const far = float(1).sub(smoothstep(n.uLen.mul(0.9), n.uLen, d));
     const body = pow(max(0, oneH), 1.7).mul(0.9).add(0.1);
     const glow = float(0).toVar(), rungs = float(0).toVar(), gold = float(0).toVar();
@@ -194,7 +194,7 @@ export function tile(u: Uniforms, params: THREE.MaterialParameters) {
     useColors(colors: THREE.InstancedBufferAttribute) {
       m.fragmentNode = Fn(() => {
         const vColor = instancedBufferAttribute(colors, 'vec3');
-        const rim = pow(float(1).sub(abs(dot(normalize(normalView), normalize(positionViewDirection)))), 2.2);
+        const rim = pow(max(0, float(1).sub(abs(dot(normalize(normalView), normalize(positionViewDirection))))), 2.2);
         const top = smoothstep(-0.12, 0.12, positionGeometry.y);
         const c = vColor.mul(top.mul(0.75).add(0.55)).add(vec3(1).mul(rim).mul(1.1)).add(vColor.mul(rim).mul(0.8));
         const fever = mix(c, c.mul(vec3(1.15, 1, 0.75)).add(vec3(0.12, 0.08, 0)), n.uFever.mul(0.5));
@@ -222,7 +222,7 @@ export function points(u: Uniforms, params: THREE.MaterialParameters, a: { pos: 
   (m as unknown as THREE.PointsNodeMaterial).sizeNode = (cull ? select(alpha.greaterThan(0), px, float(0)) : px).div(screenDPR);
   m.fragmentNode = Fn(() => {
     const r = length(uv().sub(0.5));
-    const k = sq(smoothstep(0.5, 0, r));
+    const k = sq(float(1).sub(smoothstep(0, 0.5, r)));
     return finish(vec4(varying(color).mul(k.mul(1.4).add(0.9)), k.mul(varying(alpha))));
   })();
   const obj = new THREE.Sprite(m as unknown as THREE.SpriteMaterial);
@@ -258,7 +258,7 @@ export function world(u: Uniforms, params: THREE.MaterialParameters, a: { pos: T
   const alpha = tw.mul(0.2).add(0.08).mul(n.uBeat.mul(0.45).add(0.7).add(n.uBass.mul(0.3)).add(n.uPulse.mul(0.7))).mul(n.uCalm).mul(n.uBright);
   const vCol = varying(col), vAlpha = varying(alpha);
   m.fragmentNode = Fn(() => {
-    const k = smoothstep(0.5, 0.05, length(uv().sub(0.5)));
+    const k = float(1).sub(smoothstep(0.05, 0.5, length(uv().sub(0.5))));
     return finish(vec4(vCol, k.mul(vAlpha)));
   })();
   const obj = new THREE.Sprite(m as unknown as THREE.SpriteMaterial);

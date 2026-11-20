@@ -37,11 +37,23 @@ let active: PerfProfile = PROFILES.unified;
 export const perf = () => active;
 
 /**
- * The game's profile on this browser: B (WebGPU) where it has WebGPU, A (WebGL) where it doesn't.
- * (Where a worker can't draw, either still runs its stage on the main thread; see Play.tsx.)
+ * Safari's engine (WebKit: Safari itself, and every browser on iPhone and iPad). Its WebGPU is new
+ * (Safari 26) and three.js's WebGPU renderer draws the stage, the sky and the intro wrongly there
+ * (the user, Nov 20: "a lot" of rendering bugs on a Mac, in exactly those three); its WebGL is the
+ * well-trodden path.
+ */
+export function isWebKit(ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''): boolean {
+  return /AppleWebKit\//.test(ua) && !/(Chrome|Chromium|Edg|OPR)\//.test(ua);
+}
+
+/**
+ * The game's profile on this browser: B (WebGPU) where it has WebGPU, A (WebGL) where it doesn't,
+ * and on Safari's engine (isWebKit) whatever it has. (Where a worker can't draw, either still runs
+ * its stage on the main thread; see Play.tsx.)
  */
 export function gameProfile(): ProfileId {
-  return typeof navigator !== 'undefined' && 'gpu' in navigator ? 'webgpu' : 'unified';
+  if (typeof navigator === 'undefined' || isWebKit()) return 'unified';
+  return 'gpu' in navigator ? 'webgpu' : 'unified';
 }
 
 /** `overrides`: settings changed on top (the menus' workers cap their frames at MENU_FPS). */

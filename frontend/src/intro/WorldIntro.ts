@@ -107,7 +107,8 @@ const PLANET_VERT = /* glsl */ `
       if (r.w < 0.0) continue;
       float ang = acos(clamp(dot(normalize(position), r.xyz), -1.0, 1.0));
       float front = r.w * 1.6;
-      float band = exp(-pow((ang - front) * 9.0, 2.0)) * exp(-r.w * 0.9);
+      float bd = (ang - front) * 9.0;
+      float band = exp(-bd * bd) * exp(-r.w * 0.9);
       wave += band;
       waveCol += uRippleCol[i] * band;
     }
@@ -133,7 +134,7 @@ const POINT_FRAG = /* glsl */ `
   varying float vAlpha;
   void main() {
     float d = length(gl_PointCoord - 0.5);
-    float a = smoothstep(0.5, 0.0, d);
+    float a = 1.0 - smoothstep(0.0, 0.5, d);
     gl_FragColor = vec4(vColor, a * a * vAlpha);
   }
 `;
@@ -142,7 +143,7 @@ const ATMO_VERT = /* glsl */ `
   void main() {
     vec3 n = normalize(normalMatrix * normal);
     vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    vRim = pow(1.0 - abs(dot(n, normalize(-mv.xyz))), 4.0);
+    vRim = pow(max(0.0, 1.0 - abs(dot(n, normalize(-mv.xyz)))), 4.0);
     gl_Position = projectionMatrix * mv;
   }
 `;
@@ -185,7 +186,8 @@ const RIBBON_VERT = /* glsl */ `
     p.y += aSide * (0.04 + 0.07 * s) * (1.0 + 0.4 * sin(aT * 9.0 + uTime));
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p * (1.0 + uDive * 1.5), 1.0);
     float run = fract(aT * 1.3 - uTime * (0.08 + s * 0.07) * dir + s);
-    float spark = exp(-pow((run - 0.5) * 12.0, 2.0));
+    float sp = (run - 0.5) * 12.0;
+    float spark = exp(-sp * sp);
     vColor = mix(uHueA, uHueB, fract(s * 2.7 + aT * 0.9)) + vec3(spark * 0.5);
     vAlpha = sin(aT * 3.14159) * (0.08 + 0.4 * spark) * clamp(uForm * 2.0 - 0.6, 0.0, 1.0) * (1.0 - uDive);
     vSide = aSide;
@@ -220,7 +222,8 @@ const SHOCK_FRAG = /* glsl */ `
   uniform vec3 uColor;
   varying vec2 vP;
   void main() {
-    float b = exp(-pow((length(vP) - 1.0) / uW, 2.0));
+    float bw = (length(vP) - 1.0) / uW;
+    float b = exp(-bw * bw);
     // Alpha follows the light: the canvas is see-through, so a band of alpha 1 would black it out.
     gl_FragColor = vec4(uColor, min(1.0, b * uA));
   }
@@ -237,7 +240,8 @@ const ARC_FRAG = /* glsl */ `
   void main() {
     // A faint thread up to the head, a bright pulse at the head; it fades out once landed.
     float trail = smoothstep(uHead - 0.45, uHead, vU) * step(vU, uHead);
-    float head = exp(-pow((vU - uHead) * 26.0, 2.0));
+    float hd = (vU - uHead) * 26.0;
+    float head = exp(-hd * hd);
     float a = (trail * 0.35 + head * 1.6) * uAlpha;
     gl_FragColor = vec4(uColor + head * 0.6, a);
   }

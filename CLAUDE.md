@@ -380,6 +380,17 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   re-renders only when its look changes (fever, Overdrive's level). The panel's pulses are Web
   Animations on one element (`Pulse`), not a remounted motion span per change.
 - Keep the 2D fallback (`src/game/render.ts`) working.
+- **Safari** (the user, Nov 20: "a lot" of rendering bugs on a Mac, in the intro, the menu's backdrop
+  and the stage): Safari's engine (`isWebKit` in perf.ts: Safari and every iPhone/iPad browser) draws
+  with WebGL even where it has WebGPU (Safari 26's is new, and three.js's WebGPU renderer draws wrongly
+  there). Its workers have no animation frames: the stage worker says `paced` and the page sends it a
+  `pulse` each frame (proxy.ts), not a 16 ms timer of its own (off the screen's beat). In shaders
+  (GLSL and the TSL twins) never `pow()` a base that can go negative (`pow(x, 2.0)`: write `x * x`;
+  clamp `1.0 - h` and rims with `max(0.0, ...)`) nor `smoothstep` with edge0 >= edge1 (write
+  `1.0 - smoothstep(lo, hi, x)`): undefined in GLSL, and Apple's GPUs answer NaN (white or garbage)
+  where Windows' don't. Playwright's WebKit (`npx playwright install webkit`) runs on Windows for a
+  look, but it has no Web Audio and no OffscreenCanvas: real Safari has both, so judge by screenshots
+  from a Mac.
 
 ## After a change
 

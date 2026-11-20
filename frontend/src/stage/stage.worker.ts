@@ -21,7 +21,13 @@ interface WorkerScope {
   requestAnimationFrame?: (cb: FrameRequestCallback) => number;
 }
 const scope = self as unknown as WorkerScope;
-const raf = (cb: FrameRequestCallback) => (scope.requestAnimationFrame ? scope.requestAnimationFrame(cb) : setTimeout(() => cb(performance.now()), 16));
+/**
+ * Without animation frames in a worker (Safari has none) the stage draws on the page's: the page
+ * sends a pulse each of its frames (proxy.ts pace). A timer of its own runs off the screen's beat
+ * (16 ms against a 120 Hz display), and the tiles judder.
+ */
+const paced = !scope.requestAnimationFrame;
+const raf = (cb: FrameRequestCallback) => (scope.requestAnimationFrame ? scope.requestAnimationFrame(cb) : 0);
 
 let stage: Stage3D | null = null;
 let surface: StageSurface | null = null;
@@ -46,7 +52,7 @@ let lost = false;
 
 function loop(now: number) {
   if (lost) return;
-  raf(loop);
+  if (!paced) raf(loop);
   if (!stage || !started || sleeping || !frameGate(now)) return;
   // The frame's own time (when the display shows it), not when this callback happens to run:
   // callbacks run a few ms early or late, frames are shown on the beat of the screen.
@@ -98,7 +104,8 @@ async function init(m: Extract<ToStage, { type: 'init' }>) {
   const queued = pending;
   pending = null;
   for (const q of queued) handle(q);
-  raf(loop);
+  if (paced) scope.postMessage({ type: 'paced' } satisfies FromStage);
+  else raf(loop);
 }
 
 function handle(m: ToStage) {
@@ -107,6 +114,8 @@ function handle(m: ToStage) {
       void init(m);
       break;
     case 'size': stage?.setSurface(m.width, m.height, m.dpr); break;
+    // A page frame (paced): drawn now, at that frame's time on this worker's clock.
+    case 'pulse': if (paced) loop(m.at - performance.timeOrigin); break;
     case 'notes':
       notes = Array.from(m.time, (time, i) => ({ time, end: m.end[i], lane: m.lane[i], hold: m.hold[i] === 1 }));
       noteFrom = 0;

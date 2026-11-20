@@ -13,6 +13,7 @@
 // ghost chart, fever, Overdrive, sleeping): the game carries on. After MAX_RESTARTS in a minute it stops trying.
 
 import { perf } from '../lib/perf';
+import { ORDER, cancelFrame, nextFrame } from '../lib/ticker';
 import type { SceneEvent } from '../background/scene';
 import type { BurstKind } from './bursts';
 import type { HitKind, StageMode, StageNote } from './Stage3D';
@@ -28,13 +29,17 @@ export type ToStage =
   | { type: 'hold' }
   | { type: 'sleep'; on: boolean }
   /** Dev and tests only: take the GPU away (see Stage3D.loseGpu). */
-  | { type: 'loseGpu' };
+  | { type: 'loseGpu' }
+  /** A page frame (its wall time, ms), for a worker with no animation frames of its own (Safari). */
+  | { type: 'pulse'; at: number };
 /** Worker → page. */
 export type FromStage =
   | { type: 'tick'; pads: Float32Array; particles: number; at: number; t: number }
   | { type: 'sky'; x: number; y: number; strength: number }
   | { type: 'ghost'; lane: number; kind: HitKind }
-  | { type: 'lost'; why: string };
+  | { type: 'lost'; why: string }
+  /** The worker has no animation frames (Safari): the page sends it one pulse a frame. */
+  | { type: 'paced' };
 
 const JUDGED = { perfect: 1, great: 2, good: 3, miss: 4 } as const;
 /** Packs a note's state in a byte: judged (3 bits), holding (bit 3), hold result (bits 4-5). */
@@ -128,6 +133,7 @@ export class StageProxy {
       }
       else if (m.type === 'ghost') this.onGhostHit?.(m.lane, m.kind);
       else if (m.type === 'lost') this.restart(m.why);
+      else if (m.type === 'paced') this.pace();
       else this.onSky?.(m.x, m.y, m.strength);
     };
     const hues = (this.sticky.get('setHues')?.[0] as [number, number] | undefined) ?? this.opts.hues;
@@ -213,6 +219,17 @@ export class StageProxy {
     this.flush({ t, at: performance.timeOrigin + at, state, from: all ? 0 : this.from, rate });
   }
 
+  /** A pulse a page frame for a worker with no animation frames of its own (it said 'paced'). */
+  private pulse = 0;
+  private pace() {
+    cancelFrame(this.pulse);
+    const beat = (ts: number) => {
+      this.pulse = nextFrame(beat, ORDER.scene);
+      if (!this.sleeping) this.post({ type: 'pulse', at: performance.timeOrigin + ts });
+    };
+    this.pulse = nextFrame(beat, ORDER.scene);
+  }
+
   /** Stop carrying the time on (the game paused). */
   hold() { this.post({ type: 'hold' }); }
   /** Stop drawing altogether (out of sight, or a calm still), and start again. */
@@ -255,6 +272,7 @@ export class StageProxy {
   skyEvent(e: SceneEvent) { this.call('skyEvent', e); }
 
   destroy() {
+    cancelFrame(this.pulse);
     this.ro.disconnect();
     this.dprQuery?.removeEventListener('change', this.onDpr);
     this.worker.terminate();
