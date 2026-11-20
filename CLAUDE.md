@@ -214,6 +214,20 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     they cluster on the CC set (27% vs 29%; 61% vs 60% within a beat of the last); humans range
     3-64% from song to song (3% and 45% on one song), and neither the sounds' strength nor
     anything else measured says which songs want them. Gating chords on strength cut them to 3-9%.
+  - **Easy and Medium are one line a phrase** (`src/mapping/leadline.ts`, the user, Nov 20: "make
+    all other changes"), where the song was split (its sounds labelled by part, the syllables);
+    without that they're thinned as below. Each 2-bar phrase picks its lead: the singing where it's
+    sung, else the strongest instrument (`LEAD_WEIGHT`: vocals 1.6, other 1.1, drums 1, bass 0.6,
+    at least `LEAD_MIN` notes; the last phrase's lead stays while it's `STAY` of the best), and its
+    second part. Easy's tiles are the lead's notes on the beat map's grid (filling from the second
+    part only where the lead has under `EASY_FILL` of what it wants); Medium fills from the second
+    part where the lead runs short (a sung line is sparser than Medium). A phrase whose lead plays an
+    earlier one's rhythm (`ALIKE`, 16ths in common) takes that one's pattern; long sung notes are
+    holds; the lanes follow the lead's pitch (drums: kick low, the rest high) through `flowChart`.
+    The same star targets and calibration as thinning. On the two real listens: Easy's phrases on
+    one part 76% → 91%, 75% → 95%; off the grid 13% → 0%, 10% → 1%; Medium 63% → 71%, 65% → 73%
+    (two lines by design); Hard and Ultra unchanged (the trained mapper's). Easy and Medium are no
+    longer a subset of Ultra (nothing needs them to be: only a recharted older song's are checked).
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,

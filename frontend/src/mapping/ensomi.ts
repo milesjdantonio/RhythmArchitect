@@ -17,6 +17,7 @@ import { flowChart } from './lanes';
 import { barOf, beatAt, beatMap, beatPlace, divisionAt, secAt, snapSec, type BeatMap } from './beatmap';
 import { findRepeats, twinSec, type Repeats } from './repeats';
 import { noteName, syllableAt, type Syllable } from './voice';
+import { hasParts, leadLine } from './leadline';
 
 export { KEEP };
 // The runtime finds these beside its own module, which a bundler moves; so they're handed to it.
@@ -558,8 +559,11 @@ export async function chartStars(notes: ChartNote[], g: { bpm: number; offset: n
  * scaled within SCALE, halving the step, at most CALIBRATE tries, the nearest kept), each with its
  * rating. One that would leave less than MIN_STEP between it and its neighbours stays as KEEP made it.
  */
-export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
-  const make = thinner(model, o, placed);
+export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
+  const thin = thinner(model, o, placed);
+  // Easy and Medium follow one part a phrase (leadline.ts) when the song was split; else thinned.
+  const lead = o.voice?.length && hasParts(o.events) ? leadLine({ bpm: o.bpm, offset: o.offset, events: o.events, voice: o.voice, map: placed?.map ?? null }, model) : null;
+  const make = (d: Difficulty, scale?: number) => (lead && (d === 'easy' || d === 'medium') ? lead(d, scale) : thin(d, scale));
   const out = {} as Record<Difficulty, Chart>;
   const ultra = make('ultra');
   out.ultra = { ...ultra, stars: await chartStars(ultra.notes, o, rate) };
