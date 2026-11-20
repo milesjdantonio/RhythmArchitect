@@ -1,9 +1,9 @@
 // The notes heard in the song: Basic Pitch (Spotify's note transcription; Apache-2.0, model in
-// public/models/basic-pitch.onnx, 230 KB, licence beside it; see NOTICE.md). Used by the mapping
-// studies (ensomiModel.ts STUDY_KEY), not by a normal listen: on the Creative Commons benchmark it
-// hears notes under 16% of the human tiles the onset mapper doesn't (59% → 75% heard), but the
-// tiles come from the trained mapper, and its notes as sounds, as holds or as added tiles moved no
-// measure of the charts (Nov 20; CLAUDE.md "Generating a beatmap"). It hears pitched notes
+// public/models/basic-pitch.onnx, 230 KB, licence beside it; see NOTICE.md). On every listen with
+// WebGPU it hears the vocal split off the song: its notes' starts are the sung syllables the charts
+// follow (voice.ts). The mapping studies (ensomiModel.ts STUDY_KEY) also run it on the whole mix:
+// there it hears notes under 16% of the human tiles the onset mapper doesn't, but as sounds, holds
+// or added tiles on the mix its notes moved no measure of the charts (Nov 20; CLAUDE.md). It hears pitched notes
 // (a voice, a melody, a bass line) note by note, with their pitch and length, where the onset
 // mapper (automap.ts) hears jumps in loudness: a sung line moving from note to note without a new
 // attack is a run of notes here, and nothing there. In a full mix nearly every sound reads as

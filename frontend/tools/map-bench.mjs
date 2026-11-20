@@ -4,7 +4,10 @@
 // double...), each difficulty's tiles on real notes and strong notes caught, holds, and the ladder.
 // The bundled tracks come last (tempo and ladder only). The trained model downloads on first use.
 //
-//   node tools/map-bench.mjs [bpm,bpm,...] [--clean] [--no-tracks] [--json out.json]
+//   node tools/map-bench.mjs [bpm,bpm,...] [--clean] [--no-tracks] [--voice-only] [--json out.json]
+//
+// The bundled tracks (instrumental) also have their vocal split counted: the syllables the voice
+// step (voice.ts) hears in them should be nearly none. --voice-only runs just that.
 //
 // Run it after changing the beat grid, the trained mapper's placement or thin.ts.
 
@@ -19,6 +22,7 @@ const args = process.argv.slice(2);
 const list = args.find((a) => /^\d/.test(a));
 const TEMPOS = list ? list.split(',').map(Number) : [76, 92, 108, 124, 140, 156, 172, 188];
 const roughToo = !args.includes('--clean');
+const voiceOnly = args.includes('--voice-only');
 const tracks = !args.includes('--no-tracks');
 const jsonAt = args.indexOf('--json');
 const D = ['easy', 'medium', 'hard', 'ultra'];
@@ -40,7 +44,7 @@ try {
         return once(fn, a);
       }
     };
-    for (const bpm of TEMPOS) {
+    for (const bpm of voiceOnly ? [] : TEMPOS) {
       for (const rough of roughToo ? [false, true] : [false]) {
         const r = await run('benchBand', [bpm, rough]);
         rows.push(r);
@@ -50,9 +54,13 @@ try {
     }
     if (tracks) {
       for (const id of ['ink-and-fury', 'the-restless-stacks']) {
-        const r = await run('benchTrack', [id]);
-        rows.push(r);
-        console.log(`${id}: read ${r.read} (tracker ${r.tracker ?? '-'}, onset ${r.onset}, model ${r.model ?? '-'})  tiles/s ${r.perSecond.join(' ')}  steps ×${r.steps.join(' ×')}`);
+        if (!voiceOnly) {
+          const r = await run('benchTrack', [id]);
+          rows.push(r);
+          console.log(`${id}: read ${r.read} (tracker ${r.tracker ?? '-'}, onset ${r.onset}, model ${r.model ?? '-'})  tiles/s ${r.perSecond.join(' ')}  steps ×${r.steps.join(' ×')}`);
+        }
+        const v = await run('benchVoice', [id]);
+        console.log(v.skipped ? `${id} voice: skipped (${v.skipped})` : `${id} voice (instrumental): ${v.syllables} syllables let through (${(v.syllables / v.seconds).toFixed(2)}/s; ${v.ungated} before the gate, ${v.notes} notes heard in the split vocal)`);
       }
     }
   }, { maxSeconds: 2400 });

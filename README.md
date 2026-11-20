@@ -689,6 +689,7 @@ assistant) at the named person's direction, then run and reviewed by them.
 | `frontend/tests/unit/score.test.ts` | Miles D'Antonio | The score rules (`Score`'s, with the multiplier and holds), checked against `GameScore` (GenAI-assisted). |
 | `frontend/tests/unit/automap.test.ts`, `automap-band.test.ts` | Miles D'Antonio | The onset mapper and its note-finding benchmark (GenAI-assisted). |
 | `frontend/tests/unit/beats.test.ts` | Miles D'Antonio | The beat tracker's grid and inputs (GenAI-assisted). |
+| `frontend/tests/unit/voice.test.ts` | Miles D'Antonio | The singing: syllables from the split vocal (bleed gated out), a tile on each one the chart lacks, sung rows kept by thinning (GenAI-assisted). |
 | `frontend/tests/unit/trained.test.ts` | Miles D'Antonio | The trained mapper's charts: thinning, timing (GenAI-assisted). |
 | `frontend/tests/unit/lanes.test.ts` | Miles D'Antonio | The lane flow: fewer quick repeats and leaps, no tile moved in time, held lanes and chords left alone, repeats in their twins' lanes, lanes with the tune (GenAI-assisted). |
 | `frontend/tests/unit/beatmap.test.ts` | Miles D'Antonio | The beat map (a drifting tempo followed, triplets taken where the sounds follow them, no grid in scattered sounds, double- and half-time trackers) and repeated phrases (GenAI-assisted). |

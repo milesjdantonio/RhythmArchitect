@@ -100,7 +100,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       pNow: 0, pFill: 0, pShown: new Uint8Array(ND), pShownAt: 0, pTileShown: new Float32Array(ND),
       // the trained mapper: its stage (0 none, 1 getting ready, 2 listening, 3 charting), how much
       // of the song it has charted, and the lanes' fill easing to that
-      tStage: 0, tP: 0, tFill: 0,
+      tStage: 0, tP: 0, tFill: 0, tVoice: false,
       // what the mapper is doing, for the line under the field
       mapWhat: 'finding the beat', mapP: -1,
       // sparks and rings
@@ -203,7 +203,10 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
       },
       trained(stage, p) {
         const st = S.current;
-        const next = stage === 'load' ? 1 : stage === 'listen' ? 2 : stage === 'chart' ? 3 : 4;
+        const next = stage === 'voice' || stage === 'load' ? 1 : stage === 'listen' ? 2 : stage === 'chart' ? 3 : 4;
+        // Done hearing the singing: the model's own progress starts from nothing.
+        if (st.tVoice && stage !== 'voice') { st.tP = 0; st.tFill = 0; }
+        st.tVoice = stage === 'voice';
         // Charting again, busier (ensomi.ts nextStar): the lanes fill up again from the start.
         if (next === 4 && (st.tStage !== 4 || (p ?? 0) === 0)) { st.tP = 0; st.tFill = 0; }
         st.tStage = next;
@@ -596,7 +599,7 @@ export const ListenScope = forwardRef<ScopeHandle, { seconds: number; hues?: [nu
           // (The finished ones have their checks beside it; kept short so the row doesn't wrap.)
           const trainedNow = st.tStage > 0 && !st.pOn;
           const building = trainedNow
-            ? st.tStage === 1 ? 'the AI is getting ready' : st.tStage === 2 ? 'the AI is listening to the song' : st.tStage === 3 ? `the AI is charting the song ${Math.round(st.tP * 100)}%` : `the AI is charting Hard busier ${Math.round(st.tP * 100)}%`
+            ? st.tStage === 1 ? (st.tVoice ? `hearing the singing ${Math.round(st.tP * 100)}%` : 'the AI is getting ready') : st.tStage === 2 ? 'the AI is listening to the song' : st.tStage === 3 ? `the AI is charting the song ${Math.round(st.tP * 100)}%` : `the AI is charting Hard busier ${Math.round(st.tP * 100)}%`
             : !charting || !st.pOn ? '' : st.pNow < ND ? `${DIFF_NAMES[st.pNow]} from its chart` : '';
           const text = done ? 'Every tile on a sound' : building ? building : charting ? `${st.sn} sounds · the AI is charting` : ph === 'map' ? `${st.heard} sounds heard · ${st.mapWhat}${st.mapP >= 0 ? ` ${Math.round(st.mapP * 100)}%` : ''}` : `${st.heard} sounds heard`;
           if (status.current.textContent !== text) status.current.textContent = text;

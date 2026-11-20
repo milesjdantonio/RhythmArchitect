@@ -78,6 +78,8 @@ export interface ThinOptions {
   kind?: (t: number) => string | null;
   phrase?: (t: number) => number;
   follow?: number;
+  /** How clearly a row's moment is sung (0: not; voice.ts): sung rows weigh SUNG more, scaled by it. */
+  sung?: (t: number) => number;
 }
 
 /**
@@ -95,6 +97,13 @@ export interface ThinOptions {
 const ANTICIPATION = 0.4;
 const ANTICIPATION_CUT = 0.3;
 const ANTICIPATION_MARGIN = 0.05;
+/**
+ * What a sung row weighs extra (times how clearly it's sung: voice.ts): the charts go with the
+ * lyrics. On two real listens (Nov 20, One Dance and Open Your Eyes) Easy went from 28% of its
+ * tiles on a sung syllable to 47% at weight 1 and 59% / 53% at 2, Medium 30% → 53% / 28% → 43%,
+ * with the same stars and ladder steps; rows nobody sings over weigh as before.
+ */
+export const SUNG = { weight: 2 };
 
 /** What a row weighs extra (or less) for being kept (left out) where the phrase it repeats kept (left out) its twin. */
 const TWIN_KEEP = 0.6;
@@ -160,7 +169,8 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     const notes = r.notes.map((n) => (n.hold && n.len < minHold ? tap(n) : n));
     const len = Math.max(0, ...notes.map((n) => (n.hold ? n.len : 0)));
     const s = strengthAt(o.events, sec, cursor);
-    return { t: r.t, notes, w: s + 0.25 * (r.notes.length - 1) + grid, end: r.t + len, s, onBeat: !!at?.beat };
+    const sung = o.sung ? o.sung(r.t) : 0;
+    return { t: r.t, notes, w: s + 0.25 * (r.notes.length - 1) + grid + SUNG.weight * sung, end: r.t + len, s, onBeat: !!at?.beat };
   });
   // Anticipations: a strong sound off the beat, just before a beat whose sound is no stronger,
   // is the rhythm's push (syncopation): it weighs more, and the beat it leads into less. (Only

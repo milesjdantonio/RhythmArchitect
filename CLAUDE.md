@@ -225,15 +225,33 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   targets for all three (1.38, 1.9) broke the ladder (Hard ×1.05 under a 2.2-star Ultra, Easy to
   Medium doubled): don't go back to them. Ultra (the whole chart, 2.0-3.1 stars) is rated, not
   thinned. By osu!'s names our Ultra is a Normal; making it harder is the user's call.
+- **The charts go with the lyrics** (Nov 20, the user: "it often doesn't go with the lyrics"). With
+  WebGPU, after the listen the worker splits the vocal off (Demucs, `stems.ts`; about 2 minutes
+  of a 3-minute song on a laptop's chip, the user chose that wait), hears its notes (Basic Pitch,
+  `notes.ts`) and takes their starts as sung syllables (`voice.ts`: merged within 80 ms, faint
+  notes dropped, and only where the vocal stem is at least 30% of the mix's level: Basic Pitch hears
+  bleed in an instrumental's vocal stem; `map-bench.mjs --voice-only` counts what gets through on
+  the instrumental bundled tracks: 0 and 0.18 a second, against ~2.5 on sung songs).
+  `withSyllables` (ensomi.ts) adds a tile on each syllable Ultra lacks (snapped to the beat map
+  within 30 ms, a hold where sung long, never within 90 ms of another tile; a tile crowding it that's
+  on no measured sound of its own is moved onto it) and thinning weighs sung rows `SUNG` (2) more
+  (thin.ts), their phrases following the voice and their lanes its tune. On two real listens (One
+  Dance, Open Your Eyes): Ultra's syllables with a tile 51% → 79%, 48% → 82%; Easy's tiles on a
+  syllable 28% → 61%, 27% → 57%; the same stars and steps. Measured with the separated vocal as the
+  truth: human charts of these songs are too few, and mistimed, to say. Sung notes are short
+  (One Dance: 7% last 0.35 s), so few become holds. The judgement before
+  (below: "about chance") was against a mistimed fan chart. Without WebGPU, or if the split fails,
+  the charts are made as before (the report says which).
 - Tried on Nov 20 and left out (measured on the Creative Commons charts and One Dance's):
   - **Basic Pitch** (`notes.ts`, Spotify, 230 KB) hears notes under 16% of the human tiles the
     onset mapper doesn't (59% → 75% heard), but the tiles come from the trained mapper: its notes
     merged into the sounds made the beat map and the repeats worse (tiles exactly on the grid 44% →
     28%), and as holds on ringing notes or as tiles added where Ultra is short they moved nothing
-    (F1 64% → 64%, human holds we also hold 15% → 17%). It stays for the mapping studies.
-  - **The voice split off** (Demucs, then Basic Pitch on it): on One Dance it heard notes under 6
-    more points of the human tiles (about chance: its notes are 4 a second) for 2 minutes of
-    splitting on the user's laptop chip.
+    (F1 64% → 64%, human holds we also hold 15% → 17%). (On the vocal split it's now the voice
+    step: above.)
+  - **The voice split off**, judged against the human tiles: on One Dance it heard notes under 6
+    more points of the human tiles (about chance), but that fan chart was mistimed (up to 70 ms):
+    measured against the separated vocal itself it's what the lyrics need (above).
   - **The model's own controls** (`@ensomi/runtime` 0.4.0 `controls`): `long_notes` NATURAL is what
     it does anyway, HALF made fewer holds survive RING and matched the humans' less; per-section
     stars in place of splicing whole charts met Ultra's targets less on the one fast song that

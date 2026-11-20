@@ -105,6 +105,30 @@ export async function benchAudio(url: string, title: string) {
   return { title, seconds: pcm.length / SR, read: m.grid.bpm, tracker: m.tracker, fit: m.fit, beat: m.beat, model: m.model, rawLong: m.rawLong, charts };
 }
 
+/**
+ * The singing a bundled track's vocal split gives (voice.ts): the bundled tracks are instrumental,
+ * so the syllables should be (nearly) none: what's left is bleed the gate let through.
+ */
+export async function benchVoice(id: string) {
+  const buf = await (await fetch(`/audio/${id}.mp3`)).arrayBuffer();
+  const decoded = await new OfflineAudioContext(1, 1, SR).decodeAudioData(buf);
+  const off = new OfflineAudioContext(1, Math.ceil(decoded.duration * SR), SR);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
+  const pcm = (await off.startRendering()).getChannelData(0).slice();
+  const o = await import('../src/mapping/ort');
+  if (!(await o.hasWebGpu())) return { id, skipped: 'no WebGPU' };
+  const { splitStems } = await import('../src/mapping/stems');
+  const parts = await splitStems(o.ort, pcm, SR);
+  const { hearNotes } = await import('../src/mapping/notes');
+  const heard = await hearNotes(o.ort, parts.vocals, SR, { providers: ['webgpu', 'wasm'] });
+  const { syllables } = await import('../src/mapping/voice');
+  const ungated = syllables(heard), gated = syllables(heard, { vocal: parts.vocals, mix: pcm, sr: SR });
+  return { id, seconds: pcm.length / SR, notes: heard.length, ungated: ungated.length, syllables: gated.length };
+}
+
 /** A bundled track (public/audio/<id>.mp3): no truth, its tempo and ladder. */
 export async function benchTrack(id: string) {
   const buf = await (await fetch(`/audio/${id}.mp3`)).arrayBuffer();

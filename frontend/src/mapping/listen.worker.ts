@@ -8,13 +8,16 @@
 //      mapper, which listens to the whole mix itself.
 //   3. The onset mapper (automap.ts) with both: the grid, every sound, sections, the on-device charts.
 //   4. When the page asks: the trained mapper (ensomi.ts, Ensomi R2) charts the song from the audio,
-//      after the onset mapper's result has gone to the page (it shows the sounds meanwhile).
+//      after the onset mapper's result has gone to the page (it shows the sounds meanwhile). With
+//      WebGPU the vocal is split off first (stems.ts) and its syllables heard (notes.ts, voice.ts):
+//      the charts go with the lyrics.
 // Each step that fails is left out, and the mapper does what it did without it.
 
 import { automap, type PartName } from './automap';
 import { computeLevels } from './levels';
 import type { ChartProgress } from '../api/types';
 import type { Trained, TrainedStage } from './ensomi';
+import type { Syllable } from './voice';
 
 export type ToMapper = {
   pcm: Float32Array;
@@ -88,13 +91,33 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       // Its tempo when its grid isn't used, for the dev tools: whether the two trackers agree is
       // what a half- or double-tempo fix would have to go on (none is guessed at yet).
       let unused: string | undefined;
+      // The singing (voice.ts): the vocal split off and its notes heard, each start a syllable.
+      // Needs the graphics chip (Demucs takes about 2 minutes of a 3-minute song on a laptop's);
+      // without it, or if it fails, the charts are made as before.
+      let voice: Syllable[] | undefined;
+      let voiceNote = '';
+      if (gpu) {
+        try {
+          const t0 = performance.now();
+          const { splitStems } = await import('./stems');
+          const parts = await splitStems(ort!, pcm, sr, (stage, p) => post({ stage: 'voice', p: stage === 'download' ? 0 : (p ?? 0) * 0.85 }));
+          const { hearNotes } = await import('./notes');
+          const sung = await hearNotes(ort!, parts.vocals, sr, { providers: ['webgpu', 'wasm'], onProgress: (p) => post({ stage: 'voice', p: 0.85 + p * 0.15 }) });
+          const { syllables } = await import('./voice');
+          voice = syllables(sung, { vocal: parts.vocals, mix: pcm, sr });
+          voiceNote = `; the voice split off in ${Math.round((performance.now() - t0) / 1000)} s`;
+        } catch (err) {
+          console.warn('[mapper] carrying on without the voice', err);
+          voiceNote = '; no voice (the split failed)';
+        }
+      } else voiceNote = '; no voice (no WebGPU to split it)';
       // (Dev: what the steps after the model work from, handed back with the charts: ensomiModel.ts STUDY_KEY.)
       const raws: { star: number; objects: { lane: number; start_ms: number; end_ms?: number }[]; shift: number }[] = [];
       const out = await trainedCharts(ort!, pcm, sr, {
         ...(trained!.study ? { onRaw: (star: number, objects: { lane: number; start_ms: number; end_ms?: number }[], shift: number) => raws.push({ star, objects: objects.map((x) => ({ lane: x.lane, start_ms: x.start_ms, end_ms: x.end_ms })), shift }) } : {}),
         base: trained!.base, title: trained!.title, artist: trained!.artist,
         bpm: result.bpm, offset: result.offset, events: result.events,
-        onGrid: result.onBeatGrid, meter: result.meter, beats, gpu,
+        onGrid: result.onBeatGrid, meter: result.meter, beats, voice, gpu,
         onStage: (stage, p) => post({ stage, p }),
         onProgress: (p) => post({ chart: p }),
         regrid: (g) => {
@@ -119,9 +142,11 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
           seconds: pcm.length / sr, tracked: { beats: beats ?? [] }, regridded: !!regridded, raws, mapper: out.mapper,
           on: { bpm: r.bpm, offset: r.offset, meter: r.meter, events: r.events, onGrid: r.onBeatGrid, gridUsed: r.gridUsed, lengthBeats: r.lengthBeats, sections: r.report.sections, beat: r.report.beat },
           notes: await hearNotes(ort!, pcm, sr, { providers: gpu ? ['webgpu', 'wasm'] : ['wasm'] }).catch(() => []),
+          voice: voice ?? [],
         };
       }
-      const done = regridded ? { ...out, result: regridded } : unused ? { ...out, mapper: `${out.mapper}; ${unused}` } : out;
+      const withVoice = { ...out, mapper: out.mapper + voiceNote };
+      const done = regridded ? { ...withVoice, result: regridded } : unused ? { ...withVoice, mapper: `${withVoice.mapper}; ${unused}` } : withVoice;
       post({ trained: study ? { ...done, study } : done });
     } catch (err) {
       console.warn('[mapper] the trained mapper failed', err);

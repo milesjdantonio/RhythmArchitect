@@ -61,7 +61,8 @@ the repository (nothing of them is committed or shipped with the game):
   `basic_pitch/saved_models/icassp_2022/nmp.onnx` (230 KB, unchanged); the licence is beside it as
   `basic-pitch-LICENSE.txt`. Its note decoding is ported to `frontend/src/mapping/notes.ts`
   (from `@spotify/basic-pitch`'s `toMidi.ts`, Apache-2.0: the onset-led part, with exact window timing).
-  Used by the dev tools' mapping studies, not by a normal listen.
+  Used on every listen with WebGPU, on the vocal split off by Demucs: its notes' starts are the sung
+  syllables the charts follow (`frontend/src/mapping/voice.ts`).
 - Runtime libraries: [ONNX Runtime Web](https://github.com/microsoft/onnxruntime) (MIT),
   [demucs-web](https://github.com/timcsy/demucs-web) (MIT) and [fflate](https://github.com/101arrowz/fflate) (MIT).
 
