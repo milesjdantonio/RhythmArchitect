@@ -216,7 +216,8 @@ class SupabaseTests {
         SongStore s = store(file, "secret");
         s.retryAfter(0);
         assertEquals("file", s.storage());
-        assertTrue(s.read(all -> all.stream().anyMatch(x -> x.path("builtIn").asBoolean(false))), "the file started from the seed");
+        boolean seeded = s.read(all -> all.stream().anyMatch(x -> x.path("builtIn").asBoolean(false)));
+        assertTrue(seeded, "the file started from the seed");
         ObjectNode added = s.add((ObjectNode) json.readTree("{\"title\":\"Meanwhile\",\"artist\":\"A\",\"source\":{\"kind\":\"youtube\",\"videoId\":\"mmm\"}}"));
         down = false;
         assertEquals("supabase", s.storage());

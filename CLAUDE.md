@@ -336,3 +336,7 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   `c:` working directory makes it load twice and every suite fails with "reading 'config'").
 - Windows dev box: write multi-line scripts with the file tool, not shell heredocs (they break on
   quotes).
+- OneDrive can lock `backend/target`, so `./mvnw test` here may reuse stale classes and pass where
+  Render's Docker build (from scratch) fails to compile (Nov 20: an ambiguous `assertTrue` passed
+  locally and broke the deploy). After changing Java, build a fresh copy outside OneDrive:
+  `git archive HEAD backend src/java src/test | tar -x -C <temp dir>`, then `./mvnw -B test` there.
