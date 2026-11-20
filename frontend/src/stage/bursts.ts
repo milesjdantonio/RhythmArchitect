@@ -5,6 +5,44 @@
 
 import * as THREE from 'three';
 import type { GpuKit } from './Stage3D';
+import { isWebKit } from '../lib/perf';
+
+/**
+ * A sheet as a texture of premultiplied pixels, the bottom row first (as the shader reads it).
+ * Elsewhere the decoder does both (createImageBitmap's flipY and premultiply). Safari doesn't
+ * honour them reliably (and applies WebGL's unpack settings to an ImageBitmap, which un-premultiplies
+ * it): its bursts drew as white squares on the pads and garbled frames (the user, Nov 20, "clicking
+ * notes" on a Mac). There it's decoded to raw pixels and flipped and premultiplied here.
+ */
+async function sheetTexture(blob: Blob): Promise<THREE.Texture> {
+  if (!isWebKit()) {
+    const bitmap = await createImageBitmap(blob, { imageOrientation: 'flipY', premultiplyAlpha: 'premultiply' });
+    return new THREE.Texture(bitmap as unknown as HTMLImageElement);
+  }
+  const bitmap = await createImageBitmap(blob);
+  const w = bitmap.width, h = bitmap.height;
+  const canvas: OffscreenCanvas | HTMLCanvasElement = typeof OffscreenCanvas !== 'undefined'
+    ? new OffscreenCanvas(w, h)
+    : Object.assign(document.createElement('canvas'), { width: w, height: h });
+  const g = canvas.getContext('2d') as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
+  g.drawImage(bitmap, 0, 0);
+  bitmap.close?.();
+  const src = g.getImageData(0, 0, w, h).data; // straight alpha, top row first
+  const out = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) {
+    const from = y * w * 4, to = (h - 1 - y) * w * 4;
+    for (let x = 0; x < w * 4; x += 4) {
+      const a = src[from + x + 3];
+      out[to + x] = (src[from + x] * a + 127) / 255;
+      out[to + x + 1] = (src[from + x + 1] * a + 127) / 255;
+      out[to + x + 2] = (src[from + x + 2] * a + 127) / 255;
+      out[to + x + 3] = a;
+    }
+  }
+  const tex = new THREE.DataTexture(out, w, h, THREE.RGBAFormat);
+  tex.unpackAlignment = 4;
+  return tex;
+}
 
 /** Bake settings, shared with the bake page. */
 export const BAKE = { frame: 128, fps: 30, cols: 32 };
@@ -73,10 +111,9 @@ export class Bursts {
     try {
       const manifest = (await (await fetch(`${base}/bursts.json`)).json()) as Record<'hit' | 'hold', BakeSheet>;
       for (const name of ['hit', 'hold'] as const) {
-        // An ImageBitmap (works in a worker too), flipped and premultiplied as it's decoded.
+        // Flipped and premultiplied as it's decoded (works in a worker too): sheetTexture.
         const blob = await (await fetch(`${base}/${name}.png`)).blob();
-        const bitmap = await createImageBitmap(blob, { imageOrientation: 'flipY', premultiplyAlpha: 'premultiply' });
-        const tex = new THREE.Texture(bitmap as unknown as HTMLImageElement);
+        const tex = await sheetTexture(blob);
         tex.flipY = false;
         // The bitmap is already premultiplied. WebGL uploads it as it is; WebGPU converts it to what
         // this flag says, and "not premultiplied" would undo it (the glow's faint edges then fill
