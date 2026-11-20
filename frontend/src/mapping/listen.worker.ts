@@ -38,6 +38,26 @@ export type FromMapper =
 
 const post = (m: FromMapper) => (self as unknown as Worker).postMessage(m);
 
+/**
+ * Each sound found in the whole mix labelled with the part it came from: the part whose level
+ * jumps most at it (the 40 ms after its attack against the 40 ms before).
+ */
+function labelParts(events: { sec: number; part?: PartName }[], stems: Record<PartName, Float32Array>, sr: number) {
+  const W = Math.round(0.04 * sr);
+  const level = (x: Float32Array, a: number, b: number) => { let s = 0; const from = Math.max(0, a), to = Math.min(x.length, b); for (let i = from; i < to; i++) s += x[i] * x[i]; return to > from ? Math.sqrt(s / (to - from)) : 0; };
+  for (const e of events) {
+    const i = Math.round(e.sec * sr);
+    let best: PartName | undefined, jump = 0;
+    for (const p of ['drums', 'bass', 'vocals', 'other'] as PartName[]) {
+      const x = stems[p];
+      if (!x) continue;
+      const j = level(x, i, i + W) - level(x, i - W, i);
+      if (j > jump) { jump = j; best = p; }
+    }
+    if (best) e.part = best;
+  }
+}
+
 self.onmessage = async (e: MessageEvent<ToMapper>) => {
   let mapped = false;
   try {
@@ -62,16 +82,22 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       gridError = err instanceof Error ? err.message : String(err);
       console.warn('[mapper] carrying on without the beat tracker', err);
     }
-    if (split && gpu && ort && !trained) {
+    // The song split into its parts (drums, bass, vocals, other). Without the trained mapper the
+    // onset mapper finds each part's sounds on its own; with it, the sounds are still found in the
+    // whole mix (the beat map and the repeats are built from those: found per part they charted
+    // 2 phrases alike where the mix gave 11), and each is then labelled with the part it came from
+    // (partOf), so every phrase of a chart can follow one part; the vocals give the syllables.
+    if ((split || trained) && gpu && ort) {
       try {
         const { splitStems } = await import('./stems');
-        stems = await splitStems(ort, pcm, sr, (stage, p) => post({ progress: stage === 'download' ? 'getting the song splitter' : 'splitting the song', p }));
+        stems = await splitStems(ort, pcm, sr, (stage, p) => post({ progress: stage === 'download' ? 'getting the song splitter' : 'splitting the song into its parts', p }));
       } catch (err) {
         console.warn('[mapper] carrying on without the split', err);
       }
     }
     post({ progress: 'finding every note' });
-    const result = automap(pcm, sr, { grid, gridError, stems });
+    const result = automap(pcm, sr, { grid, gridError, stems: trained ? null : stems });
+    if (trained && stems) labelParts(result.events, stems, sr);
     const levels = computeLevels(pcm, sr);
     const charting = !!trained && !!ort;
     post({ result, levels, trained: charting });
@@ -96,21 +122,19 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       // without it, or if it fails, the charts are made as before.
       let voice: Syllable[] | undefined;
       let voiceNote = '';
-      if (gpu) {
+      if (stems) {
         try {
           const t0 = performance.now();
-          const { splitStems } = await import('./stems');
-          const parts = await splitStems(ort!, pcm, sr, (stage, p) => post({ stage: 'voice', p: stage === 'download' ? 0 : (p ?? 0) * 0.85 }));
           const { hearNotes } = await import('./notes');
-          const sung = await hearNotes(ort!, parts.vocals, sr, { providers: ['webgpu', 'wasm'], onProgress: (p) => post({ stage: 'voice', p: 0.85 + p * 0.15 }) });
+          const sung = await hearNotes(ort!, stems.vocals, sr, { providers: ['webgpu', 'wasm'], onProgress: (p) => post({ stage: 'voice', p }) });
           const { syllables } = await import('./voice');
-          voice = syllables(sung, { vocal: parts.vocals, mix: pcm, sr });
-          voiceNote = `; the voice split off in ${Math.round((performance.now() - t0) / 1000)} s`;
+          voice = syllables(sung, { vocal: stems.vocals, mix: pcm, sr });
+          voiceNote = `; the song split into its parts, the voice heard in ${Math.round((performance.now() - t0) / 1000)} s`;
         } catch (err) {
           console.warn('[mapper] carrying on without the voice', err);
-          voiceNote = '; no voice (the split failed)';
+          voiceNote = '; no voice (hearing it failed)';
         }
-      } else voiceNote = '; no voice (no WebGPU to split it)';
+      } else voiceNote = gpu ? '; no parts (the split failed)' : '; no parts (no WebGPU to split the song)';
       // (Dev: what the steps after the model work from, handed back with the charts: ensomiModel.ts STUDY_KEY.)
       const raws: { star: number; objects: { lane: number; start_ms: number; end_ms?: number }[]; shift: number }[] = [];
       const out = await trainedCharts(ort!, pcm, sr, {

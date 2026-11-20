@@ -74,8 +74,9 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   every song A to Z with a search and a letter rail, opened by the Bank button (♫ icon) under the
   settings gear (beside the gear: **How to play**, `src/components/HowToPlay.tsx`, a dialog of
   topics with moving diagrams, also opened from the start card; its numbers come from the rules). The menu's song keeps playing there; a pick plays right there (the bank stays
-  open, its "Now playing" card holds a YouTube song's video, and a Play button under it starts the
-  song at the menu's difficulty, as the menu's Play does). Esc goes back to the menu with the
+  open, its "Now playing" card holds a YouTube song's video, and a Play button under it does what
+  the Menu button does: back to the menu with that song on stage, its preview carrying on; the user,
+  Nov 20). Esc goes back to the menu with the
   song that was playing on stage, its preview carrying on (the screens hand it over:
   `handOverPreview` / `takePreview`). No map report.
 - Right = gameplay only: a Rive waiting screen until a song is picked; then the stage (60-75% of the
@@ -213,6 +214,17 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     they cluster on the CC set (27% vs 29%; 61% vs 60% within a beat of the last); humans range
     3-64% from song to song (3% and 45% on one song), and neither the sounds' strength nor
     anything else measured says which songs want them. Gating chords on strength cut them to 3-9%.
+  - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
+    2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
+    labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
+    vocals, other; sung syllables count as vocals) and thinning pulls each phrase to its lead part
+    (`FOLLOW`, 0.3 as before: 1/0.8/0.5 for Easy/Medium/Hard raised the share of a phrase's tiles on
+    its lead part only 73% → 77% on the real listens and cost the synthetic band's strong notes
+    E 76% → 71%, M 80% → 77%). Sounds are
+    still found in the whole mix, not per stem: found per stem they gave the repeat detection 2
+    phrases charted alike on One Dance where the mix gave 11. Syllables always go onto the beat
+    map's grid (`onGrid` in ensomi.ts; within 30 ms only, 17% of Easy's tiles sat off the 16ths and
+    bars stopped repeating: 3% of One Dance's Easy bars repeated one of the last 8, Nov 19's map 36%).
   - "Easy from the beat" (rows on the beat weighing more on Easy) was tried and left out: human
     Easy charts put 26-50% of their tiles on the beat, ours already ~40%, and more made them less alike.
 - **Star ratings** (`calibratedCharts`, `starTargets`): every chart is rated with the runtime's
@@ -313,7 +325,15 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   songs, moves the map after a run whose hits were steadily early or late. Settings and the dev
   tools have one Resync button (`resyncPlaying` in `src/audio/playback.ts`).
 - YouTube songs' clock follows the player (`followTime` in `src/audio/playback.ts`); keep pause,
-  restart, the dev tools and the 2D fallback working for them. e2e tests use a fake player
+  restart, the dev tools and the 2D fallback working for them. **A lagging video** (the user, Nov
+  20; `src/game/lag.ts` `LagWatch`, Play.tsx): when the video buffers mid-song the game holds
+  (phase `buffering`, "Loading the song…") while it loads ahead, then 3, 2, 1 once `READY_AHEAD`
+  seconds are loaded; a stall over `HEAVY_MS`, or one within `AGAIN_MS` of the last, brings up
+  `LagCard` (phase `lagging`: signal.riv at the top, seconds loaded ahead, how fast it loads
+  against the song, the browser's Mbps where it says (Chrome, Edge), Continue playing / Return to
+  main menu); after `CARDS_BEFORE_WAIT` (3) cards, Continue stays greyed out until the connection is
+  strong (`STRONG_AHEAD` s ahead and loading `STRONG_RATE`× the song's speed, or all of it loaded).
+  e2e: the fake player's `stall()` / `unstall()` and `__fakeYtLoaded`. e2e tests use a fake player
   (`tests/e2e/fake-youtube.js`).
 - Listening and mapping show `src/components/generate/ListenScope.tsx` (the song as a field of
   light) and `src/components/generate/ListenAura.tsx` (the full-screen light behind the dialog; the

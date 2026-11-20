@@ -13,7 +13,7 @@ declare global { interface Window { __rive: Record<string, Report>; __riveInputs
 window.__rive = {};
 window.__riveInputs = {};
 
-const ALL = ['intro', 'attract', 'cover', 'logo', 'wordmark', 'composing', 'hit', 'hold', 'combo', 'result', 'difficulty', 'cassette'];
+const ALL = ['intro', 'attract', 'cover', 'logo', 'wordmark', 'composing', 'hit', 'hold', 'combo', 'result', 'difficulty', 'cassette', 'signal'];
 const q = new URLSearchParams(location.search).get('file');
 const files = q ? q.split(',') : ALL;
 // "file:Artboard" picks an artboard; otherwise each artboard listed in ARTBOARDS gets a panel.
@@ -21,7 +21,7 @@ const ARTBOARDS: Record<string, string[]> = { result: ['Clear', 'Failed'], diffi
 // State machine to start, by file or file:artboard (the runtime only starts machines named up front).
 const MACHINES: Record<string, string> = {
   intro: 'Intro', attract: 'Attract', cover: 'Cover', logo: 'Logo', wordmark: 'Wordmark', composing: 'Composing', hit: 'Hit', hold: 'Hold', combo: 'Combo',
-  'result:Clear': 'Clear', 'result:Failed': 'Failed', difficulty: 'Difficulty', cassette: 'Cassette',
+  'result:Clear': 'Clear', 'result:Failed': 'Failed', difficulty: 'Difficulty', cassette: 'Cassette', signal: 'Signal',
 };
 
 for (const spec of files) {

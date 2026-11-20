@@ -378,12 +378,13 @@ test.describe('Rythm Architect', () => {
     await expect(page).toHaveURL(/#\/bank$/);
     await page.keyboard.press('Escape');
     await expect(page.locator('#now-title')).toHaveText('Ink and Fury');
-    // Play under the picked song starts it, as the menu's Play does.
+    // Play under the picked song does what Menu does: back to the menu with it on stage.
     await page.getByRole('button', { name: 'Music bank' }).click();
     await page.locator('.bank-group .result', { hasText: 'Neon Blueprint' }).click();
     await expect(page.locator('.bank-now-title')).toHaveText('Neon Blueprint');
-    await page.getByRole('link', { name: 'Play Neon Blueprint' }).click();
-    await expect(page).toHaveURL(/#\/play\/[^/]+\/medium$/);
+    await page.getByRole('button', { name: 'Play Neon Blueprint' }).click();
+    await expect(page.locator('#now-title')).toHaveText('Neon Blueprint');
+    await expect(page).toHaveURL(/#\/song\//);
   });
 
   test('the song on stage plays on in the music bank, a pick plays there, and the menu carries on with it', async ({ page, request }) => {
@@ -457,6 +458,56 @@ test.describe('Rythm Architect', () => {
     const t1 = await time();
     await page.waitForTimeout(1000);
     expect(await time()).toBeGreaterThan(t1 + 0.7);
+  });
+
+  test('a lagging video holds the game and counts back in; when it keeps lagging, the connection card, Continue greyed after three', async ({ page, request }) => {
+    test.setTimeout(150_000);
+    await skipIntro(page);
+    await fakeYouTube(page, { seconds: 120 });
+    const match = await (await request.get('/api/youtube?title=Fixture%20Song&artist=Test%20Artist')).json() as { videoId: string };
+    const yt = await (await request.post('/api/fan-chart', { data: { title: 'Fixture Song', artist: 'Test Artist', videoId: match.videoId, seconds: 40 } })).json() as Song;
+    await page.goto(`/#/play/${encodeURIComponent(yt.id)}/easy`);
+    await expect(startButton(page)).toBeEnabled({ timeout: 30_000 });
+    await page.keyboard.press('Enter');
+    await autoplay(page);
+    const fake = (js: string) => page.evaluate(js);
+    const ytState = () => page.evaluate(() => (window as unknown as { __yt: { state: () => number } }).__yt.state());
+    await expect.poll(ytState, { timeout: 20_000 }).toBe(1);
+    await page.waitForTimeout(1500);
+
+    // A short stall: the game holds ("Loading the song"), then counts 3, 2, 1 and carries on.
+    await fake('window.__fakeYtLoaded = 0.01; window.__fakeYt.stall()');
+    await expect(page.locator('.lag-loading')).toBeVisible();
+    await fake('window.__fakeYtLoaded = 1; window.__fakeYt.unstall()');
+    await expect(page.locator('.countdown')).toBeVisible();
+    await expect(page.locator('.lag-loading')).toHaveCount(0);
+    await expect.poll(ytState, { timeout: 10_000 }).toBe(1);
+
+    // Another stall soon after: the card, with what it measured and the choice.
+    for (let i = 1; i <= 3; i++) {
+      await page.waitForTimeout(800);
+      await fake('window.__fakeYtLoaded = 0.05; window.__fakeYt.stall()');
+      const card = page.getByRole('alertdialog', { name: 'Your connection is slow' });
+      await expect(card).toBeVisible({ timeout: 8000 });
+      await expect(card).toContainText('Loaded ahead');
+      const cont = card.getByRole('button', { name: 'Continue playing' });
+      if (i < 3) {
+        await expect(cont).toBeEnabled();
+        await fake('window.__fakeYt.unstall()');
+        await cont.click();
+        await expect(card).toHaveCount(0);
+        await expect.poll(ytState, { timeout: 10_000 }).toBe(1);
+      } else {
+        // The third time: Continue waits until the connection is strong (here: the whole song loads).
+        await expect(cont).toBeDisabled();
+        await expect(card).toContainText('Continue opens once the connection holds up');
+        await fake('window.__fakeYtLoaded = 1');
+        await expect(cont).toBeEnabled({ timeout: 5000 });
+        // Back to the menu instead.
+        await card.getByRole('button', { name: 'Return to main menu' }).click();
+        await expect(page).toHaveURL(/#\/song\//);
+      }
+    }
   });
 
   test('favourites a song and finds it in the favourites drop-down', async ({ page }) => {

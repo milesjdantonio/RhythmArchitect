@@ -40,17 +40,21 @@ describe('tiles on the singing', () => {
   const beats: ChartNote[] = Array.from({ length: 16 }, (_, i) => ({ t: i, lane: i % 4, pitch: 'C5', len: 0.25 }));
 
   it('adds a tile on each sung syllable without one, keeps the rest, never crowds a tile', () => {
-    const voice = syllables([note(1.02), note(1.25), note(1.45), note(1.93), note(3.75, 0.5)]);
-    const out = withSyllables(beats, on(voice), null);
+    // A tile off the grid on no sound (2.03 s), and one on a sound (2.53 s).
+    const chart = [...beats.filter((n) => n.t !== 4 && n.t !== 5), { t: 4.06, lane: 0, pitch: 'C5', len: 0.25 }, { t: 5.06, lane: 1, pitch: 'C5', len: 0.25 }];
+    const placing = on(syllables([note(1.02), note(1.27), note(1.97), note(2.47), note(3.73, 0.5)]));
+    placing.events.push(sound(2.53));
+    const out = withSyllables(chart, placing, null);
     const secs = out.notes.map((n) => n.t * 0.5);
-    // 1.02 has a tile (1.0); 1.25 gets one; 1.45 is crowded by the beat at 1.5, which is on a sound
-    // of its own: it stays; 1.93 is crowded by the beat at 2.0, on no sound: it moves onto the
-    // syllable; 3.75 gets one, a hold (sung long).
-    expect(out.notes.length).toBe(beats.length + 2);
+    // Each syllable's tile goes on the grid's nearest 16th. 1.02 has a tile (1.0); 1.27 gets one at
+    // 1.25; 1.97 (grid 2.0) is crowded by the tile at 2.03, on no sound: it moves onto 2.0;
+    // 2.47 (grid 2.5) is crowded by the tile at 2.53, on a sound of its own: it stays; 3.73 gets one
+    // at 3.75, a hold (sung long).
     expect(secs).toContain(1.25);
-    expect(secs).toContain(1.5);
-    expect(secs).toContain(1.93);
-    expect(secs).not.toContain(2);
+    expect(secs).toContain(2);
+    expect(secs).not.toContain(2.03);
+    expect(secs).toContain(2.53);
+    expect(secs).not.toContain(2.5);
     expect(secs).toContain(3.75);
     expect(out.notes.find((n) => n.t === 7.5)).toMatchObject({ hold: true, len: 1 });
     expect(out.note).toMatch(/5 sung syllables heard .*1 had a tile, 2 added, 1 moved onto them/);

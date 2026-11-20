@@ -10,7 +10,7 @@ import { Icon } from '../components/Icon';
 import { SongRow } from '../components/SongRow';
 import { VideoSlot } from '../components/VideoSlot';
 import { EASE_OUT } from '../lib/motion';
-import { bankReturn, href, navigate, parse } from '../lib/router';
+import { bankReturn, href, navigate } from '../lib/router';
 import { cachedSong, fetchSong, useLibrary } from '../library/songs';
 import { ServerNote } from '../components/ServerNote';
 import { isWaking, useServer } from '../lib/server';
@@ -45,8 +45,6 @@ export function MusicBank() {
     const id = /^#\/song\/([^?]+)/.exec(bankReturn.hash)?.[1];
     return id ? decodeURIComponent(id) : undefined;
   }, []);
-  // The menu's difficulty (it's in the menu's address when one was picked there), for Play.
-  const difficulty = useMemo(() => { const r = parse(bankReturn.hash); return (r.name === 'home' && r.difficulty) || 'medium'; }, []);
 
   // The song playing here: at first the menu's (it handed its preview over on the way in), then
   // whatever is picked. Its card (and a YouTube song's video spot) is there from the first frame,
@@ -225,11 +223,11 @@ export function MusicBank() {
             <p className="label bank-now-label"><Icon name="notes" size={13} /> Now playing</p>
             <p className="bank-now-title">{nowSong.title}</p>
             <p className="bank-now-artist">{nowSong.artist}</p>
-            {/* Play, as the menu's: the song at the menu's difficulty (the preview stops; the game plays it). */}
-            <a className="btn btn-primary play-btn bank-now-play" href={href.play(nowSong.id, difficulty)} aria-label={`Play ${nowSong.title}`}
-              onClick={() => { const cur = handle.current; handle.current = null; cur?.stop(); }}>
+            {/* Play: as the Menu button (back to the menu with this song on stage, its preview carrying
+                on there: the user, Nov 20), where its Play and difficulty are. */}
+            <button type="button" className="btn btn-primary play-btn bank-now-play" onClick={back} aria-label={`Play ${nowSong.title}`}>
               <Icon name="play" /> Play
-            </a>
+            </button>
           </motion.aside>
         )}
 

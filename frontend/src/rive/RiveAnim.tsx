@@ -54,7 +54,7 @@ RuntimeLoader.awaitInstance().then((runtime) => {
   };
 }).catch(() => { /* no runtime: the fallbacks show */ });
 
-export type RiveFile = 'intro' | 'attract' | 'cover' | 'logo' | 'wordmark' | 'composing' | 'hit' | 'hold' | 'combo' | 'result' | 'difficulty' | 'cassette';
+export type RiveFile = 'intro' | 'attract' | 'cover' | 'logo' | 'wordmark' | 'composing' | 'hit' | 'hold' | 'combo' | 'result' | 'difficulty' | 'cassette' | 'signal';
 
 export interface RiveHandle {
   fire(name: string): void;

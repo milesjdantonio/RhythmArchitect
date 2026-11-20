@@ -480,3 +480,25 @@
 .practice-speed { display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .practice-speed > span { margin-right: 6px; }
 .hud-practice { border-color: hsl(var(--hA) 100% 72% / 0.6); }
+
+/* A YouTube song's video lagging (Play.tsx, game/lag.ts): the note while it loads, and the card
+   when it keeps stalling. The card's own panel: readable over the held stage. */
+.lag-loading { position: absolute; z-index: 9; left: 50%; top: 18%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 10px 18px; border: 1px solid var(--hair-strong); border-radius: 999px; background: rgb(4 6 16 / 0.9); font-size: 14px; letter-spacing: 0.04em; color: var(--ink-soft); }
+.lag-loading-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--lightA); box-shadow: 0 0 12px var(--lightA); animation: lag-dot 1s ease-in-out infinite alternate; }
+@keyframes lag-dot { from { opacity: 0.3; } to { opacity: 1; } }
+.lag-card { padding: var(--space-5, 28px) var(--space-4); border: 1px solid var(--hair-strong); border-radius: var(--r-lg); background: rgb(4 6 16 / 0.94); }
+.lag-card h1 { font-size: clamp(26px, 3.4vw, 40px); }
+.lag-signal { width: 160px; height: 112px; display: grid; place-items: center; }
+.lag-bars { display: flex; align-items: flex-end; gap: 10px; height: 70px; }
+.lag-bars i { width: 16px; border-radius: 5px; background: rgb(255 255 255 / 0.08); border: 1px solid var(--hair-strong); }
+.lag-bars i:nth-child(1) { height: 22%; background: var(--miss); box-shadow: 0 0 14px var(--miss); animation: lag-dot 1s ease-in-out infinite alternate; }
+.lag-bars i:nth-child(2) { height: 46%; } .lag-bars i:nth-child(3) { height: 72%; } .lag-bars i:nth-child(4) { height: 100%; }
+.lag-bars.is-strong i { background: var(--lightA); box-shadow: 0 0 12px var(--lightA); animation: none; }
+.lag-body { max-width: 40ch; color: var(--ink-soft); line-height: 1.5; }
+.lag-stats { display: grid; gap: 6px; width: min(360px, 100%); margin: 0; padding: 12px 16px; border: 1px solid var(--hair-strong); border-radius: 12px; text-align: left; }
+.lag-stats div { display: flex; justify-content: space-between; gap: var(--space-3); font-size: 14px; }
+.lag-stats dt { color: var(--ink-soft); }
+.lag-stats dd { margin: 0; text-align: right; }
+.lag-card .btn-primary:disabled { opacity: 0.4; filter: grayscale(1); cursor: not-allowed; }
+.lag-wait { max-width: 36ch; margin: 0; }
+@media (prefers-reduced-motion: reduce) { .lag-loading-dot, .lag-bars i { animation: none; } }

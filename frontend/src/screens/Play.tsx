@@ -4,7 +4,9 @@ import { api } from '../api/client';
 import type { Difficulty, Song } from '../api/types';
 import { learnFromRun } from '../audio/syncer';
 import { COUNT_BEATS, audioLevels, handOverPreview, overdriveSweep, pauseAudio, playbackRate, prepareSong, previewSong, resumeAudio, setDuck, songMelody, songTime, startSong, stopSong, unlockAudio, windDown, type PreviewHandle } from '../audio/playback';
-import { VideoError, YT_STATE, ytIntent, ytOnState, ytStarted } from '../audio/youtube';
+import { VideoError, YT_STATE, ytDuration, ytIntent, ytLoadedFraction, ytOnState, ytRawTime, ytStarted, ytState } from '../audio/youtube';
+import { LagWatch, connectionInfo } from '../game/lag';
+import { LagCard, type LagView } from '../components/play/LagCard';
 import { ComboCallout, type Callout } from '../components/play/ComboCallout';
 import { DevTools, type DevEffect, type DevProbe } from '../components/play/DevTools';
 import { PlayHud, type HudState } from '../components/play/PlayHud';
@@ -38,8 +40,12 @@ import { JudgePool, type JudgePoolHandle } from '../components/play/JudgePool';
 import { forward } from '../background/host';
 import { themeHues } from '../background/themes';
 
-/** resuming: back from the pause, counting 3, 2, 1 before the song carries on. */
-type Phase = 'loading' | 'ready' | 'starting' | 'playing' | 'paused' | 'resuming' | 'failing' | 'results' | 'error';
+/**
+ * resuming: back from the pause, counting 3, 2, 1 before the song carries on. buffering: a
+ * YouTube song's video stalled, the game held until enough has loaded; lagging: it keeps stalling,
+ * the "your connection is slow" card (game/lag.ts).
+ */
+type Phase = 'loading' | 'ready' | 'starting' | 'playing' | 'paused' | 'resuming' | 'buffering' | 'lagging' | 'failing' | 'results' | 'error';
 /** A judgement word's kind. */
 type PopupKind = Judgement | 'hold';
 /** The stage's hit burst and hold glow on one pad. */
@@ -750,12 +756,27 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   }, []);
 
   /**
-   * Back from the pause: 3, 2, 1 (on the song's beat, half a second to 0.75 s a number) over the
-   * held stage, then the song carries on. Escape during it goes back to the pause.
+   * The video stalled (a YouTube song): the game holds where it is, like a pause, while the video
+   * loads ahead (pausing it doesn't stop it loading). See the lag watch below.
+   */
+  const stall = useCallback(async () => {
+    if (phaseRef.current !== 'playing') return;
+    phaseRef.current = 'buffering';
+    setPhase('buffering');
+    cancelFrame(raf.current);
+    if (stage.current instanceof StageProxy) stage.current.hold();
+    await pauseAudio();
+    pressed.current = [false, false, false, false];
+    for (let l = 0; l < 4; l++) stage.current?.setPressed(l, false);
+  }, []);
+
+  /**
+   * Back from the pause (or a stall): 3, 2, 1 (on the song's beat, half a second to 0.75 s a
+   * number) over the held stage, then the song carries on. Escape during it goes back to the pause.
    */
   const resumeTimer = useRef(0);
   const resume = useCallback(() => {
-    if (phaseRef.current !== 'paused') return;
+    if (phaseRef.current !== 'paused' && phaseRef.current !== 'buffering' && phaseRef.current !== 'lagging') return;
     const step = Math.min(0.75, Math.max(0.5, song ? 60 / song.bpm : 0.6)) * 1000;
     phaseRef.current = 'resuming';
     setPhase('resuming');
@@ -780,6 +801,36 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     setPhase('paused');
   }, []);
   useEffect(() => () => clearTimeout(resumeTimer.current), []);
+
+  // The video lagging (YouTube songs): a stall holds the game until READY_AHEAD seconds have
+  // loaded ahead, then 3, 2, 1; a long stall, or one soon after another, brings up the card.
+  // Sampled a few times a second while it plays too, so the card knows how fast it loads.
+  const lag = useRef(new LagWatch());
+  const [lagView, setLagView] = useState<LagView | null>(null);
+  const isVideo = song?.source.kind === 'youtube';
+  useEffect(() => {
+    if (!isVideo) return;
+    const id = window.setInterval(() => {
+      const p = phaseRef.current, w = lag.current, now = performance.now();
+      if (p !== 'playing' && p !== 'buffering' && p !== 'lagging' && p !== 'resuming') return;
+      w.sample(now, ytRawTime(), ytLoadedFraction(), ytDuration());
+      if (p === 'playing' && ytState() === YT_STATE.BUFFERING && ytIntent() === 'play' && ytStarted()) {
+        w.startStall(now);
+        void stall();
+        return;
+      }
+      if (p === 'buffering') {
+        if (w.heavy(now)) { w.showCard(); phaseRef.current = 'lagging'; setPhase('lagging'); }
+        else if (w.ready) { w.endStall(now); resume(); }
+      }
+      if (p === 'buffering' || p === 'lagging') {
+        const c = connectionInfo();
+        setLagView({ ahead: w.ahead, rate: w.rate, complete: w.complete, mbps: c?.mbps ?? null, strong: w.strong, mustWait: w.mustWait, cards: w.cards });
+      }
+    }, 250);
+    return () => clearInterval(id);
+  }, [isVideo, stall, resume]);
+  const lagContinue = useCallback(() => { lag.current.endStall(performance.now()); resume(); }, [resume]);
 
   // A YouTube song paused from inside its player (or by YouTube) pauses the game too.
   useEffect(() => ytOnState((st) => {
@@ -995,6 +1046,15 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
         )}
         {phase === 'paused' && (
           <PauseCard key="paused" practice={practice} onStopPractice={() => { practiceRef.current = null; setPractice(null); stopSong(); resumeAudio().then(() => setPhase('ready')); }} at={clock} of={song ? (song.lengthBeats * 60) / song.bpm : 0} onResume={resume} onRestart={restart} onQuit={() => navigate(href.song(songId, difficulty))} />
+        )}
+        {phase === 'lagging' && lagView && (
+          <LagCard key="lagging" view={lagView} onContinue={lagContinue} onMenu={() => navigate(href.song(songId, difficulty))} />
+        )}
+        {phase === 'buffering' && (
+          <motion.div key="buffering" className="lag-loading" role="status" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <span className="lag-loading-dot" aria-hidden />
+            Loading the song… {lagView && !lagView.complete ? `${Math.floor(lagView.ahead)} s loaded ahead` : ''}
+          </motion.div>
         )}
         {phase === 'loading' && (
           <Loader key="loading" title={song?.title} artist={song?.artist} hues={song?.hues}

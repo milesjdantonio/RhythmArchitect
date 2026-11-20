@@ -24,6 +24,8 @@ interface YTPlayer {
   getPlaybackRate?(): number;
   getAvailablePlaybackRates?(): number[];
   getDuration(): number;
+  /** The share of the video loaded so far (0..1). */
+  getVideoLoadedFraction?(): number;
   getPlayerState(): number;
   setVolume(v: number): void;
   mute(): void;
@@ -237,6 +239,8 @@ export function ytRawTime(): number { return player?.getCurrentTime() || 0; }
 export function ytResync() { clock.reset(); }
 export const ytState = () => state;
 export const ytDuration = () => player?.getDuration() || 0;
+/** The share of the video loaded so far (0..1; 1 when the player can't say). */
+export const ytLoadedFraction = () => { const f = player?.getVideoLoadedFraction?.(); return typeof f === 'number' && Number.isFinite(f) ? f : 1; };
 export const ytIntent = () => intent;
 export const ytCued = () => cued;
 export function ytSetVolume(v: number) {

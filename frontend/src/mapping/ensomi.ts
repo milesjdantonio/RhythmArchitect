@@ -14,7 +14,7 @@ import type { Ort } from './ort';
 import { cachedSource } from './ensomiModel';
 import { KEEP, thinChart } from './thin';
 import { flowChart } from './lanes';
-import { barOf, beatAt, beatMap, beatPlace, snapSec, type BeatMap } from './beatmap';
+import { barOf, beatAt, beatMap, beatPlace, divisionAt, secAt, snapSec, type BeatMap } from './beatmap';
 import { findRepeats, twinSec, type Repeats } from './repeats';
 import { noteName, syllableAt, type Syllable } from './voice';
 
@@ -392,6 +392,18 @@ export function placer(on: Placing) {
   };
 }
 
+/**
+ * The nearest point of the song's grid (a syllable's tile goes there: a singer sits loosely on the
+ * beat, and within 30 ms only, 17% of the tiles sat off the 16ths and bars stopped repeating): the beat map's own division there (16ths or triplets), its
+ * 16ths where it has none, the straight grid's 16ths without a beat map.
+ */
+function onGrid(sec: number, on: Placing, map: BeatMap | null): number {
+  if (!map) { const spb = 60 / on.bpm; return on.offset + (Math.round(((sec - on.offset) / spb) * 4) / 4) * spb; }
+  const p = beatAt(map, sec);
+  const d = divisionAt(map, p) || 4;
+  return secAt(map, Math.round(p * d) / d);
+}
+
 /** A tile within this (s) of a syllable is on it. */
 export const ON_SYLLABLE = 0.05;
 /** A syllable's tile keeps this far (s) from any other tile's start. */
@@ -400,9 +412,8 @@ const SYLLABLE_GAP = 0.09;
 const SUNG_HOLD = 0.35;
 
 /**
- * The chart with a tile on each sung syllable that has none within ON_SYLLABLE: on the beat map
- * where the syllable is within 30 ms of its grid (a singer sits loosely on the beat), else at its
- * own time; a hold where it's sung long; never crowding another tile (SYLLABLE_GAP). A tile crowding
+ * The chart with a tile on each sung syllable that has none within ON_SYLLABLE (or on its grid
+ * point): on the nearest point of the song's grid (onGrid); a hold where it's sung long; never crowding another tile (SYLLABLE_GAP). A tile crowding
  * it that isn't on a measured sound of its own (within 30 ms) is the same sung moment heard a little
  * off: it's moved onto the syllable instead (on two real listens Ultra's syllables with a tile went
  * 76% → 79% and 82%). A new tile's lane is a placeholder: every difficulty's
@@ -423,8 +434,8 @@ export function withSyllables(model: ChartNote[], on: Placing, map: BeatMap | nu
   const bySec = new Map<number, ChartNote[]>();
   for (const n of out) { const k = Math.round((on.offset + n.t * spb) * 1000); bySec.set(k, [...(bySec.get(k) ?? []), n]); }
   for (const s of voice) {
-    if (nearest(s.sec) <= ON_SYLLABLE) { had++; continue; }
-    const sec = map ? snapSec(map, s.sec, 0.03) : s.sec;
+    const sec = onGrid(s.sec, on, map);
+    if (nearest(s.sec) <= ON_SYLLABLE || nearest(sec) <= 0.002) { had++; continue; }
     const t = Math.round(((sec - on.offset) / spb) * 1000) / 1000;
     if (t < 0) continue;
     if (nearest(sec) < SYLLABLE_GAP) {
@@ -481,7 +492,8 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
   const voice = o.voice?.length ? [...o.voice].sort((a, b) => a.sec - b.sec) : null;
   const syllable = (t: number) => (voice ? syllableAt(voice, secOf(t), ON_SYLLABLE) : undefined);
   // A sung row is of the voice's kind: a phrase that's sung follows the singing.
-  const kind = (t: number) => (syllable(t) ? 'voice' : soundAt(secOf(t), 0.05)?.band ?? null);
+  // (Its part when the song was split: vocals, drums, bass, other; else its band in the mix.)
+  const kind = (t: number) => { if (syllable(t)) return 'vocals'; const e = soundAt(secOf(t), 0.05); return e ? e.part ?? e.band : null; };
   const phrase = (t: number) => (map ? Math.floor(barOf(map, beatAt(map, secOf(t))) / 2) : Math.floor(t / 8));
   const twin = repeats ? (t: number) => { const s = twinSec(repeats, secOf(t)); return s == null ? null : (s - o.offset) / spb; } : undefined;
   const pitch = (n: ChartNote) => syllable(n.t)?.midi ?? soundAt(secOf(n.t), 0.03)?.midi ?? null;
