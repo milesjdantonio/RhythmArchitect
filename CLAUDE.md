@@ -447,6 +447,20 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     tile within a 16th, but 70 ms or more from the slot in nearly every case (raw times, before
     snapping): the sounds really come elsewhere the second time (the singer, or what's heard), not
     a snap that could have gone either way, so keeping the slot would move a tile off its sound.
+    **Ultra hears more of the band** (round 7). Of the fan charts' Hotline Bling moments our Ultra
+    lacked, 52-55% have no sound of ours within 30 ms (the analysis), a quarter a weak one. Of our
+    onsets Ultra left out, the fan charts put a tile on (chance at their density ~33%): bass, drums
+    and instruments at 0.3-0.5 71-100% (a third part: only accents from 0.45 came in), kicks and
+    snares at 0.15-0.3 51-64%, bass and instruments that weak 39-50%, the vocal stem's onsets
+    12-33% (change's chart is too dense to tell: chance ~85%). So Ultra takes any other part's hit
+    from 0.3 (`ACCENT.ultra`; a sung syllable still from `ACCENT_SUNG` 0.45) and its kicks and
+    snares from `GHOST_MIN` 0.15. Against the fan charts: F1 58% → 60%, Ultra has 56% → 59% of
+    their tiles (Hotline Bling 68-69% → 70% at the same 72% precision; its density curve r 0.61
+    → 0.73); Ultra 3.7 → 4.2 moments a second on MEANT TO BE, 4.7 → 5.0 on Open Your Eyes, stars
+    +0-0.07; jacks Hotline Bling 19% (humans 13-19%); no holes, no criteria breaks. Of the strong
+    drum hits still left out on Hotline Bling, 14 of 26 are in its quiet outro (`ULTRA_FILL` and
+    `ULTRA_RATE` hold the part under the line back there, for the form's contrast) and 8 are 30-65
+    ms from a tile of ours (two sounds too close for one moment).
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,

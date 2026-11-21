@@ -84,7 +84,9 @@ interface Tile {
  * 74-91% of the mix's strong onsets (soundoff study), more than any other kind of sound. With
  * these: Ultra 4.1 → 4.6 a second on Hotline Bling, its downbeats 65% → 74%, Hard 1.50 → 1.66 stars.
  */
-const ACCENT: Record<Difficulty, number> = { easy: Infinity, medium: Infinity, hard: 0.7, ultra: 0.45 };
+const ACCENT: Record<Difficulty, number> = { easy: Infinity, medium: Infinity, hard: 0.7, ultra: 0.3 };
+/** A sung syllable joins as an accent only from this (the vocal stem's onsets are charted by the fan charts at or below chance). */
+const ACCENT_SUNG = 0.45;
 const ACCENT_CLEAR = 0.25;
 /** A part needs this many notes in a phrase to be followed there. */
 const FOLLOW_MIN = 3;
@@ -118,6 +120,13 @@ const DOUBLE: Record<'medium' | 'hard' | 'ultra', number> = { medium: 0.9, hard:
 const LIFT = 0.3;
 /** A drum hit this weak doesn't fill in. */
 const FILL_MIN = 0.3;
+/**
+ * Ultra's ghost notes: a kick or snare from this strength fills in too (round 7). Of Hotline
+ * Bling's kicks and snares at 0.15-0.3 that our Ultra left out, its fan charts put a tile on
+ * 51-64% (chance at their density ~33%); bass and instrument onsets that weak 39-50%, the vocal
+ * stem's 13-15%: those stay out.
+ */
+const GHOST_MIN = 0.15;
 /** A phrase whose line's rhythm is this alike an earlier one's (16ths in common) is charted like it. */
 const ALIKE = 0.75;
 /** A phrase of a section's return whose line is this alike its first time's (16ths in common) is charted like it. */
@@ -437,8 +446,9 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     for (const h of all) {
       const asSecond = h.layer === two && !(h.layer === 'drums' && h.drum === 'hat' && h.strength < 0.6);
       const asBeat = backbone && h.layer === 'drums' && h.drum !== 'hat';
-      const asAccent = !asSecond && !asBeat && h.layer !== layer && h.strength >= Math.min(...Object.values(ACCENT));
-      if ((!asSecond && !asBeat && !asAccent) || h.strength < FILL_MIN) continue;
+      const ghost = h.layer === 'drums' && h.drum !== 'hat';
+      const asAccent = !asSecond && !asBeat && h.layer !== layer && h.strength >= (ghost ? GHOST_MIN : Math.min(...Object.values(ACCENT)));
+      if ((!asSecond && !asBeat && !asAccent) || h.strength < (ghost ? GHOST_MIN : FILL_MIN)) continue;
       if (lineBeats.some((b) => Math.abs(b - h.beat) < 0.01) || tiles.some((t) => t.phrase === p && t.s === h)) continue;
       const gap = Math.min(...lineBeats.map((b) => Math.abs(b - h.beat)), Infinity);
       const under = ref.some((t) => t.until != null && h.beat > t.s.beat + 0.49 && h.beat < t.until - 0.24);
@@ -724,7 +734,9 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
 
     function fillOk(t: Tile) {
       if (t.ref || t.opens) return true;
-      if (t.accent) return t.s.strength >= ACCENT[d] && (t.under ? prof.under : (t.gap ?? Infinity) >= ACCENT_CLEAR - 1e-6);
+      // A ghost note (a kick or snare under FILL_MIN) only on Ultra.
+      if (t.s.strength < FILL_MIN && d !== 'ultra') return false;
+      if (t.accent) return t.s.strength >= (t.s.layer === 'vocals' ? Math.max(ACCENT[d], ACCENT_SUNG) : t.s.strength < FILL_MIN ? GHOST_MIN : ACCENT[d]) && (t.under ? prof.under : (t.gap ?? Infinity) >= ACCENT_CLEAR - 1e-6);
       if (t.under) return prof.under;
       const gap = t.gap ?? Infinity;
       if (t.beat && prof.beat > 0 && gap >= prof.beat - 1e-6 && metric(t.s.beat) >= METRIC.eighth - 1e-6) return true;
