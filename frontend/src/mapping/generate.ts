@@ -1,6 +1,7 @@
 // Turning what the listening pass heard into a song the backend can store.
 
-import type { Chart, Difficulty, NewSong, VideoMatch } from '../api/types';
+import type { Chart, Difficulty, MapReport, NewSong, VideoMatch } from '../api/types';
+import { cuesFromSections } from './cues';
 import type { Heard, ListenError, Mapped } from './listen';
 import { huesFor } from './osu';
 import { LADDER } from './thin';
@@ -11,6 +12,8 @@ export interface Charted {
   mapper: string;
   /** Why the on-device charts were used (the trained mapper failed). */
   fallback?: string;
+  /** The song's sections from its form (sections.ts), in place of the onset mapper's loudness blocks. */
+  sections?: MapReport['sections'];
 }
 
 export function songFromListening(m: Mapped, video: VideoMatch, heard: Pick<Heard, 'calibrated' | 'delay' | 'placement'>, charted?: Charted): NewSong {
@@ -38,6 +41,12 @@ export function songFromListening(m: Mapped, video: VideoMatch, heard: Pick<Hear
     levels: m.levels,
     report: {
       ...r.report,
+      // The form's sections (what the song repeats, how it builds), with the visuals' cues from them
+      // (the onset mapper's flashes on its accents kept).
+      ...(c.sections?.length ? {
+        sections: c.sections,
+        cues: [...cuesFromSections(c.sections), ...(r.report.cues ?? []).filter((q) => q.kind === 'flash')].sort((a, b) => a.beat - b.beat),
+      } : {}),
       mapper: `${c.mapper}, listening pass${c.fallback ? ` (on-device: ${c.fallback})` : ''}`,
       ladder: LADDER,
       ...(heard.placement ? { listen: heard.placement } : {}),

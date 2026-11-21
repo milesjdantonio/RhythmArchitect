@@ -11,7 +11,7 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   [docs/resources.md](docs/resources.md) for tools and rules.
 - Code by area: `src/audio/` (playback.ts, youtube.ts, ambient.ts), `src/mapping/` (the Generate
   pipeline: listening, beats, automap, charts, ensomi (the trained mapper), beatmap, repeats, thin,
-  lanes, osu), `src/library/` (song cache, search, bank),
+  lanes, leadline, sections (the song's form), osu), `src/library/` (song cache, search, bank),
   `src/game/` (rules), `src/stage/` (3D stage), `src/background/`, `src/intro/`, `src/screens/`,
   `src/components/` (shared, plus `menu/`, `play/`, `generate/`). The mock backend and the songs it
   starts with are in `mock-server/`.
@@ -307,8 +307,35 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     lines", which `remap-bank.mjs` applies too). Easy and
     Medium of the first version (Easy/Medium only) on the two real listens: Easy's phrases on one
     part 99% and 96%. **The testing ground** (`#/testingGround`, `src/screens/TestingGround.tsx`):
-    one song mapped two ways to play side by side, each a song file in `public/testing/` (id
+    one song mapped several ways to play side by side, each a song file in `public/testing/` (id
     `test-…`, read by `fetchSong`; never in the bank; runs not saved).
+  - **The song's form** (`src/mapping/sections.ts`, Nov 21: "a human mapper maps what the song is
+    trying to do"). Sections come from what the song repeats, not loudness alone (before: 8-bar
+    blocks labelled by level, so a loud verse was a "Chorus"): each 2-bar phrase's fingerprint (its
+    sounds by band and harmony, and the singing's rhythm and tune: a chorus is its melody coming
+    back) against every other's, measured against the song's own typical pair; boundaries where it
+    changes (loudness, drums, singing, likeness) and where a repeat starts or ends, 8 and 16 bars
+    preferred; the music that returns most, sung and busy, is the chorus (Hotline Bling's hook,
+    returning four times, isn't its loudest part); quiet is a break, late and like nothing else the
+    bridge, rising into a chorus a build, the bass and drums jumping in after one a drop. A fade is
+    the sound stopping, not the volume (human charts play Hotline Bling's quiet 40-s outro to the
+    end). Each section's intensity is its loudness held through it, a little by its kind (`FORM`:
+    each chorus return +4%, the last ×1.15); the lead line takes it as a share of density
+    (`leadline.ts`; Ultra keeps its lines whole, the part under them comes in with the section,
+    `ULTRA_FILL`), the report takes its sections and the visuals' cues. Measured on the fan charts
+    of California Gurls, Change, Hotline Bling (7 charts; `map-pop.mjs` prints it as "shape"): our
+    density per 4 bars against theirs r −0.09 → 0.53, its spread (CV) 0.14 → 0.21 (theirs 0.23);
+    timing F1 58% → 55% (Ultra's calm stretches lose some fill; those charts are 2-4× denser than
+    our Ultra); the same stars. Human ladders keep the contrast on Easy (a mapper's own: CV 0.30 /
+    0.27 / 0.29), so every difficulty takes it. Also from the human charts: a section that comes
+    back keeps its rhythm (41-84% of a chorus's return's tiles) and varies its lanes (about half),
+    so a return is charted from its first time phrase by phrase (`SECTION_ALIKE`) and may grow
+    (`GROW`); one part a section (`STICKY_MIN`); every chart ends on a chord (15 of 26 Creative
+    Commons charts do, ours never did); Easy at most 5 tiles in a row half a beat apart (osu!mania's
+    ranking criteria); the beat before a drop clear on Easy and Medium (human charts leave it empty
+    at a lift 28% of the time, 12% at any section). Not done, by the same measures: more holds at
+    sung line ends (the human charts held 0-1 of 21; ours already hold most on Hard), rests after
+    long runs (ours rest far more often than theirs).
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
