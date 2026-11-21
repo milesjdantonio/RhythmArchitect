@@ -65,7 +65,7 @@ try {
     const dry = existsSync(dryFile) ? JSON.parse(readFileSync(dryFile, 'utf8')) : null;
     const was = dry?.song ?? dry;
     const s = study.on;
-    const on = { bpm: s.bpm, offset: s.offset, meter: s.meter, events: s.events, onGrid: s.onGrid, beats: study.tracked?.beats ?? [], voice: study.voice ?? [], played: study.played ?? [], levels: study.levels, barEnergy: s.barEnergy };
+    const on = { bpm: s.bpm, offset: s.offset, meter: s.meter, events: s.events, onGrid: s.onGrid, beats: study.tracked?.beats ?? [], voice: study.voice ?? [], played: study.played ?? [], levels: study.levels ?? was?.levels, barEnergy: s.barEnergy };
     const place = E.placer(on);
     let charts, path;
     if (E.canLead(on) && s.gridUsed && s.onGrid && on.beats.length) {
@@ -78,7 +78,9 @@ try {
       const tries = study.raws.map((r) => { const notes = place.chart(r.objects, r.shift); return { star: r.star, notes, counts: ultraOf(notes) }; });
       const notes = tries.length > 1 ? E.splice(tries, targets, on) : tries[0].notes;
       charts = await place.calibrated(place.sung(notes).notes, rate);
-      path = `the trained mapper's charts (${study.raws.map((r) => `${r.star}★`).join(' + ')}), thinned`;
+      // (calibratedCharts takes the song's lines whenever canLead, as the browser does: the
+      // trained mapper ran only because the beat tracker's grid wasn't steady.)
+      path = E.canLead(on) ? `the song's own lines (the trained mapper ran: ${study.raws.map((r) => `${r.star}★`).join(' + ')})` : `the trained mapper's charts (${study.raws.map((r) => `${r.star}★`).join(' + ')}), thinned`;
     } else { console.log(`${id}: no lines and no raw charts in the study: skipped`); continue; }
     const sections = place.sections?.() ?? s.sections ?? was?.report?.sections ?? [];
     const levels = study.levels ?? was?.levels;

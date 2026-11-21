@@ -342,9 +342,16 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     moved). On the saved listens of 8 songs: two-bar holes 1-2 on four songs → 0 everywhere; Ultra's
     downbeats 61-88% → 64-92%; Hard 1.15-1.84★ → 1.15-1.94; Ultra 1.36-2.46 → 1.41-2.54; F1 against
     the Hotline Bling fan charts (30 ms) Hard 47-49% → 48-50%, Ultra 56-59% → 56-60%. Ultra is still
-    ~2★ against 2.9-6.4★ for the fan charts and 2.2-3.35 for the Nov 20 lead line: it keeps 951 of
-    the 1,076 tiles open to it on Hotline Bling, so its pool (what the analysis hears) is the limit,
-    not ULTRA_FILL or ULTRA_RATE (both off: +0-0.4★). The ranked bottlenecks and what's next:
+    ~2★ against 2.9-6.4★ for the fan charts. **The pool is not what holds it** (measured Nov 21
+    evening, replaying the same 8 listens at every commit of the day): the lead line before
+    `11ab68c` (the merge that brought in main's form-driven lead line) made Ultra 1.63-3.35★ and Hard
+    1.36-2.26 from them (Hotline Bling U 3.01, change 3.35, MEANT TO BE 2.55); from `11ab68c` on,
+    Ultra 1.36-2.46 and Hard 1.15-1.84 from the very same sounds; round 1 won back 0.1-0.3. Lifting
+    all of Ultra's fill limits at once (`PROFILE` clear 0 / Hard 0.25, `FILL_MIN` 0, `ULTRA_FILL`
+    and `ULTRA_RATE` off) gives back only 0.05-0.36★ (Hotline Bling 2.15 → 2.51). The rest is how
+    Ultra is built: against the fan charts (map-pop, 8 charts) chords 23% of moments then, 16% now
+    (humans 47%; Hotline Bling 21% → 11%), lane repeats 24% → 17% (humans 13-19%: some of the old
+    stars were jacks, not something to bring back). The ranked bottlenecks and what's next:
     `docs/mapper-bottlenecks.html` (updated each round).
   - **A rhythm you can count with the sound off** (Nov 21, round 2; the user: "with sound off, I
     could not find the rhythm or chorus"). osu!mania's ranking criteria: an Easy is "mostly 1/1", a
@@ -368,8 +375,17 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     section's return is charted from the same phrase of its first time, alike or not
     (`returnOf`: not only where `SECTION_ALIKE` holds), and takes its first time's lanes whatever
     the notes; Hard and Ultra as before (lanes vary, as the human charts' do). Only the return's own
-    sounds can be kept, so where its music differs it keeps the slots both have. Not yet measured on
-    the saved listens (the cloud session had none): run `tools/replay-study.mjs` on them.
+    sounds can be kept, so where its music differs it keeps the slots both have. On the saved
+    listens of 8 songs (replay-study, on against off): returns' lanes Easy 13-64% → 21-96%, Medium
+    22-78% → 21-98% (Hotline Bling E 64 → 96%, M 78 → 98%; One Dance E 47 → 56%, M 37 → 53%), their
+    rhythm +0-4 points; Easy the same stars (±0.03); Medium 3-17% fewer tiles and 0-0.07★ less (One
+    Dance 1.28 → 1.21, change 1.29 → 1.22); no holes, no criteria breaks either way. The fan charts
+    of Hotline Bling (Hard) keep 82-87% of a return's rhythm and 15-80% of its lanes: ours on Easy
+    and Medium 69-72% rhythm, 96-98% lanes. Kept; its cost is on the ladder below.
+    **Easy and Medium fall short of their star targets** on the lead line: Easy 0.83-1.01★ against
+    `EASY_STARS` 1.05 on every song, Medium up to 0.24★ under its even step (Ice Ice Baby 1.01 for
+    1.25), so Medium → Hard is the biggest step on several songs (E 0.87 / M 1.01 / H 1.46): the
+    calibration's top scale (`SCALE` 1.4) doesn't add enough tiles. Not yet looked into.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
@@ -608,7 +624,18 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   .data/remap/*.study.json [--out=<dir>]` replays the saved listens through today's mapper (the
   modules through Vite, the stars by the runtime; its lines, else the study's raw trained charts
   spliced and thinned) and prints the sound-off report and criteria breaks per difficulty, now and
-  as the listen made it; `--out` writes song files for `map-pop.mjs --songs=`. (Before it, the Nov
+  as the listen made it; `--out` writes song files for `map-pop.mjs --songs=`. Give it one study a
+  song (the newest: several listens of One Dance and Open Your Eyes are saved). The studies made
+  before Nov 21 hold no loudness, so it takes the dry run's `levels` (without them the form had
+  holes the browser never makes: change 9 s, MEANT TO BE 5 s). It replays an older commit too:
+  `git archive <commit> frontend/src frontend/package.json` into a folder outside OneDrive, today's
+  tool and `soundoff.ts` copied in, `node_modules` as a junction; at `c34aa1d` it gives exactly what
+  the listens made, so it matches the browser. Human baseline in map-pop (Nov 21 evening, the
+  charts timed to our audio: Hotline Bling's two Hards, California Gurls' Speed Gurls): downbeats
+  82-99%, longest gap 1.0-1.9 s, no holes; returns 40-90% of their rhythm and 14-80% of their
+  lanes (measured on our map's sections, so they move with it: Hotline Bling's 82-90%). Our
+  downbeats are read on the straight grid: on change, Ice Ice Baby and Open Your Eyes even Ultra
+  reads 30-82%, so there they're likely the grid's phase or drift, not the chart. (Before it, the Nov
   21 study did the same in a scratch `tests/unit/zz-*.test.ts`, moved out before committing.) After each round, update
   `docs/mapper-bottlenecks.html` (plain: the measures against the human charts, the analysis, the
   ranked bottlenecks, a change log).
