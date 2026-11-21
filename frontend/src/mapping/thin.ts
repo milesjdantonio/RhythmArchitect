@@ -11,7 +11,6 @@
 // in tiles, so a chord counts twice.
 
 import type { ChartNote, Difficulty, SoundEvent } from '../api/types';
-import { REST, holdWorth } from './shape';
 
 /**
  * How each difficulty keeps tiles of the full chart (Ultra). Each step keeps about 0.7 of the tiles
@@ -298,20 +297,13 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     out.push(...pick);
     prevLane = pick[pick.length - 1].lane;
   }
-  // Too many holds: the ones worth least become taps until the rest fit (shape.ts holdWorth: a
-  // held word and a hold that ends a line are worth more; the song's last note keeps its hold).
+  // Too many holds: the shortest become taps until the rest fit. (Favouring held words and holds
+  // that end a line was tried, Nov 21, and taken out: the human charts held 0-1 of 21 sung line
+  // ends: sections.ts notes in CLAUDE.md.)
   const holds = out.filter((n) => n.hold);
   const room = Math.floor((o.maxHolds ?? 1) * out.length);
   if (holds.length > room) {
-    const starts = out.map((n) => n.t).sort((a, b) => a - b);
-    const nextAfter = (x: number) => { let lo = 0, hi = starts.length; while (lo < hi) { const m = (lo + hi) >> 1; if (starts[m] <= x + 1e-6) lo = m + 1; else hi = m; } return starts[lo]; };
-    const last = starts[starts.length - 1];
-    const worth = (n: ChartNote) => {
-      if (n.t >= last - 1e-6) return Infinity;
-      const after = nextAfter(n.t + n.len - 1e-6);
-      return holdWorth(n.len, (o.sung?.(n.t) ?? 0) > 0, after === undefined || after - (n.t + n.len) >= REST);
-    };
-    const drop = new Set([...holds].sort((a, b) => worth(a) - worth(b) || a.len - b.len).slice(0, holds.length - room));
+    const drop = new Set([...holds].sort((a, b) => a.len - b.len).slice(0, holds.length - room));
     return out.map((n) => (drop.has(n) ? tap(n) : n));
   }
   return out;

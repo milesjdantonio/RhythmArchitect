@@ -221,54 +221,43 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     charts march on the beat under syncopated songs (One Dance's Easy 9% off 16ths, Medium 8%, the
     fan chart 34%; now 19% and 15%). CC benchmark unchanged (F1 63%), Easy 66% → 58% on the beat
     (humans 44%); band strong notes E 80% → 76% (its strong notes are on the beat).
-  - **The song's shape** (`src/mapping/shape.ts`, Nov 21: "make the mapper feel human"): each
-    2-bar phrase's sounds a second against the song's median phrase (smoothed with its neighbours)
-    times its loudness against the median (the onset mapper's `barEnergy`, passed with the sounds;
-    the two multiplied and square-rooted, so a loud chorus of held chords counts as busy) give it a
-    scale, `rel^0.4` within 0.75-1.25 (`SHAPE`), that Easy, Medium and Hard multiply
-    their budget by (leadline.ts per phrase, thin.ts `intensity` per window; Ultra is never scaled):
-    choruses busier than the verses around them, breaks sparser. A phrase `DROP_JUMP` (1.45) times
-    as busy as the two before it, or `DROP_LOUD` (1.3) times as loud, is a drop: the phrase before
-    builds (`BUILD`, at least 1.1) and the easier charts leave a breath before its first beat
-    (`BREATH`: E 1, M ¾, H ½ a beat; a sung syllable there stays; a hold ringing into it ends
-    where it starts, `cutHolds`). The drop lands on the bar whose loudness jumps most (`dropSecs`),
-    not only on a phrase's start. In a busy phrase the easier charts' tiles may come closer
-    (`spacing`: `minGap` divided by the scale; the user, Nov 21: "Easy can be made harder"), else
-    Easy's spacing, not its budget, held a chorus back. A repeat in a busy part builds on its
-    pattern (shape.ts `growth`: +10% of its notes from its second time, at most +25%; the lead
-    line adds its heaviest notes, thin.ts raises the window's share by as much and doesn't hold it
-    to what its twin left out); a repeat in a quieter part than the phrase it copies keeps the
-    heaviest of the copied notes, as many as its scale against the other's (leadline.ts). In a busy
-    phrase (`HOLDS_FREE`, 1.05) Medium lets taps come under a hold, as Hard always does: its
-    choruses were held back by holds, not by their budget. Repeats are found on the straight grid
-    when there's no beat map (`straightMap`, ensomi.ts: for telling phrases apart only, never for
-    placing a tile). Every stretch keeps at least `STRETCH_FLOOR` tiles a second where it has
-    sounds (E 0.5, M 0.8, H 1.1: thin.ts `minRate` per 4 s window, the lead line per phrase), so
-    the shape and the star calibration together can't empty a quiet verse, and no 4 s window
-    of an easier chart passes `PEAK` (1.5) times its `rate` (thin.ts `maxRate`: the star rating
-    judges the whole chart, so a chorus could spike). **Drops land**: every difficulty keeps a tile
-    on a drop's first beat (within `DROP_NEAR`, 60 ms; thin.ts `drop` weighs its row first, the
-    lead line adds the strongest sound there and clears tiles crowding it), Medium and up a chord
-    of two where two parts strike. **The last chorus pays off**: a busy pattern's last time in
-    the song takes `GROW_MAX` (`growth(..., last)`). **Holds worth keeping**: past `maxHolds`
-    the ones worth least become taps (`holdWorth`: length, half again for a held word, half again
-    for one that ends a line, a rest of `REST` (1) beat after; the song's last note keeps its
-    hold), not simply the shortest. The onset mapper's charts (`charts.ts`, the fallback) take the
-    shape too (`ChartShape` from automap.ts: each note's keep share and spacing scaled, the breath,
-    the drop's note kept first) and their lanes flow with figures by each sound's height. A chord
-    in a run goes by its top note (lanes.ts), so it doesn't break the run. **Figures**
-    (`lanes.ts` `figuresOf`): four or more evenly spaced single tiles under 0.3 s apart whose pitch
-    climbs or falls every step are a run, charted as a staircase the tune's way
+  - **The song's shape** (`src/mapping/shape.ts`, Nov 21: "make the mapper feel human"): for the
+    charts that don't come from the lead line (thin.ts: the trained mapper's, thinned; charts.ts:
+    the onset mapper's fallback). The lead line goes by the song's form instead (sections.ts,
+    below), so the two never stack. Each 2-bar phrase's sounds a second against the song's median
+    phrase (smoothed with its neighbours) times its loudness against the median (the onset
+    mapper's `barEnergy`, passed with the sounds; multiplied and square-rooted) give it a scale,
+    `rel^0.4` within 0.75-1.25 (`SHAPE`), that Easy, Medium and Hard multiply their budget by
+    (thin.ts `intensity` per window, charts.ts each note's keep share; Ultra never). A phrase
+    `DROP_JUMP` (1.45) times as busy as the two before it, or `DROP_LOUD` (1.3) times as loud, is a
+    drop, landing on the bar whose loudness jumps most (`dropSecs`): the phrase before builds
+    (`BUILD`, at least 1.1), the easier charts leave a breath before it (`BREATH`: E 1, M ¾, H ½ a
+    beat; a sung syllable there stays; a hold ringing into it ends where it starts, `cutHolds`),
+    and its first beat keeps a tile (thin.ts `drop`, charts.ts `DROP_LIFT`; a chord on Medium and
+    up where the row is one). A busy repeat builds on its pattern (`growth`: +10% from its second
+    time, at most +25%, `GROW_MAX` its last time in the song), and isn't held to what its twin left
+    out; repeats are found on the straight grid when there's no beat map (`straightMap`, ensomi.ts:
+    for telling phrases apart only). No 4 s window passes `PEAK` (1.5) times its difficulty's rate
+    (`maxRate`). **Shared with the lead line** (its section intensity as the scale, the lean taken
+    at most `SHAPE.hi`): in a busy part the easier charts' tiles may come closer (`spacing`:
+    `minGap` divided by the scale; the user, Nov 21: "Easy can be made harder"; else Easy's spacing,
+    not its budget, held a chorus back), Medium plays taps under a hold there (`HOLDS_FREE`, 1.05),
+    and every stretch keeps at least `STRETCH_FLOOR` tiles a second where it plays (E 0.5, M 0.8,
+    H 1.1: thin.ts per 4 s window, the lead line per phrase), so a calm verse and the star
+    calibration together can't empty it; the lead line's own breath before a drop cuts a hold
+    ringing into it too. **Figures** (`lanes.ts` `figuresOf`, in lane flow, so not the lead line,
+    which places its own lanes): four or more evenly spaced single tiles under 0.3 s apart whose
+    pitch climbs or falls every step are a run, charted as a staircase the tune's way
     (`FIGURE_AGAINST`); two pitches back and forth are a trill on two lanes (`FIGURE_TRILL`);
-    neither pays `REPEAT_COST`. Swing counts as even (the second gap may be up to ~2:1 the first,
-    then each gap like the first or the one two before). Unpitched sounds count by band and
-    brightness for figures (`soundFigure`, `FlowHints.figure`), so a kick-snare back and forth is a
-    trill and a tom fill a run. A rough replay (Nov 21: Open Your Eyes' saved Ultra thinned again,
-    its tiles as the sounds, its 48-point energy as the loudness, before calibration): Easy busy
-    phrases 7.5 → 10.8 tiles, quiet 5.8 → 5.7 (312 → 352 in all); Medium busy 12.6 → 14.5, quiet
-    9.8 → 8.5; Hard
-    busy 20.9 → 22.3, quiet 13.2 → 12.0. Not yet measured with map-bench or against the human
-    charts: do that before tuning.
+    neither pays `REPEAT_COST`. Swing counts as even (the second gap up to ~2:1 the first, then
+    each gap like the first or the one two before); a chord in a run goes by its top note;
+    unpitched sounds count by band and brightness (`soundFigure`), so a kick-snare back and forth
+    is a trill and a tom fill a run. Favouring held words and line-ending holds when capping holds
+    was tried and taken out (the human charts held 0-1 of 21 sung line ends: the form's notes
+    below). A rough replay (Open Your Eyes' saved Ultra thinned again, its tiles as the sounds,
+    its 48-point energy as the loudness, before calibration): Easy busy phrases 7.5 → 10.8 tiles,
+    quiet 5.8 → 5.7; Medium busy 12.6 → 14.5, quiet 9.8 → 8.5; Hard busy 20.9 → 22.3, quiet 13.2 →
+    12.0. Not yet measured with map-bench or against the human charts: do that before tuning.
   - Chords were left as the model makes them (Nov 20): ours match the human charts' share and how
     they cluster on the CC set (27% vs 29%; 61% vs 60% within a beat of the last); humans range
     3-64% from song to song (3% and 45% on one song), and neither the sounds' strength nor

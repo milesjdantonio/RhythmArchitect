@@ -201,10 +201,8 @@ describe('the trained mapper\'s tiles on the song\'s grid', () => {
     const out = thinChart(all, opts({ rate: 100, share: 1, minGap: 0.1, holdsAlone: false, maxHolds: 0.25 }));
     const held = out.filter((n) => n.hold);
     expect(held.length).toBeLessThanOrEqual(Math.floor(out.length * 0.25));
-    // The ones kept as holds are the longest (but the song's last note, which keeps its hold: shape.ts holdWorth).
-    const last = Math.max(...out.map((n) => n.t));
-    expect(out.find((n) => n.t === last)!.hold).toBe(true);
-    expect(Math.min(...held.filter((n) => n.t !== last).map((n) => n.len))).toBeGreaterThanOrEqual(Math.max(...out.filter((n) => !n.hold).map((n) => all.find((a) => a.t === n.t)!.len)));
+    // The ones kept as holds are the longest.
+    expect(Math.min(...held.map((n) => n.len))).toBeGreaterThanOrEqual(Math.max(...out.filter((n) => !n.hold).map((n) => all.find((a) => a.t === n.t)!.len)));
   });
 
   it('on a very fast, busy song every step stays about the same (the per-second caps step together)', () => {

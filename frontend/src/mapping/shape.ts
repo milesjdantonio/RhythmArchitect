@@ -66,15 +66,6 @@ export const GROW_FROM = 1.05;
 export const growth = (scale: number, time: number, last = false) => (scale >= GROW_FROM && time >= 2 ? (last ? GROW_MAX : Math.min(GROW_MAX, GROW * (time - 1))) : 0);
 
 /**
- * Where a chart has more holds than it may (KEEP.maxHolds), the ones worth least become taps:
- * worth is the hold's length, half again for a sung note (a held word) and half again for one that
- * ends a line (a rest of REST beats or more after it, or the song's end), so the holds kept are
- * the ones a person would hold. The song's last note keeps its hold.
- */
-export const REST = 1;
-export const holdWorth = (len: number, sung: boolean, endsLine: boolean) => len * (1 + (sung ? 0.5 : 0) + (endsLine ? 0.5 : 0));
-
-/**
  * The most tiles a second any 4 s window of an easier chart may have (thin.ts), against its
  * difficulty's average cap (KEEP.rate): the star rating judges the whole chart, so a chorus could
  * otherwise spike far past the rest (the shape's 1.25, closer spacing, a repeat's growth).

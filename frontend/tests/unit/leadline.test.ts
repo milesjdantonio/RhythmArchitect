@@ -6,6 +6,8 @@ import { hasParts, leadLine } from '../../src/mapping/leadline';
 const SPB = 0.5;
 const drum = (sec: number): SoundEvent => ({ id: 0, t: sec / SPB, sec, band: 'low', pitched: false, midi: null, note: null, bright: 50, strength: 0.6, len: 0.25, onBeat: true, accent: false, part: 'drums' });
 const syl = (sec: number, midi = 64) => ({ sec, len: 0.2, midi, strength: 0.8 });
+/** A chart's tiles without its last hit (every chart ends on a chord: tested on its own). */
+const body = <T extends { t: number }>(notes: T[]) => { const end = Math.max(...notes.map((n) => n.t)); return notes.filter((n) => n.t < end - 1e-6); };
 
 describe("every difficulty as the song's own lines (leadline.ts)", () => {
   // Three 2-bar phrases (4 s each): sung in the first two (the same rhythm: a little off the 16ths,
@@ -50,8 +52,8 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     // A piano solo: sixteen notes an 8th apart (a little off the grid), nothing else playing.
     const piano = Array.from({ length: 16 }, (_, i) => ({ sec: i * 0.25 + 0.012, len: 0.2, midi: 60 + (i % 8), strength: 0.7 }));
     const solo = leadLine({ bpm: 120, offset: 0, events: [], voice: [], played: piano, map: null });
-    const ultra = solo('ultra').notes;
-    expect(ultra.length).toBe(16);
+    const ultra = body(solo('ultra').notes);
+    expect(ultra.length).toBe(15);
     expect(ultra.every((n) => Math.abs(n.t * 2 - Math.round(n.t * 2)) < 1e-6)).toBe(true);
     // Easy keeps fewer, and keeps the beats first: the same rhythm, simplified.
     const easyNotes = solo('easy').notes;
@@ -64,8 +66,8 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     // A tune up and down a phrase, an 8th apart: C E G B G E C E ...
     const tune = [60, 64, 67, 71, 67, 64];
     const played = Array.from({ length: 24 }, (_, i) => ({ sec: i * 0.5, len: 0.2, midi: tune[i % tune.length], strength: 0.7 }));
-    const notes = leadLine({ bpm: 120, offset: 0, events: [], voice: [], played, map: null })('ultra').notes.sort((a, b) => a.t - b.t);
-    expect(notes.length).toBe(24);
+    const notes = body(leadLine({ bpm: 120, offset: 0, events: [], voice: [], played, map: null })('ultra').notes).sort((a, b) => a.t - b.t);
+    expect(notes.length).toBe(23);
     const laneOf = new Map<number, Set<number>>();
     notes.forEach((n, i) => { const m = tune[i % tune.length]; if (!laneOf.has(m)) laneOf.set(m, new Set()); laneOf.get(m)!.add(n.lane); });
     // Each note keeps to one lane (most of the time), higher notes further right.
@@ -85,73 +87,23 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     const line = leadLine({ bpm: 120, offset: 0, events: [], voice: [], played, map: null });
     const rows = (d: 'easy' | 'ultra') => {
       const by = new Map<number, number[]>();
-      for (const n of line(d).notes) by.set(n.t, [...(by.get(n.t) ?? []), n.lane]);
+      for (const n of body(line(d).notes)) by.set(n.t, [...(by.get(n.t) ?? []), n.lane]);
       return [...by.values()];
     };
     const ultra = rows('ultra');
-    expect(ultra.length).toBe(8);
+    expect(ultra.length).toBe(7);
     expect(ultra.every((r) => r.length === 2 && r[0] !== r[1])).toBe(true);
     expect(rows('easy').every((r) => r.length === 1)).toBe(true);
   });
-});
 
-describe('the song shape in the lead line', () => {
-  // Four quiet phrases (a drum each beat), then four busy ones (a drum each 8th): a drop at 16 s.
-  const quiet = Array.from({ length: 32 }, (_, i) => drum(i * SPB));
-  const busy = Array.from({ length: 64 }, (_, i) => drum(16 + i * SPB / 2));
-  const make = leadLine({ bpm: 120, offset: 0, events: [...quiet, ...busy], voice: [], map: null });
-
-  it('Easy leaves a breath before the drop, Ultra keeps every note', () => {
-    const easy = make('easy').notes.map((n) => n.t * SPB);
-    expect(easy.some((s) => s > 15.5 && s < 15.99)).toBe(false);
-    expect(easy.some((s) => Math.abs(s - 16) < 1e-6)).toBe(true);
-    const ultra = make('ultra').notes.map((n) => n.t * SPB);
-    expect(ultra.some((s) => Math.abs(s - 15.5) < 1e-6)).toBe(true);
-  });
-});
-
-describe('the breath before a drop keeps the lyric', () => {
-  const quiet = Array.from({ length: 32 }, (_, i) => drum(i * SPB));
-  const busy = Array.from({ length: 64 }, (_, i) => drum(16 + i * SPB / 2));
-  const make = leadLine({ bpm: 120, offset: 0, events: [...quiet, ...busy], voice: [12.25, 12.75, 13.25, 13.75, 14.25, 14.75, 15.25, 15.75].map((s) => syl(s)), map: null });
-  it('a syllable sung into the drop stays (Medium: its breath is the last ¾ beat)', () => {
-    const medium = make('medium').notes.map((n) => n.t * SPB);
-    expect(medium.some((s) => Math.abs(s - 15.75) < 1e-6)).toBe(true);
-  });
-});
-
-describe('a repeat in a quieter part', () => {
-  // The same drum phrase all song (8th notes), loud for 16 s, then quiet for 16 s, then loud again.
-  const drums = Array.from({ length: 96 }, (_, i) => drum(i * SPB / 2));
-  const barEnergy = Array.from({ length: 24 }, (_, b) => (b >= 8 && b < 16 ? 0.25 : 1));
-  const make = leadLine({ bpm: 120, offset: 0, events: drums, voice: [], map: null, barEnergy });
-  it('keeps fewer of the copied notes than the loud phrase it repeats', () => {
-    const easy = make('easy').notes.map((n) => n.t * SPB);
-    const count = (a: number, b: number) => easy.filter((s) => s >= a && s < b).length;
-    expect(count(20, 28)).toBeLessThan(count(4, 12));
-  });
-});
-
-describe('drops land, the last chorus pays off', () => {
-  // Quiet (a drum each beat) for 16 s, then busy (each 8th), with a bass note on the drop's beat.
-  const quiet = Array.from({ length: 32 }, (_, i) => drum(i * SPB));
-  const busy = Array.from({ length: 64 }, (_, i) => drum(16 + i * SPB / 2));
-  const bass: SoundEvent = { ...drum(16), part: 'bass', band: 'low', pitched: true, midi: 40, note: 'E2', strength: 0.5 };
-  const make = leadLine({ bpm: 120, offset: 0, events: [...quiet, ...busy, bass], voice: [], map: null });
-  it('every difficulty has a tile on the drop, Medium and up a chord', () => {
+  it('every chart ends on a chord: its last hit, on both hands', () => {
     for (const d of ['easy', 'medium', 'hard', 'ultra'] as const) {
-      const at = make(d).notes.filter((n) => Math.abs(n.t * SPB - 16) < 1e-6).length;
-      expect(at).toBeGreaterThanOrEqual(d === 'easy' ? 1 : 2);
+      const notes = make(d).notes;
+      const end = Math.max(...notes.map((n) => n.t));
+      const last = notes.filter((n) => Math.abs(n.t - end) < 1e-6);
+      expect(last.length).toBe(2);
+      expect(last[0].lane < 2).not.toBe(last[1].lane < 2);
     }
   });
-
-  it('the last time a busy pattern comes back is its busiest', () => {
-    // The same 8th-note phrase every 4 s, loud all the way (busy, but all alike), 8 phrases.
-    const drums = Array.from({ length: 64 }, (_, i) => drum(i * SPB / 2));
-    // A louder second half makes those phrases busy (scale above 1).
-    const barEnergy = Array.from({ length: 16 }, (_, b) => (b >= 8 ? 1 : 0.4));
-    const easy = leadLine({ bpm: 120, offset: 0, events: drums, voice: [], map: null, barEnergy })('medium').notes.map((n) => n.t * SPB);
-    const count = (a: number) => easy.filter((s) => s >= a && s < a + 4).length;
-    expect(count(28)).toBeGreaterThanOrEqual(count(20));
-  });
 });
+

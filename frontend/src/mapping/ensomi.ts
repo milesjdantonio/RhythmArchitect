@@ -9,7 +9,8 @@
 // in milliseconds, a little early; they go onto the sounds the onset mapper measured and onto its
 // beat grid (soundShift, toChart); its long notes are holds only where the sound rings (RING).
 
-import { DIFFICULTIES, type Chart, type ChartNote, type ChartProgress, type Difficulty, type SoundEvent } from '../api/types';
+import { DIFFICULTIES, type Chart, type ChartNote, type ChartProgress, type Difficulty, type MapReport, type SongLevels, type SoundEvent } from '../api/types';
+import { decodeLevels } from './levels';
 import type { Ort } from './ort';
 import { cachedSource } from './ensomiModel';
 import { KEEP, thinChart } from './thin';
@@ -76,6 +77,8 @@ async function tables(path: string): Promise<Uint8Array> {
 export interface Trained {
   charts: Record<Difficulty, Chart>;
   mapper: string;
+  /** The song's sections from its form (sections.ts), when it was split: the report's, in place of the loudness blocks. */
+  sections?: MapReport['sections'];
   /** The song measured again on the model's beat grid, when that replaced the first grid (see TrainedOptions.regrid). */
   result?: import('./automap').AutomapResult;
   /** Dev (STUDY_KEY): what the steps after the model worked from, for replaying offline. */
@@ -104,6 +107,8 @@ export interface TrainedOptions {
   voice?: Syllable[];
   /** The instruments' notes (the "other" part, heard as the voice is): a lead line can follow them (leadline.ts). */
   played?: Syllable[];
+  /** The song's loudness curve (levels.ts): how intense each phrase is, so density follows it (leadline.ts). */
+  levels?: SongLevels;
   gpu: boolean;
   /** Where it's got: loading the model, listening to the song (its own beat tracking), charting it (0..1 of the song charted). */
   onStage?: (stage: TrainedStage, p?: number) => void;
@@ -122,7 +127,7 @@ export interface TrainedOptions {
 }
 
 /** What the tiles are placed by: the song's grid, its sounds, and the beat tracker's beats. */
-export type Placing = Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'meter' | 'beats' | 'voice' | 'played' | 'barEnergy'>;
+export type Placing = Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'meter' | 'beats' | 'voice' | 'played' | 'levels' | 'barEnergy'>;
 
 /**
  * Hearing the singing (the vocal split and its syllables: voice.ts, before the model), loading the
@@ -284,7 +289,7 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     const own = o.regrid ? osuGrid(first.osu, songMs / 1000) : null;
     if (own && o.regrid) {
       const again = o.regrid({ ...own, offset: Math.round((own.offset + shift) * 1000) / 1000 });
-      if (again) on = { ...again, beats: o.beats, voice: o.voice, played: o.played };
+      if (again) on = { ...again, beats: o.beats, voice: o.voice, played: o.played, levels: o.levels };
     }
     const place = placer(on);
     // Ultra a stretch at a time (see ultraTargets): charted again busier while too little is met.
@@ -312,7 +317,7 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     const stars = tries.length > 1
       ? `${tries.map((t) => `${t.star}★`).join(' + ')} by stretch of the song (Ultra met ${pct(covers[0])} of its ${targets.reduce((a, b) => a + b, 0)}-tile target at ${STAR}★; ${tries.slice(1).map((t, i) => `with ${t.star}★ ${pct(covers[i + 1])}`).join(', ')})`
       : `${STAR}★ (Ultra met ${pct(covers[0])} of its target)`;
-    return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${stars}; ${canLead(on) ? "every difficulty the song's own lines (leadline.ts), on its grid, the easier ones at their star ratings" : "each difficulty a subset, the easier ones thinned to their star ratings"}: ${DIFFS.map((d) => `${d[0].toUpperCase()} ${charts[d].stars?.toFixed(2)}★`).join(' ')}; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds${place.note}${sung.note})` };
+    return { charts, sections: place.sections(), mapper: `Ensomi R2 trained mapper (${v}, ${stars}; ${canLead(on) ? "every difficulty the song's own lines (leadline.ts), on its grid, the easier ones at their star ratings" : "each difficulty a subset, the easier ones thinned to their star ratings"}: ${DIFFS.map((d) => `${d[0].toUpperCase()} ${charts[d].stars?.toFixed(2)}★`).join(' ')}; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds${place.note}${sung.note})` };
   } finally {
     await models.dispose().catch(() => {});
   }
@@ -338,7 +343,7 @@ export async function linesCharts(on: Placing, onProgress?: (p: ChartProgress) =
   const place = placer(on);
   const charts = await place.calibrated([], await rater());
   for (const d of DIFFS) onProgress?.({ difficulty: d, done: 1, total: 1, tiles: charts[d].notes.length });
-  return { charts, mapper: `The song's own lines (leadline.ts: split into its parts, the beat steady, so the trained mapper wasn't needed; ${DIFFS.map((d) => `${d[0].toUpperCase()} ${charts[d].stars?.toFixed(2)}★`).join(' ')}${place.note})` };
+  return { charts, sections: place.sections(), mapper: `The song's own lines (leadline.ts: split into its parts, the beat steady, so the trained mapper wasn't needed; ${DIFFS.map((d) => `${d[0].toUpperCase()} ${charts[d].stars?.toFixed(2)}★`).join(' ')}${place.note})` };
 }
 
 /**
@@ -431,6 +436,8 @@ export function placer(on: Placing) {
     ultra: (notes: ChartNote[]) => thinner(notes, on, placed)('ultra'),
     /** Every difficulty, the easier ones thinned to their star targets (starTargets). */
     calibrated: (notes: ChartNote[], rate: RateChart) => calibratedCharts(notes, on, placed, rate),
+    /** The song's sections from its form (sections.ts: what it repeats, how it builds), where it was split; else none. */
+    sections: () => leadFor(on, placed)?.sections(),
     /** The chart with a tile on each sung syllable it lacks (none without the voice), and a note for the report. */
     sung: (notes: ChartNote[]) => withSyllables(notes, on, map),
     /** For the report: how much of the song has its own grid, and the repeats found. */
@@ -660,13 +667,11 @@ export async function chartStars(notes: ChartNote[], g: { bpm: number; offset: n
 const ULTRA_KEEP = 0.5;
 const ULTRA_CEILING = 4;
 
-export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice' | 'played' | 'meter' | 'barEnergy'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
+export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice' | 'played' | 'meter' | 'levels' | 'barEnergy'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
   const thin = thinner(model, o, placed);
   // Every difficulty from the song's lines (leadline.ts) when the song was split; else thinned
   // from the trained mapper's chart.
-  const lead = canLead(o)
-    ? leadLine({ bpm: o.bpm, offset: o.offset, events: o.events, voice: o.voice ?? [], played: o.played, map: placed?.map ?? null, meter: o.meter, barEnergy: o.barEnergy })
-    : null;
+  const lead = leadFor(o, placed);
   const make = (d: Difficulty, scale?: number) => (lead ? lead(d, scale) : thin(d, scale));
   const out = {} as Record<Difficulty, Chart>;
   if (lead) {
@@ -711,6 +716,13 @@ export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOption
   return { easy: out.easy, medium: out.medium, hard: out.hard, ultra: out.ultra };
 }
 const CALIBRATE = 7;
+
+/** The song's lines (leadline.ts), when it was split into its parts; else null. */
+function leadFor(o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'voice' | 'played' | 'meter' | 'levels'>, placed: Placed | undefined) {
+  return canLead(o)
+    ? leadLine({ bpm: o.bpm, offset: o.offset, events: o.events, voice: o.voice ?? [], played: o.played, map: placed?.map ?? null, meter: o.meter, levels: o.levels ? decodeLevels(o.levels) : undefined })
+    : null;
+}
 
 /**
  * The model's objects (lane, ms), moved `shift` seconds later, as a chart in beats on the song's

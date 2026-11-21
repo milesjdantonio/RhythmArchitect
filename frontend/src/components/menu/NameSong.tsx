@@ -210,7 +210,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       if (signal?.aborted) return;
       const r = mapped.result;
       const charted: Charted = trained && 'charts' in trained
-        ? { charts: trained.charts, mapper: trained.mapper }
+        ? { charts: trained.charts, mapper: trained.mapper, ...(trained.sections?.length ? { sections: trained.sections } : {}) }
         // (The dev tools say why the trained mapper didn't chart it.)
         : { charts: r.charts, mapper: r.report.mapper, ...(trained ? { fallback: `the trained mapper failed: ${trained.failed}` } : {}) };
       // The trained mapper's Easy, Medium and Hard get their checks one after another (~0.45 s

@@ -144,11 +144,6 @@ describe('peaks, holds worth keeping, chords in runs, the onset mapper', () => {
     for (let w = 0; w < 10; w++) expect(out.filter((n) => n.t >= w * 4 && n.t < w * 4 + 4).length).toBeLessThanOrEqual(Math.round(1.5 * KEEP.easy.rate * 4));
   });
 
-  it('a held word that ends a line outlasts a longer hold mid-line', async () => {
-    const { holdWorth } = await import('../../src/mapping/shape');
-    expect(holdWorth(1, true, true)).toBeGreaterThan(holdWorth(1.6, false, false));
-  });
-
   it('a chord in a run does not break it', () => {
     const rows = [60, 62, 64, 65, 67].map((pitch, i) => ({ t: i * 0.15, pitch }));
     expect(figuresOf(rows).filter((f) => f?.kind === 'run')).toHaveLength(4);
