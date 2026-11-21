@@ -72,6 +72,8 @@ interface Tile {
   accent?: boolean;
   /** The first note of a part, on a big hit: a chord on every difficulty. */
   opens?: boolean;
+  /** Its chord is the drum hit under it doubled (no other part strikes with it): DOUBLE. */
+  doubled?: boolean;
 }
 
 /**
@@ -103,6 +105,15 @@ const BIG = 0.7;
 const CHORD_MIN = 0.3;
 /** Hard: two firm hits together are a chord too (both at least this), as before 11ab68c. */
 const HARD_CHORD = 0.6;
+/**
+ * A tile on a kick or snare at least this strong doubles it (a chord of the one hit; Medium only on
+ * a beat, Easy never) (Nov 21, round 5). The fan charts of Hotline Bling chord their drum hits, not
+ * two parts at once: under their chords two of our parts sound within 30 ms only 8% of the time
+ * (singles 5-6%), a kick or snare 45-54% (33-38%). Where our Ultra had a single tile on a kick or
+ * snare, a human chorded 28-65% of the time (0.3-0.7), with none under it 16-17%. Ultra 0.3 / Hard
+ * 0.5 made 36-66% / 25-52% of moments chords (the fan charts 29-36%).
+ */
+const DOUBLE: Record<'medium' | 'hard' | 'ultra', number> = { medium: 0.9, hard: 0.7, ultra: 0.5 };
 /** A phrase this much more intense than the one before (0..1 of the song's range) opens a part. */
 const LIFT = 0.3;
 /** A drum hit this weak doesn't fill in. */
@@ -442,6 +453,13 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
         .sort((a, b) => weight(b) - weight(a))[0];
       if (h) t.chord = h;
     }
+    // A tile on a kick or snare, with no other part to pair it, can double it (`doubled`: Ultra from
+    // DOUBLE.ultra, Hard from DOUBLE.hard): the emphasis human charters give a drum hit.
+    for (const t of tiles) {
+      if (t.phrase !== p || t.chord) continue;
+      const hit = all.filter((x) => x.layer === 'drums' && x.drum !== 'hat' && Math.abs(x.beat - t.s.beat) < 0.01).sort((a, b) => b.strength - a.strength)[0];
+      if (hit && hit.strength >= Math.min(DOUBLE.medium, DOUBLE.hard, DOUBLE.ultra)) { t.chord = hit; t.doubled = true; }
+    }
   }
   tiles.sort((a, b) => a.s.beat - b.s.beat || Number(b.ref) - Number(a.ref));
 
@@ -664,7 +682,8 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       // And only for emphasis: on a beat, or struck hard (the intro's piano was a chord every note).
       const struck = t.s.also != null && t.ref && (metric(t.s.beat) >= METRIC.beat || t.s.strength >= 0.85);
       const chordSound = t.chord ?? (struck ? { ...t.s, midi: t.s.also! } : undefined);
-      const chordOk = !!t.opens || prof.chords === 'always'
+      const chordOk = t.doubled && !t.opens ? d !== 'easy' && t.chord!.strength >= DOUBLE[d] - 1e-9 && (d !== 'medium' || metric(t.s.beat) >= METRIC.beat)
+        : !!t.opens || prof.chords === 'always'
         || (prof.chords === 'big' && ((!!t.chord && (t.chord.strength >= BIG || !!t.chord.accent || Math.min(t.chord.strength, t.s.strength) >= HARD_CHORD)) || (struck && t.s.strength >= 0.85)))
         || (prof.chords === 'few' && !!t.chord && (t.chord.strength >= BIG || !!t.chord.accent) && metric(t.s.beat) >= METRIC.beat);
       if (chordSound && chordOk) {

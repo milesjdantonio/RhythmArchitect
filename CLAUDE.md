@@ -416,6 +416,26 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     2.9-5.4) and chords. Hotline
     Bling has another part on the same grid point under only 124 of its 710 line notes, so its
     chords are near what exact coincidences allow.
+    **Chords on drum hits** (round 5, Nov 21 evening). The fan charts of Hotline Bling chord their
+    drum hits, not two parts at once: under their chords two of our parts sound within 30 ms 8% of
+    the time (their single tiles 5-6%), a kick or snare 45-54% (33-38%), an onset ≥ 0.5 43-50%
+    (27-31%). So a tile on a kick or snare doubles it (`DOUBLE`: Ultra from 0.5, Hard 0.7, Medium
+    0.9 on a beat, Easy never; 0.3 / 0.5 made 36-66% / 25-52% of moments chords). Chords Ultra
+    10-33% → 24-48%, Hard 6-22% → 15-39%, Medium 1-14% → 6-21% (below Hard's on every song); all
+    of ours against the 8 fan charts 20% → 38% (theirs 47%). Against Hotline Bling's two Hards
+    (precision / recall of our chords on the moments both have): Ultra 40-55% / 18-19% → 34-52% /
+    49-54%, Hard 49-65% / 10% → 33-46% / 26-30% (the two human charts against each other: 86% /
+    66%). Ultra 1.72-3.10★ → 1.88-3.20, Hard 1.44-2.30 → 1.52-2.32, Medium 1.04-1.37 → 1.07-1.38
+    (its doubled hits keep the mean Hard/Medium ratio at 1.42; without them 1.47), Easy the same;
+    stars at the fan charts' nearest difficulty 2.35 → 2.46. Hard's calibration paid for its chords
+    with tiles on some songs (Hotline Bling 4.2 → 3.5 a second). The same F1, no holes, no criteria
+    breaks, jacks about the same. **Swing was checked and left alone**: on Hotline Bling the mixes'
+    onsets sit on 16ths (2% nearer a triplet point, `tools/swing-study.mjs`), and on our beat map
+    only 14-15% of the fan charts' tiles are nearer a triplet point, 86-89% of them over no sound
+    of ours (their straight ones 78-80% over one): map-pop's 27-29% "swung gaps" are mostly gaps
+    between unheard tiles. osu!'s criteria chart swing on 1/6 or 1/12 "only when the song calls for
+    it"; this one doesn't. The sung syllables spread evenly through the beat (Basic Pitch's timing),
+    so a swung vocal can't be told from them.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
