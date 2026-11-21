@@ -6,6 +6,8 @@
 //
 //   node tools/replay-study.mjs .data/remap/<id>.study.json [...] [--out=<dir>]
 //
+// Downbeats (and the returns' beats) are read on the listen's beat map where it has one.
+//
 // --out writes each replayed map as a song file (the dry run's, with the new charts): give them to
 // `node tools/map-pop.mjs --songs=<file>` to compare with the fan charts.
 // The modules load through Vite (as the app does), so no build is needed. The trained mapper's own
@@ -31,9 +33,15 @@ try {
   const { decodeLevels } = await vite.ssrLoadModule('/src/mapping/levels.ts');
   const rate = async (chart) => starRating(chart);
   const pct = (x) => `${Math.round(x * 100)}%`;
-  /** The sound-off report of each chart (as map-pop's soundOffOf: the straight grid's downbeats, the report's sections by label). */
-  const lines = async (song, levels) => {
-    const spb = 60 / song.bpm, at = song.offset ?? 0, meter = song.meter ?? 4;
+  const B = await vite.ssrLoadModule('/src/mapping/beatmap.ts');
+  /**
+   * The sound-off report of each chart (as map-pop's soundOffOf, the report's sections by label),
+   * its downbeats and beats on the listen's beat map where it has one: on the straight grid a song
+   * whose beat drifts read 14-28% of its downbeats with a tile on Easy (Ice Ice Baby, change, Open
+   * Your Eyes) where the beat map's bars have 55-82%.
+   */
+  const lines = async (song, levels, map) => {
+    const spb = 60 / song.bpm, at = song.offset ?? 0, meter = map?.meter ?? song.meter ?? 4;
     const playing = levels ? playingFrom(decodeLevels(levels)) : () => true;
     const out = [];
     for (const d of ['easy', 'medium', 'hard', 'ultra']) {
@@ -42,7 +50,9 @@ try {
       const tiles = c.notes.map((n) => ({ sec: at + n.t * spb, lane: n.lane, end: at + (n.t + (n.hold ? n.len : 0)) * spb }));
       const seconds = Math.max(...tiles.map((t) => t.end)) + 1;
       const downbeats = [];
-      for (let b = 0; at + b * spb < seconds; b += meter) downbeats.push(at + b * spb);
+      if (map) for (let b = map.downbeat; b < map.secs.length && map.secs[b] < seconds; b += meter) downbeats.push(map.secs[b]);
+      else for (let b = 0; at + b * spb < seconds; b += meter) downbeats.push(at + b * spb);
+      const beatOf = map ? (x) => B.beatAt(map, x) : (x) => (x - at) / spb;
       const list = song.report?.sections ?? [], seen = new Map();
       const sections = list.map((x, i) => {
         const label = x.label.replace(/ \(drop\)$/, '');
@@ -50,7 +60,7 @@ try {
         const g = seen.get(label);
         return { from: at + x.beat * spb, to: at + (list[i + 1]?.beat ?? (seconds - at) / spb) * spb, group: g.group, nth: g.n++ };
       });
-      const r = soundOff({ tiles, downbeats, beatOf: (x) => (x - at) / spb, bar: meter * spb, playing, seconds, sections });
+      const r = soundOff({ tiles, downbeats, beatOf, bar: meter * spb, playing, seconds, sections });
       const k = criteria(tiles, d);
       const stars = c.stars ?? await chartStarsOf(c.notes, song);
       out.push(`${d.padEnd(6)} ${stars.toFixed(2)}★ ${r.rate.toFixed(2)}/s · longest gap ${r.longest.toFixed(1)} s @${r.longestAt.toFixed(0)}s · holes ${r.holes} · downbeats ${pct(r.downbeats)} · returns ${r.returns ? `${pct(r.returns.rhythm)} rhythm / ${pct(r.returns.lanes)} lanes` : '-'} · criteria breaks ${k.fast + k.runs + k.jacks + k.trills + k.chords}`);
@@ -87,10 +97,10 @@ try {
     const now = { bpm: s.bpm, offset: s.offset, meter: s.meter, charts, report: { sections } };
     console.log(`\n${was?.title ?? id}${was?.artist ? ` — ${was.artist}` : ''} (${s.bpm} BPM; ${path})`);
     console.log('  now:');
-    for (const line of await lines(now, levels)) console.log(`    ${line}`);
+    for (const line of await lines(now, levels, place.placed.map)) console.log(`    ${line}`);
     if (was?.charts) {
       console.log('  the listen made:');
-      for (const line of await lines({ ...was, offset: (was.offset ?? 0) + (was.source?.offset ?? 0) }, levels)) console.log(`    ${line}`);
+      for (const line of await lines({ ...was, offset: (was.offset ?? 0) + (was.source?.offset ?? 0) }, levels, place.placed.map)) console.log(`    ${line}`);
     }
     if (outDir) {
       const song = was ? { ...was, charts, report: { ...was.report, sections } } : { id, title: id, lengthBeats: s.lengthBeats, ...now };

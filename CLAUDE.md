@@ -708,9 +708,15 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   the listens made, so it matches the browser. Human baseline in map-pop (Nov 21 evening, the
   charts timed to our audio: Hotline Bling's two Hards, California Gurls' Speed Gurls): downbeats
   82-99%, longest gap 1.0-1.9 s, no holes; returns 40-90% of their rhythm and 14-80% of their
-  lanes (measured on our map's sections, so they move with it: Hotline Bling's 82-90%). Our
-  downbeats are read on the straight grid: on change, Ice Ice Baby and Open Your Eyes even Ultra
-  reads 30-82%, so there they're likely the grid's phase or drift, not the chart. (Before it, the Nov
+  lanes (measured on our map's sections, so they move with it: Hotline Bling's 82-90%).
+  replay-study reads downbeats on the listen's beat map (round 8; map-pop, with no beat map,
+  still on the straight grid): on the straight grid change, Ice Ice Baby and Open Your Eyes read
+  14-28% on Easy where the beat map's bars have 55-83%. The bars are where the song has them
+  (kicks on beat 1, snares on 2 and 4 on Ice Ice Baby, California Gurls, Open Your Eyes). On the
+  beat map (round 7's charts): Easy 55-83%, Medium 59-84%, Hard 67-92%, Ultra 71-97% (the listens'
+  own maps 22-80 / 50-88 / 53-88 / 62-92%). Most of the downbeats Easy has no tile on are a line
+  note up to half a beat ahead of them (5-31%: the skeleton's `SKELETON_AHEAD`, by design; both
+  wouldn't fit Easy's spacing); a sound it left on the beat 0-7%, nothing there 0-14%. (Before it, the Nov
   21 study did the same in a scratch `tests/unit/zz-*.test.ts`, moved out before committing.) After each round, update
   `docs/mapper-bottlenecks.html` (plain: the measures against the human charts, the analysis, the
   ranked bottlenecks, a change log).
