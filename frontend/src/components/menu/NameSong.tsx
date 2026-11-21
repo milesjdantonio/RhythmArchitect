@@ -20,7 +20,7 @@ import { SongRow } from '../SongRow';
 import { ServerNote } from '../ServerNote';
 import { isWaking, useServer } from '../../lib/server';
 import type { ScopeHandle } from '../generate/ListenScope';
-import { GenerateDialog, type Flow } from '../generate/GenerateDialog';
+import { GenerateDialog, type Flow, buildProgress, titleCase } from '../generate/GenerateDialog';
 import { VideoResults } from './VideoResults';
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
@@ -96,7 +96,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
   /** The fallback: a fan-made chart, played from the same video. */
   async function fromFanChart(video: VideoMatch, note: string) {
     const signal = abort.current?.signal;
-    setFlow({ step: 'fan', video, progress: 0, note });
+    setFlow({ step: 'fan', video, progress: buildProgress('fan', 0.5), label: 'Finding a Fan-Made Chart', note });
     try {
       const seconds = video.seconds ?? ((await ytCue(video.videoId).catch(() => 0)) || undefined);
       const song = await api.fanChart({ title: video.songTitle, artist: video.songArtist, videoId: video.videoId, seconds }, signal);
@@ -143,7 +143,10 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       else listenFailed(video, e instanceof ListenError ? e : null);
       return;
     }
-    setFlow({ step: 'listen', video, progress: 0 });
+    setFlow({ step: 'listen', video, progress: buildProgress('listen'), label: 'Listening to the Song' });
+    // The build's progress only moves forward; each step says what it's doing in title case.
+    const step = (label: string, part: Parameters<typeof buildProgress>[0], p = 0) =>
+      setFlow((f) => (f && f.step !== 'done' ? { ...f, label: titleCase(label), progress: Math.max(f.progress, buildProgress(part, p)) } : f));
     // The trained mapper charts the song (ensomi.ts): its model (about 120 MB, cached after the
     // first time) downloads while the song is listened to. Without it, with WebGPU, the song is
     // split into its parts before mapping (stems.ts; the splitter's model, about 172 MB, likewise).
@@ -155,13 +158,13 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
     try {
       const heard = await listenTo(stream, {
         videoId: video.videoId, seconds: video.seconds, signal,
-        onProgress: (p) => setFlow((f) => (f && f.step === 'listen' && Math.abs(f.progress - p) > 0.002 ? { ...f, progress: p } : f)),
+        onProgress: (p) => setFlow((f) => (f && f.step === 'listen' && Math.abs(f.progress - buildProgress('listen', p)) > 0.002 ? { ...f, progress: buildProgress('listen', p) } : f)),
         onHear: (pos, rms, low, mid, high) => scope.current?.hear(pos, rms, low, mid, high),
       });
-      setFlow({ step: 'map', video, progress: 0.5 });
+      setFlow((f) => ({ step: 'map', video, progress: Math.max(f?.progress ?? 0, buildProgress('beat')), label: 'Finding the Beat' }));
       // The model's download usually finishes during the song; if not, it finishes first (once).
       if (fetching) {
-        const shown = setInterval(() => scope.current?.mapping('getting the trained mapper', fetched), 250);
+        const shown = setInterval(() => { scope.current?.mapping('getting the trained mapper', fetched); step('getting the AI mapper', 'beat', fetched); }, 250);
         await fetching;
         clearInterval(shown);
         if (signal?.aborted) return;
@@ -169,8 +172,19 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       const mapped = await mapHeard(heard.pcm, heard.sr, {
         split: await split,
         trained: base ? { base, title: video.songTitle, artist: video.songArtist, ...(studyWanted() ? { study: true } : {}) } : undefined,
-        onProgress: (what, p) => scope.current?.mapping(what, p),
-        onStage: (stage, p) => scope.current?.trained(stage, p),
+        onProgress: (what, p) => {
+          scope.current?.mapping(what, p);
+          // The worker's steps: the beat, the song split (its model first), every note.
+          const part = /split/.test(what) ? 'split' : /note/.test(what) ? 'notes' : 'beat';
+          step(what, part, /getting/.test(what) ? (p ?? 0) * 0.3 : p ?? 0);
+        },
+        onStage: (stage, p) => {
+          scope.current?.trained(stage, p);
+          if (stage === 'voice') step('hearing the singing and the instruments', 'voice', p);
+          else if (stage === 'load') step('getting the AI ready', 'load', p);
+          else if (stage === 'listen') step('the AI listening to the song', 'ai', p);
+          else step(stage === 'again' ? 'charting the song again, busier' : 'charting the song', 'chart', p);
+        },
         onChart: (p) => scope.current?.progress(p),
         signal,
       });
@@ -182,7 +196,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
         scope.current?.sounds(r.events.map((e) => ({ sec: e.sec, band: e.band === 'low' ? 0 : e.band === 'mid' ? 1 : 2, strength: e.strength })), bars);
       }
       // The trained mapper charts it from the audio; if it can't, the onset mapper's own charts.
-      setFlow({ step: 'chart', video, progress: 0.75 });
+      setFlow((f) => ({ step: 'chart', video, progress: Math.max(f?.progress ?? 0, buildProgress('voice')), label: f?.label ?? 'Charting the Song' }));
       const trained = mapped.trained ? await mapped.trained : null;
       // (Dev: what the steps after the model worked from, for tools/remap-bank.mjs --study.)
       if (trained && 'study' in trained && trained.study) (window as unknown as { __rythmStudy?: unknown }).__rythmStudy = trained.study;
@@ -197,7 +211,9 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       const ticked = trained && 'charts' in trained ? new Promise((r) => setTimeout(r, 1500)) : null;
       // The song measured again on the trained mapper's beat grid, when that replaced the first one.
       const measured = trained && 'charts' in trained && trained.result ? { ...mapped, result: trained.result } : mapped;
+      step('saving the map', 'save', 0.2);
       const song = await api.createSong(songFromListening(measured, video, heard, charted));
+      step('saving the map', 'save', 1);
       await ticked;
       if (signal?.aborted) return;
       // Show the map landing on the sound it came from, then open it.

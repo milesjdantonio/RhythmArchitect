@@ -264,3 +264,10 @@
 
 /* The menu's ? and gear, side by side, the Bank under them. */
 .head-icons { display: flex; gap: 2px; }
+
+/* Building a map: what's happening (title case), then one bar with the build's percentage in it. */
+.build-now { margin: var(--space-3) 0 6px; font-size: 14px; letter-spacing: 0.03em; color: var(--ink); text-align: center; }
+.build-bar { position: relative; width: min(360px, 100%); height: 22px; border: 1px solid var(--hair-strong); border-radius: 999px; background: rgb(255 255 255 / 0.05); overflow: hidden; }
+.build-fill { position: absolute; inset: 0; transform-origin: left center; background: linear-gradient(90deg, var(--lightA), var(--lightB)); box-shadow: 0 0 18px var(--glowA); transition: transform 300ms var(--ease-out); }
+.build-pct { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff; text-shadow: 0 0 4px rgb(0 0 0 / 0.8), 0 0 10px rgb(0 0 0 / 0.6); }
+@media (prefers-reduced-motion: reduce) { .build-fill { transition: none; } }

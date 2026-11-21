@@ -214,20 +214,29 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     they cluster on the CC set (27% vs 29%; 61% vs 60% within a beat of the last); humans range
     3-64% from song to song (3% and 45% on one song), and neither the sounds' strength nor
     anything else measured says which songs want them. Gating chords on strength cut them to 3-9%.
-  - **Easy and Medium are one line a phrase** (`src/mapping/leadline.ts`, the user, Nov 20: "make
-    all other changes"), where the song was split (its sounds labelled by part, the syllables);
-    without that they're thinned as below. Each 2-bar phrase picks its lead: the singing where it's
-    sung, else the strongest instrument (`LEAD_WEIGHT`: vocals 1.6, other 1.1, drums 1, bass 0.6,
-    at least `LEAD_MIN` notes; the last phrase's lead stays while it's `STAY` of the best), and its
-    second part. Easy's tiles are the lead's notes on the beat map's grid (filling from the second
-    part only where the lead has under `EASY_FILL` of what it wants); Medium fills from the second
-    part where the lead runs short (a sung line is sparser than Medium). A phrase whose lead plays an
-    earlier one's rhythm (`ALIKE`, 16ths in common) takes that one's pattern; long sung notes are
-    holds; the lanes follow the lead's pitch (drums: kick low, the rest high) through `flowChart`.
-    The same star targets and calibration as thinning. On the two real listens: Easy's phrases on
-    one part 76% → 91%, 75% → 95%; off the grid 13% → 0%, 10% → 1%; Medium 63% → 71%, 65% → 73%
-    (two lines by design); Hard and Ultra unchanged (the trained mapper's). Easy and Medium are no
-    longer a subset of Ultra (nothing needs them to be: only a recharted older song's are checked).
+  - **Every difficulty is the song's own lines** (`src/mapping/leadline.ts`, the user, Nov 20:
+    "what notes even are these?", then "why not Hard and Ultra too", "the piano solo at the start of
+    Open Your Eyes should be mapped, every note"), where the song was split (its sounds labelled by
+    part, the syllables, and the instruments' notes: Basic Pitch on the "other" stem, gated as the
+    voice is: `played`); without that they're the trained mapper's, thinned as below. Each 2-bar
+    phrase picks its lead (the singing where it's sung, else the strongest instrument:
+    `LEAD_WEIGHT`; the last phrase's lead stays while it's `STAY` of the best) and a second part.
+    `PROFILE`: Easy the lead (the second part only where the lead is nearly silent: `EASY_FILL`),
+    Medium the lead with the second where it runs short, Hard both with chords of two on strong hits
+    that meet, Ultra both lines whole (every note of a piano solo), chords where they meet. Notes are
+    kept by where they fall in the bar first (`METRIC`: downbeat, beat, 8th, triplet, 16th; a note
+    pushing ahead of an empty beat counts as that beat), then how strong, the lead's first
+    (`LEAD_FIRST`): the easier charts are the same rhythm simplified (the user: "the times between
+    notes" didn't match when tiles were dropped by loudness). Tiles go on the beat map's grid; a
+    phrase whose lead plays an earlier one's rhythm (`ALIKE`) takes its pattern; long notes are
+    holds; lanes follow the lead's pitch (drums: kick low, the rest high), chords two lanes apart.
+    Ultra keeps every note unless that rates harder than the trained mapper's Ultra for the song
+    (then down to `ULTRA_KEEP` of them: the same level as before), and the easier ones take the
+    usual star targets from it. The trained mapper still runs (its grid, and the fallback). Easy and
+    Medium of the first version (Easy/Medium only) on the two real listens: Easy's phrases on one
+    part 99% and 96%. **The testing ground** (`#/testingGround`, `src/screens/TestingGround.tsx`):
+    one song mapped two ways to play side by side, each a song file in `public/testing/` (id
+    `test-…`, read by `fetchSong`; never in the bank; runs not saved).
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,

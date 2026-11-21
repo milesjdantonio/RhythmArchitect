@@ -3,6 +3,7 @@
 //   #/song/:id?d=medium     home with a song picked: it plays on the stage
 //   #/play/:id/:difficulty  playing
 //   #/bank                  the music bank: every song, A to Z
+//   #/testingGround         the testing ground: one song mapped two ways, to compare
 
 import { useSyncExternalStore } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../api/types';
@@ -10,7 +11,8 @@ import { DIFFICULTIES, type Difficulty } from '../api/types';
 export type Route =
   | { name: 'home'; songId?: string; difficulty?: Difficulty; fresh?: boolean }
   | { name: 'play'; songId: string; difficulty: Difficulty }
-  | { name: 'bank' };
+  | { name: 'bank' }
+  | { name: 'testing' };
 
 export function parse(hash: string): Route {
   const [path, query = ''] = hash.replace(/^#\/?/, '').split('?');
@@ -21,6 +23,7 @@ export function parse(hash: string): Route {
     return { name: 'home', songId: parts[1], difficulty: d && DIFFICULTIES.includes(d) ? d : undefined, fresh: params.has('fresh') };
   }
   if (parts[0] === 'bank' && parts.length === 1) return { name: 'bank' };
+  if ((parts[0] === 'testingGround' || parts[0] === 'testing-ground') && parts.length === 1) return { name: 'testing' };
   if (parts[0] === 'play' && parts[1] && DIFFICULTIES.includes(parts[2] as Difficulty)) {
     return { name: 'play', songId: parts[1], difficulty: parts[2] as Difficulty };
   }
@@ -32,6 +35,7 @@ export const href = {
   song: (id: string, d?: Difficulty) => `#/song/${encodeURIComponent(id)}${d ? `?d=${d}` : ''}`,
   play: (id: string, d: Difficulty) => `#/play/${encodeURIComponent(id)}/${d}`,
   bank: () => '#/bank',
+  testing: () => '#/testingGround',
 };
 
 /** Where the music bank's Back returns to: the menu as it was when the bank was opened. */

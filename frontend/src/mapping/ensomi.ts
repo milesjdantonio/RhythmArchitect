@@ -85,6 +85,8 @@ export interface TrainedOptions {
   beats?: number[];
   /** The sung syllables (voice.ts, from the vocal split): tiles go on them and thinning favours them. */
   voice?: Syllable[];
+  /** The instruments' notes (the "other" part, heard as the voice is): a lead line can follow them (leadline.ts). */
+  played?: Syllable[];
   gpu: boolean;
   /** Where it's got: loading the model, listening to the song (its own beat tracking), charting it (0..1 of the song charted). */
   onStage?: (stage: TrainedStage, p?: number) => void;
@@ -103,7 +105,7 @@ export interface TrainedOptions {
 }
 
 /** What the tiles are placed by: the song's grid, its sounds, and the beat tracker's beats. */
-export type Placing = Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'meter' | 'beats' | 'voice'>;
+export type Placing = Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'meter' | 'beats' | 'voice' | 'played'>;
 
 /**
  * Hearing the singing (the vocal split and its syllables: voice.ts, before the model), loading the
@@ -265,7 +267,7 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     const own = o.regrid ? osuGrid(first.osu, songMs / 1000) : null;
     if (own && o.regrid) {
       const again = o.regrid({ ...own, offset: Math.round((own.offset + shift) * 1000) / 1000 });
-      if (again) on = { ...again, beats: o.beats, voice: o.voice };
+      if (again) on = { ...again, beats: o.beats, voice: o.voice, played: o.played };
     }
     const place = placer(on);
     // Ultra a stretch at a time (see ultraTargets): charted again busier while too little is met.
@@ -559,14 +561,38 @@ export async function chartStars(notes: ChartNote[], g: { bpm: number; offset: n
  * scaled within SCALE, halving the step, at most CALIBRATE tries, the nearest kept), each with its
  * rating. One that would leave less than MIN_STEP between it and its neighbours stays as KEEP made it.
  */
-export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
+/** The lead line's Ultra keeps at least this share of its lines' notes (ULTRA_KEEP to 1) to stay at the trained mapper's stars. */
+const ULTRA_KEEP = 0.5;
+
+export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice' | 'played' | 'meter'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
   const thin = thinner(model, o, placed);
-  // Easy and Medium follow one part a phrase (leadline.ts) when the song was split; else thinned.
-  const lead = o.voice?.length && hasParts(o.events) ? leadLine({ bpm: o.bpm, offset: o.offset, events: o.events, voice: o.voice, map: placed?.map ?? null }, model) : null;
-  const make = (d: Difficulty, scale?: number) => (lead && (d === 'easy' || d === 'medium') ? lead(d, scale) : thin(d, scale));
+  // Every difficulty from the song's lines (leadline.ts) when the song was split; else thinned
+  // from the trained mapper's chart.
+  const lead = o.voice?.length && hasParts(o.events)
+    ? leadLine({ bpm: o.bpm, offset: o.offset, events: o.events, voice: o.voice, played: o.played, map: placed?.map ?? null, meter: o.meter })
+    : null;
+  const make = (d: Difficulty, scale?: number) => (lead ? lead(d, scale) : thin(d, scale));
   const out = {} as Record<Difficulty, Chart>;
-  const ultra = make('ultra');
-  out.ultra = { ...ultra, stars: await chartStars(ultra.notes, o, rate) };
+  if (lead) {
+    // Ultra: every note of its lines, fewer only where that would rate harder than the trained
+    // mapper's Ultra for this song (the same level as before: our Ultra is an osu! "Normal").
+    const cap = await chartStars(thin('ultra').notes, o, rate);
+    let chart = lead('ultra'), stars = await chartStars(chart.notes, o, rate);
+    if (stars > cap + STAR_SPREAD) {
+      let lo = ULTRA_KEEP, hi = 1, best = { chart, stars };
+      for (let i = 0; i < CALIBRATE; i++) {
+        const k = (lo + hi) / 2;
+        chart = lead('ultra', k); stars = await chartStars(chart.notes, o, rate);
+        if (Math.abs(stars - cap) < Math.abs(best.stars - cap)) best = { chart, stars };
+        if (stars > cap) hi = k; else lo = k;
+      }
+      ({ chart, stars } = best);
+    }
+    out.ultra = { ...chart, stars };
+  } else {
+    const ultra = make('ultra');
+    out.ultra = { ...ultra, stars: await chartStars(ultra.notes, o, rate) };
+  }
   const targets = starTargets(out.ultra.stars ?? EASY_STARS * 2.6);
   // Hard first: each easier one is kept under the one above it.
   for (const d of ['hard', 'medium', 'easy'] as const) {

@@ -25,16 +25,34 @@ import { VideoSlot } from '../VideoSlot';
 export interface Flow {
   step: 'find' | 'ready' | 'listen' | 'map' | 'chart' | 'fan' | 'done';
   video?: VideoMatch;
+  /** How far the whole build has got (0..1: buildProgress), and what it's doing (title case). */
   progress: number;
+  label?: string;
   /** Why it fell back to a fan chart. */
   note?: string;
   /** Listening didn't work (ready step): what went wrong. */
   problem?: string;
 }
 
-const LISTEN_STAGES = ['Finding the song on YouTube', 'Listening to it once', 'Finding the beat and every note', 'Charting Easy, Medium and Hard'];
-const FAN_STAGES = ['Finding the song on YouTube', 'Finding a fan-made chart', 'Lining it up with the video', 'Shaping Easy, Medium and Hard'];
 const stageOf: Record<Flow['step'], number> = { find: 0, ready: 1, listen: 1, map: 2, chart: 3, fan: 1, done: 4 };
+
+/** Words kept lower case inside a title ("Finding the Beat"). */
+const SMALL = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'nor', 'for', 'of', 'to', 'in', 'on', 'at', 'by', 'up', 'as', 'into', 'from', 'with']);
+/** "finding the beat" → "Finding the Beat" (words already capitalised, like Easy, stay). */
+export function titleCase(s: string): string {
+  return s.split(' ').map((w, i) => (i > 0 && SMALL.has(w.toLowerCase()) ? w.toLowerCase() : w.charAt(0).toUpperCase() + w.slice(1))).join(' ');
+}
+
+/**
+ * Where a build has got, 0..1, from the step and the progress inside it: each step takes its share
+ * (listening most of the first half, the song split, the AI's listening and charting the rest).
+ */
+export const BUILD = {
+  find: [0, 0.03], listen: [0.03, 0.45], beat: [0.45, 0.48], split: [0.48, 0.66], notes: [0.66, 0.68],
+  voice: [0.68, 0.74], load: [0.74, 0.76], ai: [0.76, 0.8], chart: [0.8, 0.95], save: [0.95, 1],
+  fan: [0.03, 0.9],
+} as const;
+export const buildProgress = (part: keyof typeof BUILD, p = 0) => BUILD[part][0] + (BUILD[part][1] - BUILD[part][0]) * Math.max(0, Math.min(1, p));
 
 
 /**
@@ -48,9 +66,9 @@ export function GenerateDialog({ flow, asked, scope, onListen, onCancel }: {
   onListen: () => void;
   onCancel: () => void;
 }) {
-  const fan = flow?.step === 'fan' || (flow?.step === 'done' && !!flow.note);
-  const stages = fan ? FAN_STAGES : LISTEN_STAGES;
   const stageIndex = flow ? stageOf[flow.step] : 0;
+  const pct = flow ? Math.round((flow.step === 'done' ? 1 : flow.progress) * 100) : 0;
+  const label = !flow ? '' : flow.step === 'done' ? 'Mapped' : flow.label ?? (flow.step === 'find' ? 'Finding the Song on YouTube' : flow.step === 'fan' ? 'Finding a Fan-Made Chart' : 'Mapping');
   const showVideo = flow?.step === 'ready' || flow?.step === 'listen';
   // The scope stays from listening through mapping to the finished map (not for fan charts).
   const showScope = !!flow && (flow.step === 'listen' || flow.step === 'map' || flow.step === 'chart' || (flow.step === 'done' && !flow.note));
@@ -87,15 +105,13 @@ export function GenerateDialog({ flow, asked, scope, onListen, onCancel }: {
             ) : (
               <>
                 {flow.note && <p className="small muted listen-note">{flow.note}</p>}
-                <ol className={`stages ${showScope ? 'is-compact' : ''}`}>
-                  {stages.map((label, i) => (
-                    <li key={label} className={i < stageIndex ? 'is-done' : i === stageIndex ? 'is-now' : ''} aria-current={i === stageIndex ? 'step' : undefined}>
-                      <span className="stage-dot" aria-hidden>{i < stageIndex ? <Icon name="check" size={11} /> : null}</span>
-                      <span className="stage-label">{label}</span>{flow.step === 'listen' && i === 1 ? <span className="mono muted"> {flow.video?.seconds ? `${fmtTime(Math.round(flow.progress * flow.video.seconds))} / ${fmtTime(Math.round(flow.video.seconds))}` : `${Math.round(flow.progress * 100)}%`}</span> : null}
-                    </li>
-                  ))}
-                </ol>
-                <div className="progress" aria-hidden><span style={{ transform: `scaleX(${flow.step === 'listen' ? flow.progress : flow.step === 'done' ? 1 : (stageIndex + 0.5) / 4})` }} /></div>
+                {/* What's happening, then the whole build's progress, its percentage in the bar. */}
+                <p className="build-now" aria-live="polite">{label}{flow.step === 'listen' && flow.video?.seconds
+                  ? <span className="mono muted"> · {fmtTime(Math.round(Math.max(0, (flow.progress - BUILD.listen[0]) / (BUILD.listen[1] - BUILD.listen[0])) * flow.video.seconds))} / {fmtTime(Math.round(flow.video.seconds))}</span> : null}</p>
+                <div className="build-bar" role="progressbar" aria-label="Building the map" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}>
+                  <span className="build-fill" style={{ transform: `scaleX(${pct / 100})` }} />
+                  <b className="build-pct mono">{pct}%</b>
+                </div>
               </>
             )}
             {flow.step !== 'done' && <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>Cancel</button>}

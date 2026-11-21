@@ -32,7 +32,7 @@ import { StageProxy } from '../stage/proxy';
 import { bus } from '../lib/bus';
 import { href, navigate, parse } from '../lib/router';
 import { getSettings, setSettings, useSettings } from '../lib/settings';
-import { deleteSong, fetchSong, upsert } from '../library/songs';
+import { deleteSong, fetchSong, isTestSong, upsert } from '../library/songs';
 import { EASE_OUT } from '../lib/motion';
 import { frameGate, perf } from '../lib/perf';
 import { ORDER, cancelFrame, nextFrame } from '../lib/ticker';
@@ -352,7 +352,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     setResult(r);
     setPhase('results');
     bus.emit('intensity', g.failed ? 0.05 : 0.5);
-    if (assisted.current) { setSaving('skipped'); return; }
+    if (assisted.current || isTestSong(song.id)) { setSaving('skipped'); return; }
     setSaving('saving');
     setSaveError('');
     // The Map Syncer: hits that were steadily early or late move a YouTube song's map for next time

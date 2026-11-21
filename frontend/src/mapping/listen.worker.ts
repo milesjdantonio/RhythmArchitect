@@ -121,6 +121,9 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       // Needs the graphics chip (Demucs takes about 2 minutes of a 3-minute song on a laptop's);
       // without it, or if it fails, the charts are made as before.
       let voice: Syllable[] | undefined;
+      // The instruments' notes too (the "other" part: piano, synths, guitar), heard the same way:
+      // an instrument's line note by note (a piano solo), not only where its loudness jumps.
+      let played: Syllable[] | undefined;
       let voiceNote = '';
       if (stems) {
         try {
@@ -129,6 +132,8 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
           const sung = await hearNotes(ort!, stems.vocals, sr, { providers: ['webgpu', 'wasm'], onProgress: (p) => post({ stage: 'voice', p }) });
           const { syllables } = await import('./voice');
           voice = syllables(sung, { vocal: stems.vocals, mix: pcm, sr });
+          const notesOther = await hearNotes(ort!, stems.other, sr, { providers: ['webgpu', 'wasm'] });
+          played = syllables(notesOther, { vocal: stems.other, mix: pcm, sr });
           voiceNote = `; the song split into its parts, the voice heard in ${Math.round((performance.now() - t0) / 1000)} s`;
         } catch (err) {
           console.warn('[mapper] carrying on without the voice', err);
@@ -141,7 +146,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
         ...(trained!.study ? { onRaw: (star: number, objects: { lane: number; start_ms: number; end_ms?: number }[], shift: number) => raws.push({ star, objects: objects.map((x) => ({ lane: x.lane, start_ms: x.start_ms, end_ms: x.end_ms })), shift }) } : {}),
         base: trained!.base, title: trained!.title, artist: trained!.artist,
         bpm: result.bpm, offset: result.offset, events: result.events,
-        onGrid: result.onBeatGrid, meter: result.meter, beats, voice, gpu,
+        onGrid: result.onBeatGrid, meter: result.meter, beats, voice, played, gpu,
         onStage: (stage, p) => post({ stage, p }),
         onProgress: (p) => post({ chart: p }),
         regrid: (g) => {
@@ -167,6 +172,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
           on: { bpm: r.bpm, offset: r.offset, meter: r.meter, events: r.events, onGrid: r.onBeatGrid, gridUsed: r.gridUsed, lengthBeats: r.lengthBeats, sections: r.report.sections, beat: r.report.beat },
           notes: await hearNotes(ort!, pcm, sr, { providers: gpu ? ['webgpu', 'wasm'] : ['wasm'] }).catch(() => []),
           voice: voice ?? [],
+          played: played ?? [],
         };
       }
       const withVoice = { ...out, mapper: out.mapper + voiceNote };

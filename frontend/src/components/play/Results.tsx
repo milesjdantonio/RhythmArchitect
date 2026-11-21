@@ -153,7 +153,7 @@ export function Results({ song, difficulty, result, previousBest, saving, saveEr
           <p className="muted small">You hit {Math.abs(Math.round(timing))} ms {timing < 0 ? 'early' : 'late'} on average. If that feels wrong, adjust the audio offset in Settings.</p>
         )}
         <p className="muted small save-state" aria-live="polite">
-          {saving === 'skipped' ? 'Autoplay run: not saved.' : saving === 'saving' ? 'Saving your score' : saving === 'saved' ? 'Score saved.' : saveError ? `Couldn't save this score: ${saveError}` : "Couldn't save this score."}
+          {saving === 'skipped' ? (song.id.startsWith('test-') ? 'Testing ground run: not saved.' : 'Autoplay run: not saved.') : saving === 'saving' ? 'Saving your score' : saving === 'saved' ? 'Score saved.' : saveError ? `Couldn't save this score: ${saveError}` : "Couldn't save this score."}
         </p>
 
         <motion.div className="results-actions" {...rise(6)}>

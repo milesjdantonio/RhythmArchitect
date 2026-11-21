@@ -244,7 +244,8 @@ test.describe('Rythm Architect', () => {
     await expect(page.getByRole('dialog', { name: 'Listening' })).toBeVisible();
     // The listening animation: the song fills in as it's heard, and the clock runs.
     await expect(page.locator('.scope-canvas')).toBeVisible();
-    await expect(page.locator('.stages .is-now')).toContainText(/0:0[1-9] \/ 0:40/, { timeout: 15_000 });
+    await expect(page.locator('.build-now')).toContainText(/Listening to the Song · 0:0[1-9] \/ 0:40/, { timeout: 15_000 });
+    await expect(page.getByRole('progressbar', { name: 'Building the map' })).toContainText('%');
     await expect(page.getByRole('dialog', { name: /Mapping|Mapped/ })).toBeVisible({ timeout: 90_000 });
     await expect(page).toHaveURL(/#\/song\/yt-e2einkfury1-/, { timeout: 60_000 });
     // The video has its own spot in the bar under the stage, never on the stage.
@@ -508,6 +509,19 @@ test.describe('Rythm Architect', () => {
         await expect(page).toHaveURL(/#\/song\//);
       }
     }
+  });
+
+  test('the testing ground shows Open Your Eyes mapped two ways, each playable', async ({ page }) => {
+    await skipIntro(page);
+    await fakeYouTube(page);
+    await page.goto('/#/testingGround');
+    await expect(page.getByRole('heading', { name: 'Testing ground' })).toBeVisible();
+    for (const name of ['New: the song’s own lines', 'Current: the trained mapper']) {
+      const card = page.getByRole('region', { name });
+      await expect(card).toContainText(/Ultra\s*\d+ tiles/);
+    }
+    await page.getByRole('button', { name: 'Play Ultra: New: the song’s own lines' }).click();
+    await expect(page).toHaveURL(/#\/play\/test-oye-lines\/ultra$/);
   });
 
   test('favourites a song and finds it in the favourites drop-down', async ({ page }) => {

@@ -16,10 +16,13 @@ const subscribe = (l: () => void) => { listeners.add(l); return () => { listener
 
 export function cachedSong(id: string) { return cache.get(id); }
 
+/** A testing ground song (TestingGround.tsx): a file in public/testing/, never in the bank. */
+export const isTestSong = (id: string) => id.startsWith('test-');
+
 export async function fetchSong(id: string): Promise<Song> {
   const hit = cache.get(id);
   if (hit) return hit;
-  const song = await api.getSong(id);
+  const song = isTestSong(id) ? await fetch(`${import.meta.env.BASE_URL}testing/${encodeURIComponent(id)}.json`).then((r) => { if (!r.ok) throw new Error('No such test map'); return r.json() as Promise<Song>; }) : await api.getSong(id);
   upsert(song);
   return song;
 }

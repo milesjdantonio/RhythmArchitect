@@ -11,6 +11,7 @@ import { Workspace } from './screens/Workspace';
 // YouTube song's video needs its spot there the moment the menu's goes (a screen still loading
 // would leave the player nowhere to show, and a hidden player pauses).
 import { MusicBank } from './screens/MusicBank';
+import { TestingGround } from './screens/TestingGround';
 import { bus } from './lib/bus';
 import { EntranceContext, type EntranceStage } from './lib/entrance';
 import { useRoute } from './lib/router';
@@ -34,7 +35,7 @@ export function App() {
   useEffect(() => { startServerWatch(); }, []);
   const showMain = stage !== 'wait' || !playing;
   // Picking songs happens inside one workspace, so moving between them doesn't remount it.
-  const key = route.name === 'play' ? `play-${route.songId}-${route.difficulty}` : route.name === 'bank' ? 'bank' : 'workspace';
+  const key = route.name === 'play' ? `play-${route.songId}-${route.difficulty}` : route.name === 'bank' ? 'bank' : route.name === 'testing' ? 'testing' : 'workspace';
 
   useEffect(() => { window.scrollTo(0, 0); }, [key]);
   // The whole interface takes the colours of the song on stage (eased in CSS).
@@ -56,7 +57,7 @@ export function App() {
           {showMain && <motion.main
             id="main"
             key={key}
-            className={`screen screen-${playing ? 'play' : route.name === 'bank' ? 'bank' : 'workspace'}${stage === 'wait' ? ' is-veiled' : ''}`}
+            className={`screen screen-${playing ? 'play' : route.name === 'bank' ? 'bank' : route.name === 'testing' ? 'bank' : 'workspace'}${stage === 'wait' ? ' is-veiled' : ''}`}
             inert={stage === 'wait'}
             aria-hidden={stage === 'wait' || undefined}
             initial={{ opacity: 0, scale: playing ? 1.03 : 1 }}
@@ -70,6 +71,8 @@ export function App() {
               </Suspense>
             ) : route.name === 'bank' ? (
               <MusicBank />
+            ) : route.name === 'testing' ? (
+              <TestingGround />
             ) : (
               <Workspace songId={route.songId} difficulty={route.difficulty} fresh={route.fresh} onSettings={() => setSettings(true)} />
             )}
