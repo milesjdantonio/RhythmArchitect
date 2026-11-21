@@ -25,6 +25,12 @@ import coreUrl from '../../node_modules/@ensomi/runtime/pkg/ensomi_generate_wasm
 import table24 from '../../node_modules/@ensomi/runtime/resampler/resample-24000.bin?url';
 import bound24 from '../../node_modules/@ensomi/runtime/resampler/resample-24000-boundary.bin?url';
 import info24 from '../../node_modules/@ensomi/runtime/resampler/resample-24000.json?url';
+import table441 from '../../node_modules/@ensomi/runtime/resampler/resample-44100.bin?url';
+import bound441 from '../../node_modules/@ensomi/runtime/resampler/resample-44100-boundary.bin?url';
+import info441 from '../../node_modules/@ensomi/runtime/resampler/resample-44100.json?url';
+import table48 from '../../node_modules/@ensomi/runtime/resampler/resample-48000.bin?url';
+import bound48 from '../../node_modules/@ensomi/runtime/resampler/resample-48000-boundary.bin?url';
+import info48 from '../../node_modules/@ensomi/runtime/resampler/resample-48000.json?url';
 
 /** The star rating the model charts at (R2 takes 2 up to 6). */
 export const STAR = 2;
@@ -43,13 +49,21 @@ const MIN_HOLD = 0.5;
  */
 const RING = 0.2;
 
-// The model reads audio at 22050 Hz (and 24000 Hz for one stage); the listening pass hears at one
-// of the two. The runtime's tables for 24000 Hz go with the app.
+// The model reads audio at 22050 Hz (and 24000 Hz for one stage). The listening pass hears at the
+// browser's own rate (44.1 or 48 kHz, since Nov 20; 22.05 or 24 kHz before): the runtime resamples
+// from those itself, with its own tables, which go with the app.
 const TABLES: Record<string, string> = {
   'resample-24000.bin': table24,
   'resample-24000-boundary.bin': bound24,
   'resample-24000.json': info24,
+  'resample-44100.bin': table441,
+  'resample-44100-boundary.bin': bound441,
+  'resample-44100.json': info441,
+  'resample-48000.bin': table48,
+  'resample-48000-boundary.bin': bound48,
+  'resample-48000.json': info48,
 };
+const RATES = new Set([22050, 24000, 44100, 48000]);
 async function tables(path: string): Promise<Uint8Array> {
   const url = TABLES[path];
   if (!url) throw Object.assign(new Error(`trained mapper: no table ${path}`), { code: 'ENOENT' });
@@ -217,8 +231,8 @@ export function nextStar(stars: number[], cover: number): number | null {
 /** Downloads (or reads from the cache) the model and charts the song. */
 export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: TrainedOptions): Promise<Trained> {
   const rt = await import('@ensomi/runtime');
-  const audio = sr === 22050 || sr === 24000 ? pcm : (await import('./beats')).resample(pcm, sr);
-  const rate = sr === 22050 || sr === 24000 ? sr : 22050;
+  const audio = RATES.has(sr) ? pcm : (await import('./beats')).resample(pcm, sr);
+  const rate = RATES.has(sr) ? sr : 22050;
   const songMs = (audio.length / rate) * 1000;
   o.onStage?.('load');
   const models = await rt.loadModels(cachedSource(o.base), {
@@ -561,8 +575,13 @@ export async function chartStars(notes: ChartNote[], g: { bpm: number; offset: n
  * scaled within SCALE, halving the step, at most CALIBRATE tries, the nearest kept), each with its
  * rating. One that would leave less than MIN_STEP between it and its neighbours stays as KEEP made it.
  */
-/** The lead line's Ultra keeps at least this share of its lines' notes (ULTRA_KEEP to 1) to stay at the trained mapper's stars. */
+/**
+ * The lead line's Ultra keeps every note of its lines (the user, Nov 20: lift its cap), fewer only
+ * where that would rate above ULTRA_CEILING stars (a sanity ceiling against unplayable bursts),
+ * down to ULTRA_KEEP of them. It was held at the trained mapper's Ultra (an osu! Normal, 2.0-3.1).
+ */
 const ULTRA_KEEP = 0.5;
+const ULTRA_CEILING = 4;
 
 export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice' | 'played' | 'meter'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
   const thin = thinner(model, o, placed);
@@ -574,9 +593,8 @@ export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOption
   const make = (d: Difficulty, scale?: number) => (lead ? lead(d, scale) : thin(d, scale));
   const out = {} as Record<Difficulty, Chart>;
   if (lead) {
-    // Ultra: every note of its lines, fewer only where that would rate harder than the trained
-    // mapper's Ultra for this song (the same level as before: our Ultra is an osu! "Normal").
-    const cap = await chartStars(thin('ultra').notes, o, rate);
+    // Ultra: every note of its lines, fewer only above the ceiling.
+    const cap = ULTRA_CEILING;
     let chart = lead('ultra'), stars = await chartStars(chart.notes, o, rate);
     if (stars > cap + STAR_SPREAD) {
       let lo = ULTRA_KEEP, hi = 1, best = { chart, stars };

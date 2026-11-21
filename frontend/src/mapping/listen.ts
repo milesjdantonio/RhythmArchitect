@@ -14,7 +14,7 @@ import type { AutomapResult } from './automap';
 import type { FromMapper, ToMapper } from './listen.worker';
 import type { ChartProgress, SongLevels } from '../api/types';
 import type { Trained, TrainedStage } from './ensomi';
-import { Placer, chooseRecording, findTick, missLimit, type Chunk, type Mark } from './capture';
+import { Placer, chooseRecording, findTick, missLimit, place, type Chunk, type Mark } from './capture';
 import { logChunk, logMark, newListenLog, saveListenLog } from './listenLog';
 
 /** Why listening failed ('gaps': it ran, but too much of the song never reached the recording). */
@@ -101,14 +101,14 @@ export async function requestTabAudio(): Promise<MediaStream> {
 
 const TAP = `
 class RythmTap extends AudioWorkletProcessor {
-  constructor() { super(); this.buf = new Float32Array(4096); this.n = 0; this.t = 0; }
+  constructor() { super(); this.l = new Float32Array(4096); this.r = new Float32Array(4096); this.n = 0; this.t = 0; }
   process(inputs) {
     const ch = inputs[0];
     if (ch && ch.length) {
       if (this.n === 0) this.t = currentTime;
       const a = ch[0], b = ch[1] || ch[0];
-      for (let i = 0; i < a.length; i++) this.buf[this.n++] = (a[i] + b[i]) * 0.5;
-      if (this.n >= 4096 - 128) { this.port.postMessage({ t: this.t, d: this.buf.slice(0, this.n) }); this.n = 0; }
+      for (let i = 0; i < a.length; i++) { this.l[this.n] = a[i]; this.r[this.n] = b[i]; this.n++; }
+      if (this.n >= 4096 - 128) { this.port.postMessage({ t: this.t, l: this.l.slice(0, this.n), r: this.r.slice(0, this.n) }); this.n = 0; }
     }
     return true;
   }
@@ -117,8 +117,11 @@ registerProcessor('rythm-tap', RythmTap);`;
 const tapLoaded = new WeakSet<BaseAudioContext>();
 
 export interface Heard {
+  /** The recording (mono, the two channels' mean) at the browser's own rate (44.1 or 48 kHz). */
   pcm: Float32Array;
   sr: number;
+  /** Its two channels, placed the same way: the song splitter (stems.ts) gets real stereo. */
+  stereo?: [Float32Array, Float32Array];
   /** Measured capture delay (seconds), and whether the tick was heard. */
   delay: number;
   calibrated: boolean;
@@ -162,8 +165,10 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
     mute.connect(ctx.destination);
     cleanup.push(() => { src.disconnect(); tap.disconnect(); mute.disconnect(); tap.port.onmessage = null; });
 
-    // Decimate to ~22-24 kHz (plenty for finding notes; a quarter of the memory).
-    const k = Math.max(1, Math.round(ctx.sampleRate / 22050));
+    // At the browser's own rate (44.1 or 48 kHz), both channels: until Nov 20 it was mixed to mono
+    // and halved to ~22 kHz (a quarter of the memory), and the song splitter (Demucs, made for
+    // 44.1 kHz stereo) got nothing above ~11 kHz and no left and right to tell the parts apart by.
+    const k = 1;
     const sr = ctx.sampleRate / k;
     let failure: ListenError | null = null;
     let done = false;
@@ -174,7 +179,8 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
 
     // 1. The tick: how late captured sound arrives.
     const pre: { t: number; d: Float32Array }[] = [];
-    tap.port.onmessage = (e: MessageEvent<{ t: number; d: Float32Array }>) => { pre.push(e.data); };
+    const mix = (l: Float32Array, r: Float32Array) => { const d = new Float32Array(l.length); for (let i = 0; i < d.length; i++) d[i] = (l[i] + r[i]) * 0.5; return d; };
+    tap.port.onmessage = (e: MessageEvent<{ t: number; l: Float32Array; r: Float32Array }>) => { pre.push({ t: e.data.t, d: mix(e.data.l, e.data.r) }); };
     await new Promise((r) => setTimeout(r, 400));
     const t0 = ctx.currentTime + 0.08;
     const osc = ctx.createOscillator(), env = ctx.createGain();
@@ -200,6 +206,8 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
     let fl = 0, fh = 0;
     const marks: Mark[] = [];
     const chunks: Chunk[] = [];
+    // Each chunk's two channels too, placed the same way at the end (the splitter's stereo).
+    const chunksL: Chunk[] = [], chunksR: Chunk[] = [];
     // Also placed as heard (each chunk by the latest reads): kept in case the seamless placement
     // comes out clearly worse (chooseRecording).
     const asHeard = new Placer(sr, duration || 600);
@@ -230,10 +238,11 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
         setTimeout(() => finish?.(), 400 + delay * 1000);
       }
     };
-    tap.port.onmessage = (e: MessageEvent<{ t: number; d: Float32Array }>) => {
+    tap.port.onmessage = (e: MessageEvent<{ t: number; l: Float32Array; r: Float32Array }>) => {
       if (done) return;
       sample();
-      const { t, d } = e.data;
+      const { t, l, r } = e.data;
+      const d = mix(l, r);
       const c = t - delay;
       logChunk(log, c, Math.floor(d.length / k));
       const out = new Float32Array(Math.floor(d.length / k));
@@ -245,6 +254,8 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
         chunk += out[i] * out[i];
       }
       chunks.push({ c, d: out });
+      chunksL.push({ c, d: k === 1 ? l : out });
+      chunksR.push({ c, d: k === 1 ? r : out });
       // Live, for the animation and the silence check only: where it is now, from the latest marks.
       let last = -1;
       for (let i = marks.length - 1; i >= 0; i--) if (marks[i].c <= c) { last = i; break; }
@@ -289,6 +300,11 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
     if (aborted()) throw new DOMException('Cancelled', 'AbortError');
     if (failure) throw failure;
     const recording = chooseRecording(chunks, marks, sr, duration || 600, asHeard.result());
+    // The two channels, placed as the mix was (the seamless placement; as heard, the splitter
+    // takes the mix on both sides).
+    const stereo: [Float32Array, Float32Array] | undefined = recording.note.startsWith('seamless')
+      ? [place(chunksL, marks, sr, duration || 600).pcm, place(chunksR, marks, sr, duration || 600).pcm] : undefined;
+    chunks.length = 0; chunksL.length = 0; chunksR.length = 0;
     if (import.meta.env?.DEV) console.info('[listen] ' + recording.note);
     saveListenLog(log, recording.note);
     // Parts of the song never heard would be mapped thin or empty: the player would rather be told.
@@ -296,7 +312,7 @@ export async function listenTo(stream: MediaStream, opts: ListenOptions): Promis
     if (recording.missed > missLimit(song)) {
       throw new ListenError(`The listen missed ${Math.round(recording.missed)} s of the song (the computer was too busy for its sound), so it wasn’t mapped. Close other tabs and apps and try again.`, 'gaps');
     }
-    return { pcm: recording.pcm, sr, delay, calibrated, placement: recording.note };
+    return { pcm: recording.pcm, sr, delay, calibrated, placement: recording.note, ...(stereo ? { stereo } : {}) };
   } finally {
     cleanup.forEach((f) => f());
   }
@@ -314,6 +330,8 @@ export interface Mapped {
 
 export interface MapOptions {
   split?: boolean;
+  /** The recording's two channels (Heard.stereo): the song splitter takes them. */
+  stereo?: [Float32Array, Float32Array];
   /** Chart with the trained mapper (ensomi.ts), its files read from `base` (ensomiModel.ts). */
   trained?: { base: string; title?: string; artist?: string; study?: boolean };
   onProgress?: (what: string, p?: number) => void;
@@ -363,6 +381,7 @@ export function mapHeard(pcm: Float32Array, sr: number, opts: MapOptions = {}): 
       reject(new Error(m.error));
     };
     worker.onerror = (e) => { stop(e.message || 'the mapper failed'); reject(new Error(e.message || 'The mapper failed.')); };
-    worker.postMessage({ pcm, sr, split: !!opts.split, trained: opts.trained } satisfies ToMapper, [pcm.buffer]);
+    const st = opts.stereo;
+    worker.postMessage({ pcm, sr, split: !!opts.split, trained: opts.trained, ...(st ? { stereo: st } : {}) } satisfies ToMapper, st ? [pcm.buffer, st[0].buffer, st[1].buffer] : [pcm.buffer]);
   });
 }

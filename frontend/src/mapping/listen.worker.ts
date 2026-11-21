@@ -23,6 +23,8 @@ export type ToMapper = {
   pcm: Float32Array;
   sr: number;
   split: boolean;
+  /** The recording's two channels, for the song splitter. */
+  stereo?: [Float32Array, Float32Array];
   /** Chart with the trained mapper, its files read from `base`. */
   trained?: { base: string; title?: string; artist?: string; study?: boolean };
 };
@@ -61,7 +63,7 @@ function labelParts(events: { sec: number; part?: PartName }[], stems: Record<Pa
 self.onmessage = async (e: MessageEvent<ToMapper>) => {
   let mapped = false;
   try {
-    const { pcm, sr, split, trained } = e.data;
+    const { pcm, sr, split, trained, stereo } = e.data;
     let grid: ReturnType<typeof import('./beats').gridFromBeats> | undefined;
     // The tracker's own beats: the trained mapper places its tiles on them (beatmap.ts).
     let beats: number[] | undefined;
@@ -90,7 +92,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
     if ((split || trained) && gpu && ort) {
       try {
         const { splitStems } = await import('./stems');
-        stems = await splitStems(ort, pcm, sr, (stage, p) => post({ progress: stage === 'download' ? 'getting the song splitter' : 'splitting the song into its parts', p }));
+        stems = await splitStems(ort, pcm, sr, (stage, p) => post({ progress: stage === 'download' ? 'getting the song splitter' : 'splitting the song into its parts', p }), stereo);
       } catch (err) {
         console.warn('[mapper] carrying on without the split', err);
       }

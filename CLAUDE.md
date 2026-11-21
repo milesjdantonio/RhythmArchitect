@@ -230,9 +230,10 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     notes" didn't match when tiles were dropped by loudness). Tiles go on the beat map's grid; a
     phrase whose lead plays an earlier one's rhythm (`ALIKE`) takes its pattern; long notes are
     holds; lanes follow the lead's pitch (drums: kick low, the rest high), chords two lanes apart.
-    Ultra keeps every note unless that rates harder than the trained mapper's Ultra for the song
-    (then down to `ULTRA_KEEP` of them: the same level as before), and the easier ones take the
-    usual star targets from it. The trained mapper still runs (its grid, and the fallback). Easy and
+    Ultra keeps every note of its lines plus the other parts' big hits where nothing else is
+    (`accents` 0.6), fewer only above `ULTRA_CEILING` (4★, a sanity ceiling; the user lifted its
+    cap at the trained mapper's level, Nov 20: on Open Your Eyes that was never what held it, two
+    lines come to ~2.5★), and the easier ones take the usual star targets from it. The trained mapper still runs (its grid, and the fallback). Easy and
     Medium of the first version (Easy/Medium only) on the two real listens: Easy's phrases on one
     part 99% and 96%. **The testing ground** (`#/testingGround`, `src/screens/TestingGround.tsx`):
     one song mapped two ways to play side by side, each a song file in `public/testing/` (id
@@ -301,6 +302,14 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   ~172 MB, `stemModel.ts`; e2e: `rythm-architect:no-stems`), and the onset mapper's own charts
   (`charts.ts`) are used. All the models run on one ONNX Runtime (`src/mapping/ort.ts`); any of
   them failing leaves the next step to carry on.
+- **The recording is full quality** (Nov 20, the user: "the limitation is the listener"): the
+  browser's own rate (44.1 or 48 kHz), both channels kept (`Heard.stereo`, placed as the mix is);
+  the mapping takes the mix at that rate and the song splitter (Demucs, made for 44.1 kHz stereo)
+  the real left and right. It was mixed to mono and halved to ~22 kHz: Demucs got nothing above
+  ~11 kHz and no stereo to tell the parts apart. On Open Your Eyes: sounds found 958 → 1112 (drum
+  hits 380 → 458), instrument notes 289 → 307 (the piano intro 52 → 58), the split as long. The
+  trained mapper resamples it itself (the runtime's 44.1 and 48 kHz tables go with the app). About
+  200 MB while a 3-minute song is placed (the chunks are dropped after).
 - The capture runs on an audio context of its own (`listenCtx` in `listen.ts`, latency hint
   'playback'), not the game's low-latency one, so a busy machine doesn't make it drop sound. While
   the Generate dialog is open (`holdQuiet`, `src/lib/quiet.ts`) the backdrop and the stage preview

@@ -15,12 +15,16 @@ import { stemModelBytes } from './stemModel';
 
 const DEMUCS_SR = 44100;
 
-/** The parts of `pcm` (mono at `sr`), each the same length and rate. */
+/**
+ * The parts of `pcm` (mono at `sr`), each the same length and rate. With `stereo` (the
+ * recording's two channels, the same length) Demucs gets the left and right it was made for.
+ */
 export async function splitStems(
   ort: unknown,
   pcm: Float32Array,
   sr: number,
   onProgress?: (stage: 'download' | 'split', p: number) => void,
+  stereo?: [Float32Array, Float32Array],
 ): Promise<Record<PartName, Float32Array>> {
   const model = await stemModelBytes((p) => onProgress?.('download', p));
   const processor = new DemucsProcessor({
@@ -29,8 +33,9 @@ export async function splitStems(
     onProgress: ({ progress }: { progress: number }) => onProgress?.('split', progress),
   });
   await processor.loadModel(model);
-  const x = resample(pcm, sr, DEMUCS_SR);
-  const out = await processor.separate(x, x);
+  const at44 = (x: Float32Array) => (sr === DEMUCS_SR ? x : resample(x, sr, DEMUCS_SR));
+  const left = at44(stereo ? stereo[0] : pcm), right = stereo ? at44(stereo[1]) : left;
+  const out = await processor.separate(left, right);
   const back = (s: { left: Float32Array; right: Float32Array }) => {
     const mono = new Float32Array(s.left.length);
     for (let i = 0; i < mono.length; i++) mono[i] = (s.left[i] + s.right[i]) * 0.5;

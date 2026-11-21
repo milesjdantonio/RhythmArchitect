@@ -171,6 +171,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
       }
       const mapped = await mapHeard(heard.pcm, heard.sr, {
         split: await split,
+        ...(heard.stereo ? { stereo: heard.stereo } : {}),
         trained: base ? { base, title: video.songTitle, artist: video.songArtist, ...(studyWanted() ? { study: true } : {}) } : undefined,
         onProgress: (what, p) => {
           scope.current?.mapping(what, p);

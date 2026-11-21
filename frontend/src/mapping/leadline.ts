@@ -47,12 +47,14 @@ const METRIC = { downbeat: 1, beat: 0.8, eighth: 0.5, triplet: 0.35, sixteenth: 
 /** The lead's notes are kept before the second part's by this much. */
 const LEAD_FIRST = 0.4;
 
-/** Which parts each difficulty plays, and when two of them striking together are a chord. */
-const PROFILE: Record<Difficulty, { second: 'sparse' | 'short' | 'always'; chords: 'never' | 'strong' | 'always' }> = {
-  easy: { second: 'sparse', chords: 'never' },
-  medium: { second: 'short', chords: 'never' },
-  hard: { second: 'always', chords: 'strong' },
-  ultra: { second: 'always', chords: 'always' },
+/** Which parts each difficulty plays, when two striking together are a chord, and how strong the other parts' hits must be to join (Infinity: never). */
+const PROFILE: Record<Difficulty, { second: 'sparse' | 'short' | 'always'; chords: 'never' | 'strong' | 'always'; accents: number }> = {
+  easy: { second: 'sparse', chords: 'never', accents: Infinity },
+  medium: { second: 'short', chords: 'never', accents: Infinity },
+  hard: { second: 'always', chords: 'strong', accents: Infinity },
+  // Ultra also takes the other parts' big hits (strength 0.6 and up) where nothing else is: on Open
+  // Your Eyes 983 tiles became 1043, the stars about the same (2.46 to 2.53).
+  ultra: { second: 'always', chords: 'always', accents: 0.6 },
 };
 
 export interface LeadInput {
@@ -165,13 +167,17 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       const fillFrom = two ? all.filter((c) => c.part === two) : [];
       // The phrase's tiles: a share of both lines' notes (Ultra all of them), at most `rate` a second.
       const span = Math.max(meter * spb, (Math.max(...all.map((c) => c.sec)) - Math.min(...all.map((c) => c.sec))) + spb);
-      const whole = own.length + fillFrom.length;
+      // The other parts' big hits (a drum fill, a stab), where the difficulty takes them: last, and
+      // only where nothing else is.
+      const accentAt = prof.accents;
+      const accents = Number.isFinite(accentAt) ? all.filter((c) => c.part !== one && c.part !== two && c.strength >= accentAt) : [];
+      const whole = own.length + fillFrom.length + accents.length;
       const budget = Math.max(1, Math.round(Math.min(Math.max(whole * share, k.floor * scale * span), k.rate * scale * span)));
       const takeSecond = prof.second !== 'sparse' || own.length < budget * EASY_FILL;
-      const pool = takeSecond ? [...own, ...fillFrom] : own;
+      const pool = takeSecond ? [...own, ...fillFrom, ...accents] : own;
       const slots = new Set(own.map((c) => slotOf(c, p)));
       const twin = patterns.find((q) => q.part === one && jaccard(q.slots, slots) >= ALIKE);
-      const weight = (c: Cand) => metricOf.get(c)! + c.strength * 0.6 + (c.part === one ? LEAD_FIRST : 0);
+      const weight = (c: Cand) => metricOf.get(c)! + c.strength * 0.6 + (c.part === one ? LEAD_FIRST : c.part === two ? 0 : -1);
       const chosen: { c: Cand; chord: boolean }[] = [];
       const clash = (c: Cand) => [...picked, ...chosen].find((x) => Math.abs(x.c.sec - c.sec) < minGap);
       const order = twin ? pool.filter((c) => twin.chosen.has(keyOf(c, p))) : [...pool].sort((a, b) => weight(b) - weight(a) || a.sec - b.sec);
@@ -180,7 +186,8 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
         const x = clash(c);
         if (!x) { chosen.push({ c, chord: false }); continue; }
         // Two parts striking together: a chord where the difficulty has them.
-        const together = Math.abs(x.c.sec - c.sec) < 0.002 && x.c.part !== c.part && !x.chord && chordsLeft > 0
+        const accent = c.part !== one && c.part !== two;
+        const together = !accent && Math.abs(x.c.sec - c.sec) < 0.002 && x.c.part !== c.part && !x.chord && chordsLeft > 0
           && (prof.chords === 'always' || (prof.chords === 'strong' && c.strength >= 0.6 && x.c.strength >= 0.6));
         if (together) { x.chord = true; chosen.push({ c, chord: true }); chordsLeft--; }
       }
