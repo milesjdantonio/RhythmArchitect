@@ -28,18 +28,48 @@ export const BUILD = 1.1;
  */
 export const BREATH: Record<'easy' | 'medium' | 'hard' | 'ultra', number> = { easy: 1, medium: 0.75, hard: 0.5, ultra: 0 };
 
+/**
+ * A busy phrase (scale above 1) lets the easier charts' tiles come closer: their minimum gap is
+ * divided by its scale (Easy's 0.26 s down to about 0.21 s in the busiest phrases; the user, Nov 21:
+ * "Easy can be made harder for this"). Without it a chorus couldn't get busier on Easy: its spacing,
+ * not its budget, held it. Quiet phrases keep the difficulty's own gap.
+ */
+export const spacing = (scale: number) => 1 / Math.max(1, scale);
+
+/**
+ * A repeated phrase builds on what it repeats in a busy part of the song (scale at least
+ * GROW_FROM): from its second time on it takes GROW more of its notes each time (at most GROW_MAX),
+ * so the last chorus is the busiest, as people chart it. Ultra plays every note anyway.
+ */
+export const GROW = 0.1;
+export const GROW_MAX = 0.25;
+export const GROW_FROM = 1.05;
+/** How much more a repeat (its `time`: 1 the first) in a phrase of `scale` takes. */
+export const growth = (scale: number, time: number) => (scale >= GROW_FROM && time >= 2 ? Math.min(GROW_MAX, GROW * (time - 1)) : 0);
+
 export interface Shape {
   /** The scale of the phrase `p` (1 where nothing is known). */
   scale: (p: number) => number;
-  /** The phrases a drop starts on. */
+  /** The phrases a drop starts in. */
   drops: Set<number>;
+  /**
+   * Where each drop lands (seconds): the bar whose loudness jumps most against the bar before it,
+   * from the last bar before the drop's phrase to its last bar (the loudness is by the bar, so a
+   * drop in a phrase's second bar is placed there); the phrase's start without loudness.
+   */
+  dropSecs: number[];
 }
+
+/** Bars in a phrase. */
+export const PHRASE_BARS = 2;
 
 /**
  * The shape of a song from its sounds (seconds) and how a moment (seconds) maps to a phrase index,
  * with each phrase's length in seconds (for sounds a second).
  */
-export function songShape(secs: number[], phraseOf: (sec: number) => number, phraseSec: (p: number) => number, loud?: (p: number) => number | null): Shape {
+export function songShape(secs: number[], phraseOf: (sec: number) => number, startSec: (p: number) => number, barLoud?: (from: number, to: number) => number | null): Shape {
+  const phraseSec = (p: number) => startSec(p + 1) - startSec(p);
+  const loud = barLoud && ((p: number) => barLoud(startSec(p), startSec(p + 1)));
   const counts = new Map<number, number>();
   for (const s of secs) {
     const p = phraseOf(s);
@@ -47,7 +77,7 @@ export function songShape(secs: number[], phraseOf: (sec: number) => number, phr
     counts.set(p, (counts.get(p) ?? 0) + 1);
   }
   const ids = [...counts.keys()].sort((a, b) => a - b);
-  if (ids.length < 4) return { scale: () => 1, drops: new Set() };
+  if (ids.length < 4) return { scale: () => 1, drops: new Set(), dropSecs: [] };
   const first = ids[0], last = ids[ids.length - 1];
   const rate = new Map<number, number>();
   for (let p = first; p <= last; p++) rate.set(p, (counts.get(p) ?? 0) / Math.max(0.5, phraseSec(p)));
@@ -81,7 +111,58 @@ export function songShape(secs: number[], phraseOf: (sec: number) => number, phr
       scales.set(p - 1, Math.max(scales.get(p - 1) ?? 1, BUILD));
     }
   }
-  return { scale: (p) => scales.get(p) ?? 1, drops };
+  // Each drop's bar.
+  const dropSecs = [...drops].sort((a, b) => a - b).map((p) => {
+    if (!useLoud || !barLoud) return startSec(p);
+    // The bars from the last one before the phrase to its last, each against the bar before it.
+    const bar = (q: number, k: number) => {
+      const len = phraseSec(q) / PHRASE_BARS, from = startSec(q) + k * len;
+      return { from, to: from + len };
+    };
+    const bars = [bar(p - 1, PHRASE_BARS - 2 >= 0 ? PHRASE_BARS - 2 : 0), bar(p - 1, PHRASE_BARS - 1), ...Array.from({ length: PHRASE_BARS }, (_, k) => bar(p, k))];
+    let best = startSec(p), bestJump = 0;
+    for (let k = 1; k < bars.length; k++) {
+      const here = barLoud(bars[k].from + 1e-3, bars[k].to), before = barLoud(bars[k - 1].from + 1e-3, bars[k - 1].to);
+      if (here == null || before == null) continue;
+      const jump = here / Math.max(before, 1e-9);
+      if (jump > bestJump * 1.05) { bestJump = jump; best = bars[k].from; }
+    }
+    return best;
+  });
+  return { scale: (p) => scales.get(p) ?? 1, drops, dropSecs };
+}
+
+/**
+ * The breaths before a song's drops for one difficulty, in seconds: [start, end) of each, BREATH
+ * beats long (`beatSec(sec)`: how long the beat is there), ending 10 ms before the drop's first beat.
+ */
+export function breathsOf(shape: Shape, d: keyof typeof BREATH, beatSec: (sec: number) => number): [number, number][] {
+  if (!(BREATH[d] > 0)) return [];
+  return shape.dropSecs.map((at) => [at - BREATH[d] * beatSec(at), at - 0.01] as [number, number]);
+}
+
+/** Whether `sec` falls inside one of the breaths. */
+export const inBreath = (breaths: [number, number][], sec: number) => breaths.some(([a, b]) => sec > a && sec < b);
+
+/** A hold shorter than this (beats) after being cut at a breath is a tap. */
+const CUT_HOLD = 0.5;
+
+/**
+ * Holds that would ring on into a breath end where it starts (the breath is empty: the drop lands
+ * after a pause), a tap if that leaves under CUT_HOLD beats. In place; `secOf` turns a tile's beat into seconds.
+ */
+export function cutHolds<T extends { t: number; len: number; hold?: boolean }>(notes: T[], breaths: [number, number][], secOf: (t: number) => number, beatOf: (sec: number) => number): T[] {
+  if (!breaths.length) return notes;
+  for (const n of notes) {
+    if (!n.hold) continue;
+    const from = secOf(n.t), to = secOf(n.t + n.len);
+    const cut = breaths.find(([a]) => from <= a && to > a);
+    if (!cut) continue;
+    const len = Math.round((beatOf(cut[0]) - n.t) * 1000) / 1000;
+    if (len >= CUT_HOLD) n.len = len;
+    else { delete n.hold; n.len = 0.25; }
+  }
+  return notes;
 }
 
 /**

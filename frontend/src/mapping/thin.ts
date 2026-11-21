@@ -87,6 +87,8 @@ export interface ThinOptions {
   intensity?: (t: number) => number;
   /** A moment (beats) in the breath before a drop: left out. */
   breath?: (t: number) => boolean;
+  /** How much closer than `minGap` tiles may come at a moment (beats): 1 the difficulty's own (shape.ts spacing). */
+  spacing?: (t: number) => number;
 }
 
 /** A repeated phrase in a part this busy (intensity) isn't held to what its twin left out: it can build on it. */
@@ -242,7 +244,8 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
       const k = win(r);
       if ((budget.get(k) ?? 0) <= 0) continue;
       if (o.breath?.(r.t)) continue;
-      const clash = kept.some(({ r: q }) => Math.abs(q.t - r.t) < gapBeats || (o.holdsAlone && (
+      const g = gapBeats * (o.spacing ? o.spacing(r.t) : 1);
+      const clash = kept.some(({ r: q }) => Math.abs(q.t - r.t) < g || (o.holdsAlone && (
         // nothing starts while a kept hold is held, and a hold doesn't run over a kept tile
         (q.end > q.t && r.t > q.t && r.t < q.end + gapBeats)
         || (r.end > r.t && q.t > r.t && q.t < r.end + gapBeats))));

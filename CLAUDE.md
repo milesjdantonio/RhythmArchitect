@@ -230,18 +230,25 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     choruses busier than the verses around them, breaks sparser. A phrase `DROP_JUMP` (1.45) times
     as busy as the two before it, or `DROP_LOUD` (1.3) times as loud, is a drop: the phrase before
     builds (`BUILD`, at least 1.1) and the easier charts leave a breath before its first beat
-    (`BREATH`: E 1, M ¾, H ½ a beat; a sung syllable there stays). A
-    repeat in a busy part builds on its pattern (leadline.ts `GROW`: +10% of its notes from its
-    second time, at most +25%; thin.ts lets it add rows its twin left out). **Figures**
+    (`BREATH`: E 1, M ¾, H ½ a beat; a sung syllable there stays; a hold ringing into it ends
+    where it starts, `cutHolds`). The drop lands on the bar whose loudness jumps most (`dropSecs`),
+    not only on a phrase's start. In a busy phrase the easier charts' tiles may come closer
+    (`spacing`: `minGap` divided by the scale; the user, Nov 21: "Easy can be made harder"), else
+    Easy's spacing, not its budget, held a chorus back. A repeat in a busy part builds on its
+    pattern (shape.ts `growth`: +10% of its notes from its second time, at most +25%; the lead
+    line adds its heaviest notes, thin.ts raises the window's share by as much and doesn't hold it
+    to what its twin left out). **Figures**
     (`lanes.ts` `figuresOf`): four or more evenly spaced single tiles under 0.3 s apart whose pitch
     climbs or falls every step are a run, charted as a staircase the tune's way
     (`FIGURE_AGAINST`); two pitches back and forth are a trill on two lanes (`FIGURE_TRILL`);
-    neither pays `REPEAT_COST`; unpitched sounds count by band for figures (`FlowHints.figure`:
-    kick 40, mid 64, high 84, as the lead line places drums), so a kick-snare back and forth is a
-    trill. A rough replay (Nov 21: Open Your Eyes' saved Ultra thinned again, its tiles as the
-    sounds, its 48-point energy as the loudness) moved Medium's quiet phrases 9.8 → 8.5 tiles and
-    Hard's 13.2 → 12.0 (busy 20.9 → 22.1); Easy hardly moved (7.5 / 5.8: its `minGap` binds, not its
-    budget). Not yet measured with map-bench or against the human charts: do that before tuning.
+    neither pays `REPEAT_COST`. Swing counts as even (the second gap may be up to ~2:1 the first,
+    then each gap like the first or the one two before). Unpitched sounds count by band and
+    brightness for figures (`soundFigure`, `FlowHints.figure`), so a kick-snare back and forth is a
+    trill and a tom fill a run. A rough replay (Nov 21: Open Your Eyes' saved Ultra thinned again,
+    its tiles as the sounds, its 48-point energy as the loudness, before calibration): Easy busy
+    phrases 7.5 → 10.8 tiles, quiet 5.8 → 5.7 (312 → 352 in all); Medium quiet 9.8 → 8.5; Hard
+    busy 20.9 → 22.3, quiet 13.2 → 12.0. Not yet measured with map-bench or against the human
+    charts: do that before tuning.
   - Chords were left as the model makes them (Nov 20): ours match the human charts' share and how
     they cluster on the CC set (27% vs 29%; 61% vs 60% within a beat of the last); humans range
     3-64% from song to song (3% and 45% on one song), and neither the sounds' strength nor
@@ -297,7 +304,7 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     Easy charts put 26-50% of their tiles on the beat, ours already ~40%, and more made them less alike.
 - **Star ratings** (`calibratedCharts`, `starTargets`): every chart is rated with the runtime's
   `starRating` (osu!mania's star rating) and saved as `Chart.stars` (the start card and the dev
-  tools show it). Easy is thinned to `EASY_STARS` (0.95) on every song, Medium and Hard to even
+  tools show it). Easy is thinned to `EASY_STARS` (1.05 since Nov 21, for the song's shape; 0.95 before) on every song, Medium and Hard to even
   steps of stars between it and the song's Ultra (KEEP's share and rate scaled only 0.7-1.4; one
   that would crowd the difficulty above it stays as KEEP made it). By share alone the same
   difficulty ranged 0.85-1.11 / 1.14-1.50 / 1.57-2.14 stars from song to song; now 0.86-1.02 /

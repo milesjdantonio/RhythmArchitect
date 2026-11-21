@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { SHAPE, songShape } from '../../src/mapping/shape';
-import { FIGURE_MIN, figuresOf, flowLanes } from '../../src/mapping/lanes';
+import { SHAPE, cutHolds, songShape } from '../../src/mapping/shape';
+import { FIGURE_MIN, figuresOf, flowLanes, soundFigure } from '../../src/mapping/lanes';
 
 // Phrases of 4 s; `rates` sounds a second in each.
 function song(rates: number[]) {
   const secs: number[] = [];
   rates.forEach((r, p) => { for (let i = 0; i < r * 4; i++) secs.push(p * 4 + i / r); });
-  return songShape(secs, (s) => Math.floor(s / 4), () => 4);
+  return songShape(secs, (s) => Math.floor(s / 4), (p) => p * 4);
 }
 
 describe('song shape', () => {
@@ -60,7 +60,7 @@ describe('song shape by loudness', () => {
     const secs: number[] = [];
     for (let i = 0; i < 12 * 4 * 2; i++) secs.push(i / 2);
     const loud = [0.3, 0.3, 0.3, 0.3, 1, 1, 1, 1, 0.3, 0.3, 0.3, 0.3];
-    const s = songShape(secs, (x) => Math.floor(x / 4), () => 4, (p) => loud[p] ?? null);
+    const s = songShape(secs, (x) => Math.floor(x / 4), (p) => p * 4, (from) => loud[Math.floor(from / 4)] ?? null);
     expect([...s.drops]).toContain(4);
     expect(s.scale(5)).toBeGreaterThan(1.1);
     expect(s.scale(10)).toBeLessThan(1);
@@ -72,5 +72,37 @@ describe('song shape by loudness', () => {
     const lanes = notes.map((n) => n.lane);
     for (let i = 2; i < lanes.length; i++) expect(lanes[i]).toBe(lanes[i - 2]);
     expect(lanes[0]).not.toBe(lanes[1]);
+  });
+});
+
+describe('drops by the bar, holds cut at the breath', () => {
+  it('a drop in the second bar of a phrase lands on that bar', () => {
+    const secs: number[] = [];
+    for (let i = 0; i < 12 * 4 * 2; i++) secs.push(i / 2);
+    // Bars of 2 s: quiet until the bar at 18 s (phrase 4's second bar), loud after.
+    const s = songShape(secs, (x) => Math.floor(x / 4), (p) => p * 4, (from) => (from >= 18 ? 1 : 0.3));
+    expect(s.dropSecs).toEqual([18]);
+  });
+
+  it('a hold running into a breath ends where it starts', () => {
+    const notes = [{ t: 0, len: 4, hold: true }, { t: 2.6, len: 2, hold: true }, { t: 8, len: 2, hold: true }];
+    cutHolds(notes, [[3, 3.99]], (t) => t, (s) => s);
+    expect(notes[0]).toMatchObject({ len: 3, hold: true });
+    expect(notes[1].hold).toBeUndefined();
+    expect(notes[2]).toMatchObject({ len: 2, hold: true });
+  });
+});
+
+describe('looser figures', () => {
+  it('a swung run is still a run', () => {
+    const times = [0, 0.2, 0.3, 0.5, 0.6, 0.8];
+    const rows = times.map((t, i) => ({ t, pitch: 60 + i * 2 }));
+    expect(figuresOf(rows).filter((f) => f?.kind === 'run')).toHaveLength(times.length - 1);
+  });
+
+  it('a tom fill falling in brightness is a run', () => {
+    const fill = [90, 80, 70, 60, 50].map((bright) => soundFigure({ band: 'mid', bright }));
+    const rows = fill.map((pitch, i) => ({ t: i * 0.12, pitch }));
+    expect(figuresOf(rows).filter((f) => f?.kind === 'run' && f.dir === -1)).toHaveLength(fill.length - 1);
   });
 });

@@ -13,12 +13,12 @@ import { DIFFICULTIES, type Chart, type ChartNote, type ChartProgress, type Diff
 import type { Ort } from './ort';
 import { cachedSource } from './ensomiModel';
 import { KEEP, thinChart } from './thin';
-import { flowChart } from './lanes';
+import { flowChart, soundFigure } from './lanes';
 import { barOf, beatAt, beatMap, beatPlace, divisionAt, secAt, snapSec, type BeatMap } from './beatmap';
 import { findRepeats, twinSec, type Repeats } from './repeats';
 import { noteName, syllableAt, type Syllable } from './voice';
 import { hasParts, leadLine } from './leadline';
-import { BREATH, phraseLoudness, songShape } from './shape';
+import { breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
 
 export { KEEP };
 // The runtime finds these beside its own module, which a bundler moves; so they're handed to it.
@@ -540,35 +540,48 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
   const phrase = (t: number) => (map ? Math.floor(barOf(map, beatAt(map, secOf(t))) / 2) : Math.floor(t / 8));
   const twin = repeats ? (t: number) => { const s = twinSec(repeats, secOf(t)); return s == null ? null : (s - o.offset) / spb; } : undefined;
   const pitch = (n: ChartNote) => syllable(n.t)?.midi ?? soundAt(secOf(n.t), 0.03)?.midi ?? null;
-  // For figures (lanes.ts): an unpitched sound by its band, as the lead line places drums (the kick
-  // low, the rest high), so a kick-snare back and forth is a trill too.
-  const figure = (n: ChartNote) => { const p = pitch(n); if (p != null) return p; const e = soundAt(secOf(n.t), 0.03); return e ? (e.band === 'low' ? 40 : e.band === 'high' ? 84 : 64) : null; };
+  // For figures (lanes.ts): an unpitched sound by its band and brightness (soundFigure), so a
+  // kick-snare back and forth is a trill and a tom fill a run.
+  const figure = (n: ChartNote) => { const p = pitch(n); if (p != null) return p; const e = soundAt(secOf(n.t), 0.03); return e ? soundFigure(e) : null; };
   // The song's shape (shape.ts): each phrase's scale for the easier charts, and the drops.
   const phraseStartSec = (p: number) => (map ? secAt(map, map.downbeat + p * 2 * map.meter) : secOf(p * 8));
   const loudOf = phraseLoudness(o.barEnergy, o.offset, (o.meter ?? 4) * spb);
-  const shape = songShape(events.map((e) => e.sec), (sec) => phrase((sec - o.offset) / spb), (p) => phraseStartSec(p + 1) - phraseStartSec(p),
-    loudOf && ((p) => loudOf(phraseStartSec(p), phraseStartSec(p + 1))));
-  const dropAt = [...shape.drops].map((p) => { const at = phraseStartSec(p); return { at, beat: at - (map ? secAt(map, map.downbeat + p * 2 * map.meter - 1) : secOf(p * 8 - 1)) }; });
-  const breath = (d: Difficulty) => (BREATH[d] > 0 && dropAt.length ? (t: number) => {
-    const sec = secOf(t);
+  const shape = songShape(events.map((e) => e.sec), (sec) => phrase((sec - o.offset) / spb), phraseStartSec, loudOf);
+  const beatSec = (sec: number) => (map ? secAt(map, beatAt(map, sec)) - secAt(map, beatAt(map, sec) - 1) : spb);
+  // How many times each phrase's pattern has been played (repeats.ts: 1 the first time), for a
+  // busy repeat to build on it (shape.ts growth).
+  const timeOf = new Map<number, number>();
+  if (repeats) {
+    const seen = new Map<number, number>();
+    for (const [ph, root] of [...repeats.of.entries()].sort((a, b) => a[0] - b[0])) {
+      const n = (seen.get(root) ?? 1) + 1;
+      seen.set(root, n);
+      timeOf.set(ph, n);
+    }
+  }
+  const intensity = (t: number) => { const p = phrase(t), sc = shape.scale(p); return sc * (1 + growth(sc, timeOf.get(p) ?? 1)); };
+  const breath = (d: Difficulty) => {
+    const b = breathsOf(shape, d, beatSec);
     // A sung syllable stays: the lyric runs into the drop.
-    if (syllable(t)) return false;
-    return dropAt.some(({ at, beat }) => sec > at - BREATH[d] * beat && sec < at - 0.01);
-  } : undefined);
+    return b.length ? { breaths: b, at: (t: number) => !syllable(t) && inBreath(b, secOf(t)) } : null;
+  };
   // Each difficulty's tiles, then its lanes flowed for its own speed (lanes.ts: thinning keeps the
   // model's lanes, written for its whole chart), a repeated phrase's tiles in their twins' lanes.
   return (d: Difficulty, scale = 1): Chart => {
     const k = KEEP[d];
-    const kept = thinChart(model, {
+    const br = breath(d);
+    const thinned = thinChart(model, {
       ...k, ...(scale !== 1 ? { share: Math.min(1, k.share * scale), rate: k.rate * scale, floor: k.floor * scale } : {}),
       spb, offset: o.offset, events: o.events, onGrid: o.onGrid,
       ...(place ? { place } : {}),
       ...(twin ? { twin } : {}),
       ...(d !== 'ultra' ? { kind, phrase, follow: FOLLOW } : {}),
       ...(voice ? { sung: (t: number) => syllable(t)?.strength ?? 0 } : {}),
-      ...(d !== 'ultra' ? { intensity: (t: number) => shape.scale(phrase(t)) } : {}),
-      ...(breath(d) ? { breath: breath(d) } : {}),
+      ...(d !== 'ultra' ? { intensity, spacing: (t: number) => spacing(shape.scale(phrase(t))) } : {}),
+      ...(br ? { breath: br.at } : {}),
     });
+    // Holds end where a breath starts (on copies: thinning hands back the model's own tiles).
+    const kept = br ? cutHolds(thinned.map((n) => ({ ...n })), br.breaths, secOf, (sec) => (sec - o.offset) / spb) : thinned;
     const sorted = [...kept].sort((a, b) => a.t - b.t);
     const tol = 0.03 / spb;
     const twinNote = twin ? (n: ChartNote) => {
@@ -590,7 +603,11 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
  * were tried first and broke the ladder: on a song whose Ultra is 2.2 stars, Hard at 1.9 sat right
  * under it (×1.05 the tiles) and Easy to Medium doubled; on a sparse one Easy outgrew Medium.
  */
-export const EASY_STARS = 0.95;
+// 1.05 since Nov 21 (0.95 before): the song's shape lets Easy's busy phrases come closer (shape.ts
+// spacing: on Open Your Eyes' busy phrases 7.5 → 10.8 tiles, 13% more in all), and the user chose
+// a harder Easy for it ("Easy can be made harder for this change"); at 0.95 the calibration would
+// thin that back out of the whole chart.
+export const EASY_STARS = 1.05;
 const STAR_SPREAD = 0.06;
 /** Calibration only nudges KEEP: its share and rate scaled within these. */
 const SCALE: [number, number] = [0.7, 1.4];

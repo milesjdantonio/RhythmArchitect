@@ -47,45 +47,69 @@ const CONTOUR_GAP = 0.6;
 
 /**
  * Figures: a run of evenly spaced single tiles whose pitch climbs (or falls) every step, or a trill
- * (two pitches back and forth), at least FIGURE_MIN tiles, each under FIGURE_GAP s after the last,
- * the gaps within FIGURE_EVEN of the first. A human charts these as a shape: a run as a staircase
- * the way the tune goes, a trill as two lanes back and forth. Tile by tile, flow went the cheapest
- * way at each step and REPEAT_COST broke up the very staircases and trills a run is charted as. In a
+ * (two pitches back and forth), at least FIGURE_MIN tiles, each under FIGURE_GAP s after the last.
+ * "Evenly" allows swing: each gap is within FIGURE_EVEN of the first gap or of the gap two before
+ * it (long-short, long-short). Pitches within FIGURE_SAME semitones are the same note (unpitched
+ * sounds come in whole notches: soundFigure). A human charts these as a shape: a run as a staircase the
+ * way the tune goes, a trill as two lanes back and forth. Tile by tile, flow went the cheapest way
+ * at each step and REPEAT_COST broke up the very staircases and trills a run is charted as. In a
  * figure a tile pays FIGURE_AGAINST for a step against the run (FIGURE_STAY for standing still), a
  * trill's tile FIGURE_TRILL off the lane two back, and neither pays REPEAT_COST.
  */
 export const FIGURE_MIN = 4;
 const FIGURE_GAP = 0.3;
 const FIGURE_EVEN = 0.25;
+const FIGURE_SAME = 0.5;
+/** The second gap against the first, for a swung figure. */
+const SWING: [number, number] = [0.45, 2.2];
 export const FIGURE_AGAINST = 1.0;
 const FIGURE_STAY = 0.6;
 export const FIGURE_TRILL = 0.8;
 
 type Figure = { kind: 'run'; dir: number } | { kind: 'trill' };
 
+/**
+ * What an unpitched sound counts as in a figure: its band (low 30, mid 60, high 90, 30 apart so the
+ * bands never meet) moved two a notch of brightness (bright 60 the middle, a notch every 6, at most
+ * 6 either way): a kick-snare back and forth is a trill, a tom fill falling in brightness a run.
+ */
+export function soundFigure(e: { band: 'low' | 'mid' | 'high'; bright: number }): number {
+  const base = e.band === 'low' ? 30 : e.band === 'high' ? 90 : 60;
+  return base + 2 * Math.max(-6, Math.min(6, Math.round((e.bright - 60) / 6)));
+}
+
 /** The figures among rows (time s, a single tile's pitch or null): for each row in one (after its first), what it is. */
 export function figuresOf(rows: { t: number; pitch: number | null }[]): (Figure | null)[] {
   const out: (Figure | null)[] = rows.map(() => null);
-  const even = (i: number, g0: number) => {
-    const g = rows[i].t - rows[i - 1].t;
-    return g > 0 && g < FIGURE_GAP && Math.abs(g - g0) <= FIGURE_EVEN * g0;
+  const gap = (i: number) => rows[i].t - rows[i - 1].t;
+  const close = (g: number, h: number) => Math.abs(g - h) <= FIGURE_EVEN * h;
+  /** Row `j` (after `i + 1`) keeps the figure's rhythm: like its first gap, or like the gap two before (swing). */
+  const even = (j: number, i: number) => {
+    const g = gap(j);
+    if (!(g > 0 && g < FIGURE_GAP)) return false;
+    // The second gap may set a swing against the first (up to about 2:1 either way); after that each
+    // gap is like the first or like the one two before.
+    if (j === i + 2) return g >= gap(i + 1) * SWING[0] && g <= gap(i + 1) * SWING[1];
+    return close(g, gap(i + 1)) || close(g, gap(j - 2));
   };
+  const same = (a: number, b: number) => Math.abs(a - b) < FIGURE_SAME;
+  const step = (a: number, b: number) => (same(a, b) ? 0 : Math.sign(b - a));
   // Runs.
   for (let i = 0; i + 1 < rows.length;) {
-    const a = rows[i].pitch, b = rows[i + 1].pitch, g0 = rows[i + 1].t - rows[i].t;
-    if (a == null || b == null || a === b || !(g0 > 0 && g0 < FIGURE_GAP)) { i++; continue; }
-    const dir = Math.sign(b - a);
+    const a = rows[i].pitch, b = rows[i + 1].pitch, g0 = gap(i + 1);
+    if (a == null || b == null || same(a, b) || !(g0 > 0 && g0 < FIGURE_GAP)) { i++; continue; }
+    const dir = step(a, b);
     let j = i + 1;
-    while (j + 1 < rows.length && rows[j + 1].pitch != null && Math.sign(rows[j + 1].pitch! - rows[j].pitch!) === dir && even(j + 1, g0)) j++;
+    while (j + 1 < rows.length && rows[j + 1].pitch != null && step(rows[j].pitch!, rows[j + 1].pitch!) === dir && even(j + 1, i)) j++;
     if (j - i + 1 >= FIGURE_MIN) for (let k = i + 1; k <= j; k++) out[k] = { kind: 'run', dir };
     i = j > i + 1 ? j : i + 1;
   }
   // Trills.
   for (let i = 0; i + 2 < rows.length;) {
-    const a = rows[i].pitch, b = rows[i + 1].pitch, g0 = rows[i + 1].t - rows[i].t;
-    if (a == null || b == null || a === b || !(g0 > 0 && g0 < FIGURE_GAP)) { i++; continue; }
+    const a = rows[i].pitch, b = rows[i + 1].pitch, g0 = gap(i + 1);
+    if (a == null || b == null || same(a, b) || !(g0 > 0 && g0 < FIGURE_GAP)) { i++; continue; }
     let j = i + 1;
-    while (j + 1 < rows.length && rows[j + 1].pitch === rows[j - 1].pitch && rows[j + 1].pitch !== rows[j].pitch && even(j + 1, g0)) j++;
+    while (j + 1 < rows.length && rows[j + 1].pitch != null && same(rows[j + 1].pitch!, rows[j - 1].pitch!) && !same(rows[j + 1].pitch!, rows[j].pitch!) && even(j + 1, i)) j++;
     if (j - i + 1 >= FIGURE_MIN) for (let k = i + 1; k <= j; k++) out[k] = out[k] ?? { kind: 'trill' };
     i = j > i + 1 ? j : i + 1;
   }
@@ -96,7 +120,7 @@ export function figuresOf(rows: { t: number; pitch: number | null }[]): (Figure 
 export interface FlowHints<T> {
   twin?: (n: T) => T | undefined;
   pitch?: (n: T) => number | null;
-  /** What figures are found by (figuresOf), when not the pitch: e.g. drums by their band. */
+  /** What figures are found by (figuresOf), when not the pitch: e.g. drums by their brightness. */
   figure?: (n: T) => number | null;
 }
 

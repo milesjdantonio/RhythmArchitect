@@ -22,13 +22,13 @@
 
 import type { Chart, ChartNote, Difficulty, SoundEvent } from '../api/types';
 import { KEEP } from './thin';
-import { flowChart } from './lanes';
+import { flowChart, soundFigure } from './lanes';
 import { barOf, beatAt, divisionAt, secAt, type BeatMap } from './beatmap';
 import type { Syllable } from './voice';
-import { BREATH, phraseLoudness, songShape } from './shape';
+import { breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
 
 type Part = 'vocals' | 'drums' | 'bass' | 'other';
-interface Cand { sec: number; t: number; beat: number; part: Part; strength: number; midi: number | null; len: number; /** A chord's other note (voice.ts Syllable.also). */ extra?: boolean }
+interface Cand { sec: number; t: number; beat: number; part: Part; strength: number; midi: number | null; len: number; /** A drum's figure value (lanes.ts soundFigure). */ fig?: number; /** A chord's other note (voice.ts Syllable.also). */ extra?: boolean }
 
 /** How much each part's notes count when choosing a phrase's lead (the singing first). */
 const LEAD_WEIGHT: Record<Part, number> = { vocals: 1.6, other: 1.2, drums: 1, bass: 0.6 };
@@ -47,16 +47,6 @@ const HOLD_BEATS = 0.5;
 const METRIC = { downbeat: 1, beat: 0.8, eighth: 0.5, triplet: 0.35, sixteenth: 0.2 };
 /** The lead's notes are kept before the second part's by this much. */
 const LEAD_FIRST = 0.4;
-
-/**
- * A repeated phrase builds on what it repeats in a busy part of the song (shape.ts scale at least
- * GROW_FROM): from its second time on it takes GROW more of its own notes each time (at most
- * GROW_MAX) on top of the pattern it copies, so the last chorus is the busiest, as people chart it.
- * Ultra plays every note anyway.
- */
-export const GROW = 0.1;
-const GROW_MAX = 0.25;
-const GROW_FROM = 1.05;
 
 /** Which parts each difficulty plays, when two striking together are a chord, and how strong the other parts' hits must be to join (Infinity: never). */
 const PROFILE: Record<Difficulty, { second: 'sparse' | 'short' | 'always'; chords: 'never' | 'strong' | 'always'; accents: number }> = {
@@ -95,8 +85,8 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
   const phraseStart = (p: number) => (o.map ? o.map.downbeat : 0) + p * phraseBeats;
   // The song's shape (shape.ts): each phrase's scale, and where the drops land.
   const loudOf = phraseLoudness(o.barEnergy, o.offset, meter * spb);
-  const shape = songShape(o.events.map((e) => e.sec), (sec) => phraseOf(beatOf(sec)), (p) => secOf(phraseStart(p) + phraseBeats) - secOf(phraseStart(p)),
-    loudOf && ((p) => loudOf(secOf(phraseStart(p)), secOf(phraseStart(p) + phraseBeats))));
+  const shape = songShape(o.events.map((e) => e.sec), (sec) => phraseOf(beatOf(sec)), (p) => secOf(phraseStart(p)), loudOf);
+  const beatSec = (sec: number) => { const b = beatOf(sec); return secOf(b) - secOf(b - 1); };
   /** The grid's nearest point to `sec` (the beat map's division there, 16ths where it has none), in beats. */
   const gridBeat = (sec: number) => {
     const b = beatOf(sec);
@@ -106,14 +96,14 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
 
   // Every part's notes, on the grid (one per part per grid point: the strongest).
   const byKey = new Map<string, Cand>();
-  const add = (sec: number, part: Part, strength: number, midi: number | null, len: number, extra = false) => {
+  const add = (sec: number, part: Part, strength: number, midi: number | null, len: number, extra = false, fig?: number) => {
     const beat = gridBeat(sec);
     const at = secOf(beat);
     if (at < o.offset - 0.001) return;
     const key = `${part}${extra ? '+' : ''}:${beat.toFixed(4)}`;
     const had = byKey.get(key);
     if (had && had.strength >= strength) return;
-    byKey.set(key, { sec: at, t: Math.round(((at - o.offset) / spb) * 1000) / 1000, beat, part, strength, midi, len, ...(extra ? { extra } : {}) });
+    byKey.set(key, { sec: at, t: Math.round(((at - o.offset) / spb) * 1000) / 1000, beat, part, strength, midi, len, ...(extra ? { extra } : {}), ...(fig != null ? { fig } : {}) });
   };
   for (const s of o.voice) add(s.sec, 'vocals', 0.4 + s.strength * 0.6, s.midi, s.len);
   const notesOther = o.played ?? [];
@@ -126,7 +116,7 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
     if (!e.part || e.part === 'vocals' || (e.part === 'other' && notesOther.length)) continue;
     // Drums have no pitch: the kick low, the rest high, so the lanes split them.
     const midi = e.part === 'drums' ? (e.band === 'low' ? 40 : e.band === 'high' ? 84 : 64) : e.midi;
-    add(e.sec, e.part, e.strength + (e.accent ? 0.3 : 0), midi, e.part === 'drums' ? 0 : e.len * spb);
+    add(e.sec, e.part, e.strength + (e.accent ? 0.3 : 0), midi, e.part === 'drums' ? 0 : e.len * spb, false, e.part === 'drums' ? soundFigure(e) : undefined);
   }
   const cands = [...byKey.values()].sort((a, b) => a.sec - b.sec || a.part.localeCompare(b.part));
 
@@ -206,7 +196,9 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       const twin = patterns.find((q) => q.part === one && jaccard(q.slots, slots) >= ALIKE);
       const weight = (c: Cand) => metricOf.get(c)! + c.strength * 0.6 + (c.part === one ? LEAD_FIRST : c.part === two ? 0 : -1) - (c.extra ? 0.01 : 0);
       const chosen: { c: Cand; chord: boolean }[] = [];
-      const clash = (c: Cand) => [...picked, ...chosen].find((x) => Math.abs(x.c.sec - c.sec) < minGap);
+      // A busy phrase lets tiles come closer on the easier charts (shape.ts spacing).
+      const gap = shaped ? minGap * spacing(sc) : minGap;
+      const clash = (c: Cand) => [...picked, ...chosen].find((x) => Math.abs(x.c.sec - c.sec) < gap);
       const order = twin ? pool.filter((c) => twin.chosen.has(keyOf(c, p))) : [...pool].sort((a, b) => weight(b) - weight(a) || a.sec - b.sec);
       for (const c of order) {
         if (!twin && chosen.length >= budget) break;
@@ -223,8 +215,8 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       const time = (times.get(root) ?? 0) + 1;
       times.set(root, time);
       // A repeat in a busy part builds on its pattern: a few more of its own notes, the heaviest first.
-      if (twin && shaped && time >= 2 && sc >= GROW_FROM) {
-        const more = Math.round(Math.min(GROW_MAX, GROW * (time - 1)) * chosen.length);
+      if (twin && shaped && growth(sc, time) > 0) {
+        const more = Math.round(growth(sc, time) * chosen.length);
         let added = 0;
         for (const c of [...pool].sort((a, b) => weight(b) - weight(a) || a.sec - b.sec)) {
           if (added >= more) break;
@@ -238,22 +230,17 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
     }
     picked.sort((a, b) => a.c.sec - b.c.sec);
     // The breath before each drop: the easier charts leave its last beat or so empty (BREATH).
-    if (BREATH[d] > 0 && shape.drops.size) {
-      const gaps = [...shape.drops].map((p) => {
-        const at = secOf(phraseStart(p));
-        return [at - BREATH[d] * (at - secOf(phraseStart(p) - 1)), at - 0.01] as const;
-      });
-      for (let i = picked.length - 1; i >= 0; i--) {
-        const s = picked[i].c.sec;
-        // A sung syllable stays: the lyric runs into the drop.
-        if (picked[i].c.part !== 'vocals' && gaps.some(([a, b]) => s > a && s < b)) picked.splice(i, 1);
-      }
+    const breaths = breathsOf(shape, d, beatSec);
+    for (let i = picked.length - 1; i >= 0 && breaths.length; i--) {
+      // A sung syllable stays: the lyric runs into the drop.
+      if (picked[i].c.part !== 'vocals' && inBreath(breaths, picked[i].c.sec)) picked.splice(i, 1);
     }
 
     // The tiles: holds where a note is held long (on the easier difficulties nothing starts under
     // one), a chord's two tiles on lanes apart, lanes with the lead's pitch.
     const notes: ChartNote[] = [];
     const pitchOf = new Map<ChartNote, number | null>();
+    const figOf = new Map<ChartNote, number>();
     for (let i = 0; i < picked.length; i++) {
       const { c } = picked[i];
       const next = picked.slice(i + 1).find((x) => x.c.sec - c.sec > 0.002);
@@ -264,6 +251,7 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       if (c.part !== 'drums' && len >= HOLD_SEC && len / spb >= minHold) { n.hold = true; n.len = Math.round((len / spb) * 1000) / 1000; }
       notes.push(n);
       pitchOf.set(n, c.midi);
+      if (c.fig != null) figOf.set(n, c.fig);
     }
     // Lanes that mirror the tune: in each phrase a note's lane is where its pitch ranks among the
     // phrase's notes (the lowest left, the highest right; two notes in the middle lanes), so the
@@ -296,11 +284,13 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       notes[i + 1].lane = low ? pair[1] : pair[0];
       i++;
     }
+    // Holds end where a breath starts.
+    cutHolds(notes, breaths, (t) => o.offset + t * spb, (sec) => (sec - o.offset) / spb);
     // Too many holds for the difficulty: the shortest are taps.
     const holds = notes.filter((n) => n.hold).sort((a, b) => a.len - b.len);
     const room = Math.floor((k.maxHolds ?? 1) * notes.length);
     for (const n of holds.slice(0, Math.max(0, holds.length - room))) { delete n.hold; n.len = 0.25; }
-    return { difficulty: d, lanes: 4, notes: flowChart(notes, d, spb, { pitch: (n) => pitchOf.get(n) ?? null }) };
+    return { difficulty: d, lanes: 4, notes: flowChart(notes, d, spb, { pitch: (n) => pitchOf.get(n) ?? null, figure: (n) => figOf.get(n) ?? pitchOf.get(n) ?? null }) };
   };
 }
 
