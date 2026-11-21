@@ -100,7 +100,7 @@ const HOLD_BEATS = 0.75;
 const HOLD_GAP = 0.25;
 /** A drum hit this strong (or an accent) is emphasis: a chord where it meets the line (Hard; Ultra from CHORD_MIN). */
 const BIG = 0.7;
-const CHORD_MIN = 0.45;
+const CHORD_MIN = 0.3;
 /** A phrase this much more intense than the one before (0..1 of the song's range) opens a part. */
 const LIFT = 0.3;
 /** A drum hit this weak doesn't fill in. */
@@ -157,6 +157,16 @@ const LEAN_MIN = 0.7;
 const LEAN_HIGH = 0.85;
 /** A phrase quieter than this share of the song's median phrase is silence: no tiles (a fade's sound stopping, not its volume). */
 const SILENT = 0.2;
+/**
+ * The rhythm you can count with the sound off (Nov 21, the user: "with sound off, I could not find
+ * the rhythm or chorus"): the beats of every bar (0 the downbeat) each difficulty keeps a tile on
+ * wherever a sound is there (skeletonOf). osu!mania's ranking criteria: an Easy is "mostly 1/1",
+ * a Normal "mostly 1/1 and 1/2"; the well-timed fan charts put a tile on 82-92% of the downbeats,
+ * ours 31-49% on Easy, 49-80% on Hard. A note pushing up to SKELETON_AHEAD beats ahead of an empty
+ * beat stands for it (a syncopated line).
+ */
+const SKELETON: Record<Difficulty, number[]> = { easy: [0, 2], medium: [0], hard: [0], ultra: [] };
+const SKELETON_AHEAD = 0.5;
 /** Easy's breath before a drop (beats); the others play into it. */
 const DROP_BREATH = 0.5;
 /** How much each part counts when choosing the second part. */
@@ -375,14 +385,15 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       lastEnd = secOf(t.until ?? s.beat) + (t.until ? 0 : Math.min(s.len, spb));
       tiles.push(t);
     }
-    // A kick or snare with a note of the line: a chord (Ultra any firm one, Hard the big ones, the
-    // easier ones only to open a part).
-    if (layer !== 'drums') {
-      for (const h of all) {
-        if (h.layer !== 'drums' || h.strength < CHORD_MIN || h.drum === 'hat') continue;
-        const same = tiles.find((t) => t.phrase === p && t.ref && Math.abs(t.s.beat - h.beat) < 0.01);
-        if (same && (!same.chord || h.strength > same.chord.strength)) { if (!same.chord && (h.strength >= BIG || h.accent)) same.keep += KEEP_BIG; same.chord = h; }
-      }
+    // Another part striking with a note of the line: a chord (Ultra any firm one, Hard the big ones,
+    // the easier ones only to open a part). A kick or snare first; else the bass, an instrument or
+    // the voice under a drum line (Nov 21: 4K layering is two parts at once; with CHORD_MIN 0.3 Ultra
+    // chords 3-18% → 10-28% of its moments, the fan charts 29-36%, Ultra +0.1-0.3 stars).
+    const weight = (h: Sound) => h.strength + (h.layer === 'drums' ? 1 : 0);
+    for (const h of all) {
+      if (h.layer === layer || h.strength < CHORD_MIN || h.drum === 'hat') continue;
+      const same = tiles.find((t) => t.phrase === p && t.ref && Math.abs(t.s.beat - h.beat) < 0.01);
+      if (same && (!same.chord || weight(h) > weight(same.chord))) { if (!same.chord && (h.strength >= BIG || h.accent)) same.keep += KEEP_BIG; same.chord = h; }
     }
     // A part opens (the line changes, a section starts, or the song lifts) on a big hit on its
     // downbeat: that tile is the "beginning of a part with a heavy cymbal", a chord on every difficulty.
@@ -447,6 +458,49 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     }
   }
 
+  /**
+   * A phrase's skeleton for a difficulty: a tile on each of SKELETON's beats of every bar, from the
+   * line's note there, else the line's note pushing up to SKELETON_AHEAD ahead of it (it counts as
+   * the beat), else the strongest sound on that beat (any part: the line is silent there; the plan
+   * agreed Nov 21). A bar with sounds but none of those, its strongest. With the line's note after
+   * the beat standing in too, Easy's downbeats were 46-71% (66-92% this way; humans 82-92%).
+   * Only real sounds: a bar with none stays empty.
+   */
+  function skeletonOf(p: number, d: Difficulty, mine: Tile[]): Tile[] {
+    const beats = SKELETON[d];
+    if (!beats.length) return [];
+    const layer = follows.get(p);
+    const all = phrases.get(p) ?? [];
+    const out: Tile[] = [];
+    for (let bar = 0; bar < 2; bar++) {
+      const had = out.length;
+      for (const k of beats) {
+        if (k >= meter) continue;
+        const b = firstBeatOfPhrase(p) + bar * meter + k;
+        const at = (t: Tile) => Math.abs(t.s.beat - b) < 0.01;
+        // The line's note on the beat, or pushing ahead of it (a syncopated line keeps its own
+        // rhythm); else anything on the beat.
+        let t = mine.find((x) => at(x) && x.ref)
+          ?? mine.filter((x) => x.ref && x.s.beat < b - 0.01 && x.s.beat >= b - SKELETON_AHEAD - 1e-6).sort((x, y) => y.s.beat - x.s.beat)[0]
+          ?? mine.find(at);
+        if (!t) {
+          const s = all.filter((x) => Math.abs(x.beat - b) < 0.01 && x.strength >= FILL_MIN && (x.layer !== 'drums' || x.drum !== 'hat' || x.strength >= 0.5))
+            .sort((x, y) => Number(y.layer === layer) - Number(x.layer === layer) || y.strength - x.strength)[0];
+          if (s) t = { s, ref: s.layer === layer, keep: METRIC.downbeat + s.strength * 0.5, phrase: p, gap: 0 };
+        }
+        if (t && !out.includes(t)) out.push(t);
+      }
+      // A bar with sounds but none on its beats (a chord ringing, a syncopated riff): its strongest.
+      if (out.length === had) {
+        const from = firstBeatOfPhrase(p) + bar * meter, inBar = (x: number) => x >= from - 1e-6 && x < from + meter - 1e-6;
+        const t = [...mine].filter((x) => inBar(x.s.beat)).sort((x, y) => Number(y.ref) - Number(x.ref) || y.keep - x.keep)[0];
+        const s = t ? null : all.filter((x) => inBar(x.beat) && x.strength >= FILL_MIN && (x.layer !== 'drums' || x.drum !== 'hat' || x.strength >= 0.5)).sort((x, y) => y.strength - x.strength)[0];
+        if (t) out.push(t);
+        else if (s) out.push({ s, ref: s.layer === layer, keep: metric(s.beat) + s.strength * 0.5, phrase: p, gap: 0 });
+      }
+    }
+    return out;
+  }
   /** A phrase's second part: of the others with enough notes, the strongest (weighted by part). */
   function secondOf(p: number, layer: Layer): Layer | null {
     const score = new Map<Layer, number>(), n = new Map<Layer, number>();
@@ -509,8 +563,12 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       // A repeat: its twin's pattern (all of it, the budget aside), and where it grows a few of its own.
       const same = pattern ? byKeep.filter((t) => pattern.has(keyOf(t, p))) : [];
       const extra = pattern && growsOn.has(p) ? Math.min(Math.max(0, budget - same.length), Math.ceil(same.length * GROW)) : 0;
-      const order = pattern ? [...same, ...byKeep.filter((t) => !pattern.has(keyOf(t, p)))] : byKeep;
-      const cap = pattern ? same.length + extra : budget;
+      // The beats every bar keeps (skeletonOf) go first: the rhythm you can count with the sound off.
+      const skel = skeletonOf(p, d, mine);
+      const inSkel = new Set(skel);
+      const rest = pattern ? [...same, ...byKeep.filter((t) => !pattern.has(keyOf(t, p)))] : byKeep;
+      const order = [...skel, ...rest.filter((t) => !inSkel.has(t))];
+      const cap = pattern ? new Set([...same, ...skel]).size + extra : Math.max(budget, skel.length);
       const chosen: Tile[] = [];
       for (const t of order) {
         if (chosen.length >= cap) break;

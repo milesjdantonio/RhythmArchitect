@@ -127,6 +127,43 @@ export function soundOff(o: SoundOffInput): SoundOff {
   return { longest, longestAt, holes, downbeats: bars ? hit / bars : 0, returns, rate: playTime ? starts / playTime : 0 };
 }
 
+/**
+ * osu!mania's ranking criteria, per difficulty (Easy, Normal = our Medium, Hard; the guidelines
+ * for 4K, read Nov 21). Their snaps are of a beat at about 180 BPM (CRITERIA_BEAT): Easy no two
+ * gaps in a row of a 1/4 or less, at most 5 in a row a 1/2 apart, chords of at most 2; Normal no
+ * two gaps in a row of a 1/6 or less, at most 5 in a row a 1/4 apart, no lane again a 1/4 later;
+ * Hard no two gaps in a row of a 1/8 or less, at most 9 trill notes, chords of at most 3. How many
+ * times a chart breaks each, by its rows (tiles at one time).
+ */
+export interface Criteria { fast: number; runs: number; jacks: number; trills: number; chords: number; rows: number }
+export const CRITERIA_BEAT = 60 / 180;
+export function criteria(tiles: SoundOffTile[], d: 'easy' | 'medium' | 'hard' | 'ultra'): Criteria {
+  const rows: { t: number; lanes: number[] }[] = [];
+  for (const x of [...tiles].sort((a, b) => a.sec - b.sec)) {
+    const last = rows[rows.length - 1];
+    if (last && Math.abs(x.sec - last.t) < 0.005) last.lanes.push(x.lane); else rows.push({ t: x.sec, lanes: [x.lane] });
+  }
+  const out: Criteria = { fast: 0, runs: 0, jacks: 0, trills: 0, chords: 0, rows: rows.length };
+  if (d === 'ultra') return out;
+  const B = CRITERIA_BEAT, slack = 0.005;
+  const fast = (d === 'easy' ? B / 4 : d === 'medium' ? B / 6 : B / 8) + slack;
+  const runGap = d === 'easy' ? B / 2 : B / 4, runMax = d === 'hard' ? Infinity : 5;
+  const chordMax = d === 'hard' ? 3 : 2;
+  let run = 1, trill = 2;
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].lanes.length > chordMax) out.chords++;
+    if (i === 0) continue;
+    const g = rows[i].t - rows[i - 1].t;
+    if (i >= 2 && g <= fast && rows[i - 1].t - rows[i - 2].t <= fast) out.fast++;
+    if (g <= runGap + slack) { run++; if (run === runMax + 1) out.runs++; } else run = 1;
+    if (d === 'medium' && g <= B / 4 + slack && rows[i].lanes.some((l) => rows[i - 1].lanes.includes(l))) out.jacks++;
+    const alt = i >= 2 && rows[i].lanes.length === 1 && rows[i - 1].lanes.length === 1 && rows[i - 2].lanes.length === 1
+      && rows[i].lanes[0] === rows[i - 2].lanes[0] && rows[i].lanes[0] !== rows[i - 1].lanes[0] && g <= B / 2 + slack;
+    if (alt) { trill++; if (d === 'hard' && trill === 10) out.trills++; } else trill = 2;
+  }
+  return out;
+}
+
 function same(a: Set<number>, b: Set<number>) {
   if (a.size !== b.size) return false;
   for (const x of a) if (!b.has(x)) return false;

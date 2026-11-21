@@ -346,6 +346,24 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     the 1,076 tiles open to it on Hotline Bling, so its pool (what the analysis hears) is the limit,
     not ULTRA_FILL or ULTRA_RATE (both off: +0-0.4★). The ranked bottlenecks and what's next:
     `docs/mapper-bottlenecks.html` (updated each round).
+  - **A rhythm you can count with the sound off** (Nov 21, round 2; the user: "with sound off, I
+    could not find the rhythm or chorus"). osu!mania's ranking criteria: an Easy is "mostly 1/1", a
+    Normal "mostly 1/1 and 1/2" (`soundoff.ts` `criteria` counts a chart's breaks of them, in
+    seconds at their ~180 BPM: ours break none, the ladder is well inside them). Each bar keeps a
+    tile on its `SKELETON` beats (Easy beats 1 and 3, Medium and Hard the downbeat; `skeletonOf`,
+    first in a phrase's order, counted against its budget): the line's note there, else the line's
+    note pushing up to half a beat ahead (it counts as the beat), else the strongest sound on the
+    beat (the line is silent there), and a bar with sounds but none of those keeps its strongest.
+    Letting the line's note after the beat stand in too kept Easy's downbeats at 46-71%. Downbeats
+    with a tile, Easy 31-49% → 55-83%, Medium 36-68% → 59-84%, Hard 49-80% → 66-92% (the fan
+    charts 82-92%); a chorus's return keeps more of its first time's rhythm on Easy (Hotline Bling
+    43 → 52%, California Gurls 45 → 57%); the same stars, no holes. Chords come from any part
+    striking with the line, not only the drums, from strength 0.3 (`CHORD_MIN`; Hard still only
+    the big ones): Ultra's chords 3-18% → 10-28% of its moments (the fan charts 29-36%), Ultra
+    1.41-2.54★ → 1.67-2.68. What the star gap is made of: Hotline Bling's fan Hard rates 2.92★, its
+    chords taken out 2.40 at 4.5 rows a second (ours 4.5 a second rate 2.0-2.15), only its tiles on
+    sounds we heard 2.32-2.50: chords are about half of it. Lane patterns are not: Ultra moves 1.0-1.1
+    lanes a step (the fan charts 1.15-1.31), quick repeats 17% (13-19%).
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,

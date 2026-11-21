@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { playingFrom, soundOff } from '../../src/mapping/soundoff';
+import { CRITERIA_BEAT, criteria, playingFrom, soundOff } from '../../src/mapping/soundoff';
 import { onAttack } from '../../src/mapping/leadline';
 
 const bar = 2; // 120 BPM, 4/4
@@ -59,5 +59,24 @@ describe('onAttack', () => {
     expect(at(1.12)).toBeNull(); // 120 ms: past 0.85 of a 16th (106 ms) at 120 BPM
     expect(at(0.95)).toBeNull(); // the onset 50 ms after
     expect(at(0.98)).toBe(1.0);
+  });
+});
+
+describe('criteria (osu!mania ranking criteria, at about 180 BPM)', () => {
+  const B = CRITERIA_BEAT;
+  it("counts Easy's runs past five half beats and its fast pairs", () => {
+    const run = Array.from({ length: 8 }, (_, i) => tap(i * (B / 2)));
+    expect(criteria(run, 'easy').runs).toBe(1);
+    expect(criteria([tap(0), tap(B / 4), tap(B / 2)], 'easy').fast).toBe(1);
+    expect(criteria([tap(0), tap(B), tap(2 * B)], 'easy')).toMatchObject({ fast: 0, runs: 0 });
+  });
+  it("counts Normal's quarter-beat jacks and big chords", () => {
+    expect(criteria([tap(0, 1), tap(B / 4, 1)], 'medium').jacks).toBe(1);
+    expect(criteria([tap(0, 0), tap(0, 1), tap(0, 2)], 'medium').chords).toBe(1);
+    expect(criteria([tap(0, 0), tap(0, 1), tap(0, 2)], 'hard').chords).toBe(0);
+  });
+  it("counts Hard's trills past nine notes", () => {
+    const trill = Array.from({ length: 12 }, (_, i) => tap(i * (B / 2), i % 2));
+    expect(criteria(trill, 'hard').trills).toBe(1);
   });
 });
