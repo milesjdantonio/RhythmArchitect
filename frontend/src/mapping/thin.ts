@@ -89,6 +89,8 @@ export interface ThinOptions {
   breath?: (t: number) => boolean;
   /** How much closer than `minGap` tiles may come at a moment (beats): 1 the difficulty's own (shape.ts spacing). */
   spacing?: (t: number) => number;
+  /** Each window keeps at least this many tiles a second (where it has them: shape.ts STRETCH_FLOOR). */
+  minRate?: number;
   /** Where `holdsAlone` is waived (beats): a busy phrase (shape.ts HOLDS_FREE). */
   holdsFree?: (t: number) => boolean;
 }
@@ -238,7 +240,8 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
   /** The heaviest rows that fit, by the rules above. */
   const select = (weight: (r: Row) => number) => {
     const budget = new Map<number, number>();
-    for (const [k, n] of inWin) budget.set(k, Math.max(1, Math.min(n, Math.round(n * keep * (winScale.get(k) ?? 1)))));
+    const least = Math.round((o.minRate ?? 0) * WINDOW);
+    for (const [k, n] of inWin) budget.set(k, Math.max(1, Math.min(n, Math.max(least, Math.round(n * keep * (winScale.get(k) ?? 1))))));
     // Chords: the heaviest rows with more than one tile, up to `chords` of the rows kept.
     let chordsLeft = o.maxChord < 2 ? 0 : o.chords >= 1 ? Infinity : Math.round(o.chords * keep * rows.length);
     const kept: { r: Row; notes: ChartNote[] }[] = [];

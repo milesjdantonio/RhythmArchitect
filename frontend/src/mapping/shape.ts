@@ -37,6 +37,13 @@ export const BREATH: Record<'easy' | 'medium' | 'hard' | 'ultra', number> = { ea
 export const spacing = (scale: number) => 1 / Math.max(1, scale);
 
 /**
+ * The fewest tiles a second any stretch keeps where it has sounds (thin.ts each 4 s window,
+ * leadline.ts each phrase), whatever the shape and the star calibration ask: a quiet verse on Easy
+ * could otherwise thin to a tile every bar or two (the shape's 0.75 times the calibration's 0.7).
+ */
+export const STRETCH_FLOOR: Record<'easy' | 'medium' | 'hard' | 'ultra', number> = { easy: 0.5, medium: 0.8, hard: 1.1, ultra: 0 };
+
+/**
  * In a phrase at least this busy, Medium lets taps come under a hold (as Hard always does): a
  * chorus on Medium was held back by its holds, not by its budget (on Open Your Eyes' saved chart
  * its busy phrases kept 12.6 tiles with the shape and without it; 14.5 with this). Its scales there

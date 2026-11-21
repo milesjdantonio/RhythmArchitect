@@ -242,7 +242,9 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     phrase (`HOLDS_FREE`, 1.05) Medium lets taps come under a hold, as Hard always does: its
     choruses were held back by holds, not by their budget. Repeats are found on the straight grid
     when there's no beat map (`straightMap`, ensomi.ts: for telling phrases apart only, never for
-    placing a tile). **Figures**
+    placing a tile). Every stretch keeps at least `STRETCH_FLOOR` tiles a second where it has
+    sounds (E 0.5, M 0.8, H 1.1: thin.ts `minRate` per 4 s window, the lead line per phrase), so
+    the shape and the star calibration together can't empty a quiet verse. **Figures**
     (`lanes.ts` `figuresOf`): four or more evenly spaced single tiles under 0.3 s apart whose pitch
     climbs or falls every step are a run, charted as a staircase the tune's way
     (`FIGURE_AGAINST`); two pitches back and forth are a trill on two lanes (`FIGURE_TRILL`);

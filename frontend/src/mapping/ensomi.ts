@@ -18,7 +18,7 @@ import { barOf, beatAt, beatMap, beatPlace, divisionAt, secAt, snapSec, type Bea
 import { findRepeats, twinSec, type Repeats } from './repeats';
 import { noteName, syllableAt, type Syllable } from './voice';
 import { hasParts, leadLine } from './leadline';
-import { HOLDS_FREE, breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
+import { HOLDS_FREE, STRETCH_FLOOR, breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
 
 export { KEEP };
 // The runtime finds these beside its own module, which a bundler moves; so they're handed to it.
@@ -588,7 +588,7 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
       ...(twin ? { twin } : {}),
       ...(d !== 'ultra' ? { kind, phrase, follow: FOLLOW } : {}),
       ...(voice ? { sung: (t: number) => syllable(t)?.strength ?? 0 } : {}),
-      ...(d !== 'ultra' ? { intensity, spacing: (t: number) => spacing(shape.scale(phrase(t))) } : {}),
+      ...(d !== 'ultra' ? { intensity, spacing: (t: number) => spacing(shape.scale(phrase(t))), minRate: STRETCH_FLOOR[d] } : {}),
       ...(d === 'medium' ? { holdsFree: (t: number) => shape.scale(phrase(t)) >= HOLDS_FREE } : {}),
       ...(br ? { breath: br.at } : {}),
     });

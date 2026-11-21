@@ -25,7 +25,7 @@ import { KEEP } from './thin';
 import { flowChart, soundFigure } from './lanes';
 import { barOf, beatAt, divisionAt, secAt, type BeatMap } from './beatmap';
 import type { Syllable } from './voice';
-import { breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
+import { STRETCH_FLOOR, breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
 
 type Part = 'vocals' | 'drums' | 'bass' | 'other';
 interface Cand { sec: number; t: number; beat: number; part: Part; strength: number; midi: number | null; len: number; /** A drum's figure value (lanes.ts soundFigure). */ fig?: number; /** A chord's other note (voice.ts Syllable.also). */ extra?: boolean }
@@ -189,7 +189,8 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       const accents = Number.isFinite(accentAt) ? all.filter((c) => c.part !== one && c.part !== two && c.strength >= accentAt) : [];
       const whole = own.length + fillFrom.length + accents.length;
       const sc = shaped ? shape.scale(p) : 1;
-      const budget = Math.max(1, Math.round(sc * Math.min(Math.max(whole * share, k.floor * scale * span), k.rate * scale * span)));
+      // At least STRETCH_FLOOR tiles a second, whatever the shape and the calibration ask.
+      const budget = Math.max(1, Math.round(STRETCH_FLOOR[d] * span), Math.round(sc * Math.min(Math.max(whole * share, k.floor * scale * span), k.rate * scale * span)));
       const takeSecond = prof.second !== 'sparse' || own.length < budget * EASY_FILL;
       const pool = takeSecond ? [...own, ...fillFrom, ...accents] : own;
       const slots = new Set(own.map((c) => slotOf(c, p)));

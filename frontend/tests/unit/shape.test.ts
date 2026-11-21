@@ -120,3 +120,17 @@ describe('repeats without the beat tracker', () => {
     expect(r.of.get(3)).toBe(0);
   });
 });
+
+describe('a floor for every stretch', () => {
+  it('a quiet stretch on Easy keeps at least STRETCH_FLOOR tiles a second', async () => {
+    const { thinChart, KEEP } = await import('../../src/mapping/thin');
+    const { STRETCH_FLOOR } = await import('../../src/mapping/shape');
+    // 1 s a beat; a tile every beat for 40 s, quiet all through, Easy asked for very few.
+    const notes = Array.from({ length: 40 }, (_, i) => ({ t: i, lane: i % 4, pitch: 'C5', len: 0.25 }));
+    const events = notes.map((n, i) => ({ id: i, t: n.t, sec: n.t, band: 'mid' as const, pitched: false, midi: null, note: null, bright: 60, strength: 0.5, len: 0.25, onBeat: true, accent: false }));
+    const o = { ...KEEP.easy, share: 0.05, rate: 0.2, floor: 0, spb: 1, offset: 0, events, onGrid: true, intensity: () => 0.75 };
+    const bare = thinChart(notes, o), floored = thinChart(notes, { ...o, minRate: STRETCH_FLOOR.easy });
+    expect(floored.length).toBeGreaterThan(bare.length);
+    for (let w = 0; w < 10; w++) expect(floored.filter((n) => n.t >= w * 4 && n.t < w * 4 + 4).length).toBeGreaterThanOrEqual(2);
+  });
+});
