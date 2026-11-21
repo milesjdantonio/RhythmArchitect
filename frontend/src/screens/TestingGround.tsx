@@ -7,13 +7,14 @@ import { href, navigate } from '../lib/router';
 import { fetchSong } from '../library/songs';
 
 /**
- * The testing ground (#/testingGround): the same song mapped two ways, side by side, to play and
+ * The testing ground (#/testingGround): the same song mapped several ways, side by side, to play and
  * compare (the user, Nov 20). Each is a song file in public/testing/ (id "test-…": the song cache
  * reads those from there, library/songs.ts), so they never touch the bank; runs on them aren't saved.
  */
 const TESTS: { id: string; label: string; detail: string }[] = [
-  { id: 'test-oye-lines', label: 'New: the song’s own lines', detail: 'Every difficulty built from the parts (leadline.ts): Ultra hits every note of the lead, the piano solo note by note, chords where two parts strike together.' },
-  { id: 'test-oye-model', label: 'Current: the trained mapper', detail: 'Ultra as the trained mapper (Ensomi R2) charts it, with the sung syllables added (as it is in the bank now).' },
+  { id: 'test-oye-form', label: 'Newest: with the song’s form', detail: 'As below, planned by section: the intro and the verses lighter, the choruses fuller (each return a little more), a chorus charted like its first time, the beat before a drop left clear on Easy and Medium, the last hit a chord.' },
+  { id: 'test-oye-charted', label: 'New: charted like a person', detail: 'One line at a time (the singing where it’s sung, the piano or the drums where it isn’t), held notes held with the beat under them, chords only on the big hits, lanes with the tune, busiest where the song is loudest.' },
+  { id: 'test-oye-lines', label: 'Current: the song’s own lines', detail: 'Every difficulty built from the parts, as it is in the bank now: Ultra hits every note of both lines, chords where two parts strike together.' },
 ];
 
 export function TestingGround() {
@@ -29,7 +30,7 @@ export function TestingGround() {
         <button type="button" className="btn btn-sm" onClick={() => navigate(href.home())}><Icon name="back" size={16} /> Menu</button>
         <div>
           <h1>Testing ground</h1>
-          <p className="label">Open Your Eyes · CYE · the same song mapped two ways · runs here aren’t saved</p>
+          <p className="label">Open Your Eyes · CYE · the same song mapped three ways · runs here aren’t saved</p>
         </div>
       </motion.header>
       <div className="testing-cards">

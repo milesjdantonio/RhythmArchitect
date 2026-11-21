@@ -512,17 +512,17 @@ test.describe('Rythm Architect', () => {
     }
   });
 
-  test('the testing ground shows Open Your Eyes mapped two ways, each playable', async ({ page }) => {
+  test('the testing ground shows Open Your Eyes mapped three ways, each playable', async ({ page }) => {
     await skipIntro(page);
     await fakeYouTube(page);
     await page.goto('/#/testingGround');
     await expect(page.getByRole('heading', { name: 'Testing ground' })).toBeVisible();
-    for (const name of ['New: the song’s own lines', 'Current: the trained mapper']) {
+    for (const name of ['Newest: with the song’s form', 'New: charted like a person', 'Current: the song’s own lines']) {
       const card = page.getByRole('region', { name });
       await expect(card).toContainText(/Ultra\s*\d+ tiles/);
     }
-    await page.getByRole('button', { name: 'Play Ultra: New: the song’s own lines' }).click();
-    await expect(page).toHaveURL(/#\/play\/test-oye-lines\/ultra$/);
+    await page.getByRole('button', { name: 'Play Ultra: New: charted like a person' }).click();
+    await expect(page).toHaveURL(/#\/play\/test-oye-charted\/ultra$/);
   });
 
   test('favourites a song and finds it in the favourites drop-down', async ({ page }) => {
@@ -581,7 +581,7 @@ test.describe('Rythm Architect', () => {
     await page.keyboard.press('Backquote');
     const dev = page.getByRole('complementary', { name: 'Dev tools' });
     await expect(dev).toBeVisible();
-    await dev.getByRole('radio', { name: 'On (perfect)' }).click();
+    await dev.getByRole('switch', { name: 'Autoplay' }).check();
     await startButton(page).click();
     await expect(page.locator('.hud-bot')).toHaveText('Autoplay');
     await expect(dev.locator('.dev-next li').first()).toContainText(/tap|hold/);
@@ -693,6 +693,21 @@ test.describe('Rythm Architect', () => {
     await page.keyboard.press('Escape');
     await expect(help).toBeHidden();
     await expect(startButton(page)).toBeVisible();
+  });
+
+  test('the start card maps the song: its density and sections; in practice a section loops it', async ({ page }) => {
+    await skipIntro(page);
+    await page.goto('/#/play/builtin-ink-and-fury/medium');
+    await expect(startButton(page)).toBeEnabled();
+    const card = page.locator('.overlay-card');
+    await expect(card.getByRole('img', { name: /The chart through the song/ })).toBeVisible();
+    await expect(card.locator('.song-map-bars i').first()).toBeVisible();
+    // In practice, a section's name loops that section.
+    await card.getByRole('radio', { name: 'Practice a part' }).click();
+    const section = card.locator('button.song-map-section').nth(1);
+    const [, from, to] = /(\d+:\d\d)–(\d+:\d\d)/.exec((await section.getAttribute('aria-label')) ?? '')!;
+    await section.click();
+    await expect(card.getByRole('button', { name: new RegExp(`Practise ${from}–${to}`) })).toBeVisible();
   });
 
   test('fails Hard when nothing is played', async ({ page }) => {

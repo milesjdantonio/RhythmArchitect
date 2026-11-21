@@ -6,6 +6,8 @@ import { hasParts, leadLine } from '../../src/mapping/leadline';
 const SPB = 0.5;
 const drum = (sec: number): SoundEvent => ({ id: 0, t: sec / SPB, sec, band: 'low', pitched: false, midi: null, note: null, bright: 50, strength: 0.6, len: 0.25, onBeat: true, accent: false, part: 'drums' });
 const syl = (sec: number, midi = 64) => ({ sec, len: 0.2, midi, strength: 0.8 });
+/** A chart's tiles without its last hit (every chart ends on a chord: tested on its own). */
+const body = <T extends { t: number }>(notes: T[]) => { const end = Math.max(...notes.map((n) => n.t)); return notes.filter((n) => n.t < end - 1e-6); };
 
 describe("every difficulty as the song's own lines (leadline.ts)", () => {
   // Three 2-bar phrases (4 s each): sung in the first two (the same rhythm: a little off the 16ths,
@@ -50,8 +52,8 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     // A piano solo: sixteen notes an 8th apart (a little off the grid), nothing else playing.
     const piano = Array.from({ length: 16 }, (_, i) => ({ sec: i * 0.25 + 0.012, len: 0.2, midi: 60 + (i % 8), strength: 0.7 }));
     const solo = leadLine({ bpm: 120, offset: 0, events: [], voice: [], played: piano, map: null });
-    const ultra = solo('ultra').notes;
-    expect(ultra.length).toBe(16);
+    const ultra = body(solo('ultra').notes);
+    expect(ultra.length).toBe(15);
     expect(ultra.every((n) => Math.abs(n.t * 2 - Math.round(n.t * 2)) < 1e-6)).toBe(true);
     // Easy keeps fewer, and keeps the beats first: the same rhythm, simplified.
     const easyNotes = solo('easy').notes;
@@ -64,8 +66,8 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     // A tune up and down a phrase, an 8th apart: C E G B G E C E ...
     const tune = [60, 64, 67, 71, 67, 64];
     const played = Array.from({ length: 24 }, (_, i) => ({ sec: i * 0.5, len: 0.2, midi: tune[i % tune.length], strength: 0.7 }));
-    const notes = leadLine({ bpm: 120, offset: 0, events: [], voice: [], played, map: null })('ultra').notes.sort((a, b) => a.t - b.t);
-    expect(notes.length).toBe(24);
+    const notes = body(leadLine({ bpm: 120, offset: 0, events: [], voice: [], played, map: null })('ultra').notes).sort((a, b) => a.t - b.t);
+    expect(notes.length).toBe(23);
     const laneOf = new Map<number, Set<number>>();
     notes.forEach((n, i) => { const m = tune[i % tune.length]; if (!laneOf.has(m)) laneOf.set(m, new Set()); laneOf.get(m)!.add(n.lane); });
     // Each note keeps to one lane (most of the time), higher notes further right.
@@ -85,12 +87,22 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     const line = leadLine({ bpm: 120, offset: 0, events: [], voice: [], played, map: null });
     const rows = (d: 'easy' | 'ultra') => {
       const by = new Map<number, number[]>();
-      for (const n of line(d).notes) by.set(n.t, [...(by.get(n.t) ?? []), n.lane]);
+      for (const n of body(line(d).notes)) by.set(n.t, [...(by.get(n.t) ?? []), n.lane]);
       return [...by.values()];
     };
     const ultra = rows('ultra');
-    expect(ultra.length).toBe(8);
+    expect(ultra.length).toBe(7);
     expect(ultra.every((r) => r.length === 2 && r[0] !== r[1])).toBe(true);
     expect(rows('easy').every((r) => r.length === 1)).toBe(true);
+  });
+
+  it('every chart ends on a chord: its last hit, on both hands', () => {
+    for (const d of ['easy', 'medium', 'hard', 'ultra'] as const) {
+      const notes = make(d).notes;
+      const end = Math.max(...notes.map((n) => n.t));
+      const last = notes.filter((n) => Math.abs(n.t - end) < 1e-6);
+      expect(last.length).toBe(2);
+      expect(last[0].lane < 2).not.toBe(last[1].lane < 2);
+    }
   });
 });

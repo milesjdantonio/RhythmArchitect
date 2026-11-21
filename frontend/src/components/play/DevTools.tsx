@@ -46,9 +46,6 @@ interface Props {
   onClose: () => void;
 }
 
-const BOTS: { mode: BotMode; label: string }[] = [
-  { mode: 'off', label: 'Off' }, { mode: 'perfect', label: 'On (perfect)' },
-];
 const AHEAD = 4; // seconds of queue shown
 
 /**
@@ -103,12 +100,11 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
       </header>
 
       <section className="dev-sec">
-        <h3 className="dev-title">Autoplay</h3>
-        <div className="seg" role="radiogroup" aria-label="Autoplay">
-          {BOTS.map((b) => (
-            <button key={b.mode} type="button" role="radio" aria-checked={bot === b.mode} className={bot === b.mode ? 'is-on' : ''} onClick={() => onBot(b.mode)}>{b.label}</button>
-          ))}
-        </div>
+        <label className="set-switch dev-switch">
+          <h3 className="dev-title">Autoplay</h3>
+          <input type="checkbox" role="switch" aria-label="Autoplay" checked={bot !== 'off'} onChange={(e) => onBot(e.target.checked ? 'perfect' : 'off')} />
+          <span className="switch" aria-hidden />
+        </label>
         <p className="dev-note">{bot === 'off' ? 'You play. Scores are saved.' : 'The bot plays this run. Its score is not saved.'}</p>
       </section>
 

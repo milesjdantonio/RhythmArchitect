@@ -16,6 +16,10 @@
 //           that aren't 16ths): a vocal often swings where the drums don't
 //   stars   osu!mania star rating (@ensomi/runtime starRating), human and each of ours
 //   density, holds, chords, and the lane patterns (patterns.ts)
+//   shape   how the chart's density moves through the song: its tiles per 4 bars against the
+//           human chart's (r, where the human chart plays) and how much each moves (CV). Human
+//           charts' CV is 0.34-0.57 on these songs (Nov 21); ours was 0.12-0.31 before the
+//           song's form (sections.ts) set each section's density
 // A human chart timed at another tempo than the song's (not half or double it) is left out: it
 // follows other audio (an edit) or is mistimed, and matches nothing.
 
@@ -157,6 +161,21 @@ function rhythm(tiles, spb) {
   return { straight: straight / Math.max(1, n), swung: swung / Math.max(1, n) };
 }
 const share = (xs, f) => (xs.length ? xs.filter(f).length / xs.length : 0);
+/** Tiles per 4 bars (16 beats from `at`), between `from` and `to` seconds. */
+function windows(tiles, at, spb, from, to) {
+  const w = 16 * spb, n = Math.max(0, Math.ceil((to - at) / w));
+  const out = new Array(n).fill(0);
+  for (const m of moments(tiles)) { const k = Math.floor((m.sec - at) / w); if (k >= 0 && k < n && m.sec >= from && m.sec <= to) out[k]++; }
+  return out.slice(Math.max(0, Math.floor((from - at) / w) + 1), Math.max(0, Math.floor((to - at) / w)));
+}
+const pearson = (a, b) => {
+  const n = a.length; if (n < 3) return NaN;
+  const ma = a.reduce((x, y) => x + y, 0) / n, mb = b.reduce((x, y) => x + y, 0) / n;
+  let ab = 0, aa = 0, bb = 0;
+  for (let i = 0; i < n; i++) { ab += (a[i] - ma) * (b[i] - mb); aa += (a[i] - ma) ** 2; bb += (b[i] - mb) ** 2; }
+  return ab / Math.sqrt(aa * bb || 1);
+};
+const cvOf = (xs) => { const m = xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length); return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, xs.length)) / (m || 1); };
 const stars = (tiles, shift = 0) => starRating({
   duration_ms: Math.round((tiles[tiles.length - 1].sec + tiles[tiles.length - 1].len + 1) * 1000),
   objects: tiles.map((t) => ({ lane: t.lane, start_ms: Math.max(0, Math.round((t.sec + shift) * 1000)), ...(t.hold ? { end_ms: Math.round((t.sec + shift + t.len) * 1000) } : {}) })),
@@ -187,16 +206,20 @@ for (const s of songs) {
     const hs = await stars(human);
     const rh = rhythm(h, spb), ro = rhythm(ourTiles[near], spb);
     const ph = patterns(h), po = patterns(ourTiles[near]);
+    // The shape: tiles per 4 bars, human against ours, where the human chart plays.
+    const at = (s.offset ?? 0) + (s.source?.offset ?? 0), hFrom = h[0].sec, hTo = h[h.length - 1].sec;
+    const wh = windows(h, at, spb, hFrom, hTo), wo = windows(ourTiles[near], at, spb, hFrom, hTo);
+    const shape = { r: pearson(wh, wo), human: cvOf(wh), ours: cvOf(wo) };
     const row = {
       song: s.title, human: c.name, status: c.status, shift, near, f1: per[near].f1, p: per[near].p, r: per[near].r, ultraRecall: per.ultra.r,
       stars: { human: hs, ours: ourStars[near], all: ourStars }, rate: { human: hr, ours: per[near].rate },
       holds: { human: share(human, (t) => t.hold), ours: share(ourTiles[near], (t) => t.hold) },
       chords: { human: share(moments(human), (m) => m.n > 1), ours: share(moments(ourTiles[near]), (m) => m.n > 1) },
-      rhythm: { human: rh, ours: ro }, patterns: { human: ph, ours: po },
+      rhythm: { human: rh, ours: ro }, patterns: { human: ph, ours: po }, shape,
     };
     rows.push(row);
     console.log(`  ${c.name.slice(0, 70)} (${c.status}): shift ${shift.toFixed(2)} s · human ${hs.toFixed(2)}★ ${hr.toFixed(2)}/s · nearest ours ${near} ${ourStars[near].toFixed(2)}★ ${per[near].rate.toFixed(2)}/s · F1 ${pct(row.f1)} (p ${pct(row.p)} r ${pct(row.r)}) · Ultra has ${pct(row.ultraRecall)}`);
-    console.log(`     holds h ${pct(row.holds.human)} o ${pct(row.holds.ours)} · chords h ${pct(row.chords.human)} o ${pct(row.chords.ours)} · straight/swung h ${pct(rh.straight)}/${pct(rh.swung)} o ${pct(ro.straight)}/${pct(ro.swung)} · move h ${ph.move.toFixed(2)} o ${po.move.toFixed(2)} · jacks h ${pct(ph.jacks)} o ${pct(po.jacks)}`);
+    console.log(`     holds h ${pct(row.holds.human)} o ${pct(row.holds.ours)} · chords h ${pct(row.chords.human)} o ${pct(row.chords.ours)} · straight/swung h ${pct(rh.straight)}/${pct(rh.swung)} o ${pct(ro.straight)}/${pct(ro.swung)} · move h ${ph.move.toFixed(2)} o ${po.move.toFixed(2)} · jacks h ${pct(ph.jacks)} o ${pct(po.jacks)} · shape r ${shape.r.toFixed(2)} CV h ${shape.human.toFixed(2)} o ${shape.ours.toFixed(2)}`);
   }
 }
 if (rows.length) {
@@ -204,6 +227,8 @@ if (rows.length) {
   console.log(`\n${rows.length} human charts of ${new Set(rows.map((r) => r.song)).size} songs: F1 ${pct(mean((r) => r.f1))} at the nearest difficulty · Ultra has ${pct(mean((r) => r.ultraRecall))} of the human tiles`);
   console.log(`swung gaps: human ${pct(mean((r) => r.rhythm.human.swung))}, ours ${pct(mean((r) => r.rhythm.ours.swung))} · holds: human ${pct(mean((r) => r.holds.human))}, ours ${pct(mean((r) => r.holds.ours))} · chords: human ${pct(mean((r) => r.chords.human))}, ours ${pct(mean((r) => r.chords.ours))}`);
   console.log(`stars: human ${mean((r) => r.stars.human).toFixed(2)}★ against ours at the nearest difficulty ${mean((r) => r.stars.ours).toFixed(2)}★`);
+  const shaped = rows.filter((r) => Number.isFinite(r.shape.r));
+  if (shaped.length) console.log(`shape (tiles per 4 bars): r ${(shaped.reduce((a, r) => a + r.shape.r, 0) / shaped.length).toFixed(2)} · CV human ${(shaped.reduce((a, r) => a + r.shape.human, 0) / shaped.length).toFixed(2)}, ours ${(shaped.reduce((a, r) => a + r.shape.ours, 0) / shaped.length).toFixed(2)}`);
 }
 const jsonAt = process.argv.indexOf('--json');
 if (jsonAt >= 0) writeFileSync(process.argv[jsonAt + 1], JSON.stringify(rows, null, 1));

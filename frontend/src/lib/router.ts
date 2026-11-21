@@ -3,7 +3,7 @@
 //   #/song/:id?d=medium     home with a song picked: it plays on the stage
 //   #/play/:id/:difficulty  playing
 //   #/bank                  the music bank: every song, A to Z
-//   #/testingGround         the testing ground: one song mapped two ways, to compare
+//   #/testingGround         the testing ground: one song mapped several ways, to compare
 
 import { useSyncExternalStore } from 'react';
 import { DIFFICULTIES, type Difficulty } from '../api/types';

@@ -8,6 +8,7 @@ import { href } from '../../lib/router';
 import { fmtTime } from '../../lib/format';
 import { Icon } from '../Icon';
 import { EASE_OUT } from '../../lib/motion';
+import { SongMap } from './SongMap';
 
 const sourceNote = (song: Song) =>
   song.source.kind === 'stream' ? ' · real audio' : song.source.kind === 'youtube' ? ' · from YouTube' : song.source.standIn ? ' · stand-in audio' : '';
@@ -73,6 +74,14 @@ export function StartCard({ song, difficulty, starting, onStart, onChoose, onHel
             <span key={k.code} className="lane-key" style={{ '--h': laneHue(i, 4, song.hues), '--i': i } as React.CSSProperties}><kbd>{k.label}</kbd></span>
           ))}
         </div>
+        <SongMap song={song} difficulty={difficulty} {...(practice ? {
+          loop: [a, b] as [number, number],
+          // A section's name: loop that section (whole seconds, at least MIN_LOOP).
+          onPick: (from: number, to: number) => {
+            const s = Math.max(0, Math.min(length - MIN_LOOP, Math.round(from)));
+            setLoop([s, Math.max(s + MIN_LOOP, Math.min(length, Math.round(to)))]);
+          },
+        } : {})} />
         {canPractise && (
           <div className="start-mode" role="radiogroup" aria-label="Play or practise">
             <button type="button" role="radio" aria-checked={mode === 'play'} className={mode === 'play' ? 'is-on' : ''} onClick={() => setMode('play')}>Play the song</button>

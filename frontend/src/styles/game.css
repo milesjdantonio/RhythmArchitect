@@ -318,6 +318,8 @@
 .dev-fps { color: var(--ink-soft); }
 .dev-sec { padding: 12px 16px; border-bottom: 1px solid var(--hair); display: grid; gap: 8px; }
 .dev-title { font-family: var(--font-body); font-weight: 500; font-size: 11px; letter-spacing: var(--track-wide); text-transform: uppercase; color: var(--ink-soft); display: flex; justify-content: space-between; gap: 8px; }
+.dev-switch { display: grid; margin: 0; }
+.dev-switch .dev-title { margin: 0; }
 .dev-title .mono { font-size: 10px; letter-spacing: 0; text-transform: none; color: var(--ink-mute); }
 .dev-note { color: var(--ink-soft); font-size: 11px; line-height: 1.4; }
 .seg { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--hair-strong); border-radius: 999px; overflow: hidden; }
@@ -454,6 +456,22 @@
 .start-mode button:focus-visible { outline: 2px solid var(--lightA); outline-offset: 2px; }
 .practice-body { display: grid; gap: 10px; width: 100%; max-width: 440px; padding: 12px 14px; border: 1px solid var(--hair-strong); border-radius: var(--r-md, 10px); background: rgb(4 6 16 / 0.7); text-align: left; }
 .practice-help { margin: 0; font-size: 13px; }
+/* The song at a glance (SongMap.tsx): the chart's density per 4 bars, its sections, the choruses lit. */
+.song-map { width: 100%; display: grid; gap: 4px; margin: 2px 0 var(--space-1); --a: 0%; --b: 100%; }
+.song-map-bars { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 30px; padding: 0 1px; border-bottom: 1px solid var(--hair-strong); }
+.song-map-bars i { flex: 1 1 0; min-width: 1px; border-radius: 1px 1px 0 0; background: rgb(255 255 255 / 0.24); }
+.song-map-bars i.is-lit { background: linear-gradient(180deg, hsl(var(--hA) 100% 80%), hsl(var(--hB) 100% 68%)); }
+/* The practice loop: the bars outside it dimmed. */
+.song-map-bars.has-loop::before, .song-map-bars.has-loop::after { content: ''; position: absolute; top: 0; bottom: 0; background: rgb(4 6 16 / 0.62); pointer-events: none; }
+.song-map-bars.has-loop::before { left: 0; width: var(--a); }
+.song-map-bars.has-loop::after { left: var(--b); right: 0; }
+.song-map-sections { position: relative; height: 18px; }
+.song-map-section { position: absolute; top: 0; height: 100%; box-sizing: border-box; padding: 0 0 0 4px; border: 0; border-left: 1px solid var(--hair-strong); background: none;
+  font: inherit; font-size: 10px; line-height: 18px; letter-spacing: 0.12em; text-transform: uppercase; text-align: left; color: var(--ink-mute);
+  white-space: nowrap; overflow: hidden; text-overflow: clip; }
+button.song-map-section { cursor: pointer; }
+button.song-map-section:hover { color: var(--ink); }
+button.song-map-section:focus-visible { outline: 2px solid var(--lightA); outline-offset: 1px; }
 /* The loop's start and end: two handles on one track, the loop lit between them, the song's
    sections as ticks. */
 .practice-times { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--ink-soft); }
