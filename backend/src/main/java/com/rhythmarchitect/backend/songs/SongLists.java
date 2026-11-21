@@ -60,7 +60,7 @@ public final class SongLists {
         boolean wantTitle = !Text.norm(title).isEmpty(), wantArtist = !Text.norm(artist).isEmpty();
         return songs.stream()
             .map(s -> {
-                int t = Text.match(title(s), title), a = Text.match(artist(s), artist);
+                int t = Text.searchMatch(title(s), title), a = Text.searchMatch(artist(s), artist);
                 boolean ok = (!wantTitle || t > 0) && (!wantArtist || a > 0) && (t > 0 || a > 0);
                 return new Hit(s, ok ? t * 2 + a : 0);
             })
@@ -78,7 +78,7 @@ public final class SongLists {
         boolean any = Text.norm(q).isEmpty();
         return songs.stream()
             .filter(s -> s.path("favorite").asBoolean(false))
-            .filter(s -> any || Text.match(title(s), q) > 0 || Text.match(artist(s), q) > 0)
+            .filter(s -> any || Text.searchMatch(title(s), q) > 0 || Text.searchMatch(artist(s), q) > 0)
             .sorted(Comparator.comparing(SongLists::createdAt).reversed())
             .map(SongLists::summary)
             .toList();

@@ -7,6 +7,7 @@ import { RiveAnim } from '../../rive/RiveAnim';
 import { href } from '../../lib/router';
 import { Icon } from '../Icon';
 import { VideoSlot } from '../VideoSlot';
+import { FeelAsk } from './FeelAsk';
 import { fmtTime } from '../../lib/format';
 import { createStore, useStore, type ReadStore } from '../../lib/store';
 
@@ -42,6 +43,8 @@ interface Props {
   saveError?: string;
   /** What the controller (main.Main on the server) counted for the run. */
   model?: ReadStore<{ state: PlayState | null } | null>;
+  /** The kept run's id: the results ask how it felt (FeelAsk). */
+  feelRun?: string | null;
   onRetry: () => void;
 }
 
@@ -70,7 +73,7 @@ const rise = (i: number) => ({
   transition: { duration: 0.7, delay: 0.25 + i * 0.08, ease: EASE_OUT },
 });
 
-export function Results({ song, difficulty, result, previousBest, saving, saveError, model: modelStore, onRetry }: Props) {
+export function Results({ song, difficulty, result, previousBest, saving, saveError, model: modelStore, feelRun, onRetry }: Props) {
   const model = useStore(modelStore ?? NO_MODEL);
   const score = useCountUp(result.score);
   const stars = starsFor(result.grade);
@@ -155,6 +158,8 @@ export function Results({ song, difficulty, result, previousBest, saving, saveEr
         <p className="muted small save-state" aria-live="polite">
           {saving === 'skipped' ? (song.id.startsWith('test-') ? 'Testing ground run: not saved.' : 'Autoplay run: not saved.') : saving === 'saving' ? 'Saving your score' : saving === 'saved' ? 'Score saved.' : saveError ? `Couldn't save this score: ${saveError}` : "Couldn't save this score."}
         </p>
+
+        {saving === 'saved' && feelRun && <FeelAsk key={feelRun} songId={song.id} difficulty={difficulty} run={feelRun} />}
 
         <motion.div className="results-actions" {...rise(6)}>
           <button type="button" className="btn btn-primary" onClick={onRetry} autoFocus><Icon name="retry" /> Play again <kbd>R</kbd></button>

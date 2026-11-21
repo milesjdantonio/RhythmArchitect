@@ -27,7 +27,7 @@ import { barOf, beatAt, divisionAt, secAt, type BeatMap } from './beatmap';
 import type { Syllable } from './voice';
 
 type Part = 'vocals' | 'drums' | 'bass' | 'other';
-interface Cand { sec: number; t: number; beat: number; part: Part; strength: number; midi: number | null; len: number }
+interface Cand { sec: number; t: number; beat: number; part: Part; strength: number; midi: number | null; len: number; /** A chord's other note (voice.ts Syllable.also). */ extra?: boolean }
 
 /** How much each part's notes count when choosing a phrase's lead (the singing first). */
 const LEAD_WEIGHT: Record<Part, number> = { vocals: 1.6, other: 1.2, drums: 1, bass: 0.6 };
@@ -38,7 +38,7 @@ const STAY = 0.7;
 /** A phrase whose lead rhythm is this alike an earlier one's (16ths in common) takes its pattern. */
 const ALIKE = 0.75;
 /** Easy takes the second part only where the lead has under this share of the notes it wants. */
-const EASY_FILL = 0.5;
+const EASY_FILL = 0.9;
 /** A note held this long (s, and an 8th or more) is a hold. */
 const HOLD_SEC = 0.35;
 const HOLD_BEATS = 0.5;
@@ -87,18 +87,22 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
 
   // Every part's notes, on the grid (one per part per grid point: the strongest).
   const byKey = new Map<string, Cand>();
-  const add = (sec: number, part: Part, strength: number, midi: number | null, len: number) => {
+  const add = (sec: number, part: Part, strength: number, midi: number | null, len: number, extra = false) => {
     const beat = gridBeat(sec);
     const at = secOf(beat);
     if (at < o.offset - 0.001) return;
-    const key = `${part}:${beat.toFixed(4)}`;
+    const key = `${part}${extra ? '+' : ''}:${beat.toFixed(4)}`;
     const had = byKey.get(key);
     if (had && had.strength >= strength) return;
-    byKey.set(key, { sec: at, t: Math.round(((at - o.offset) / spb) * 1000) / 1000, beat, part, strength, midi, len });
+    byKey.set(key, { sec: at, t: Math.round(((at - o.offset) / spb) * 1000) / 1000, beat, part, strength, midi, len, ...(extra ? { extra } : {}) });
   };
   for (const s of o.voice) add(s.sec, 'vocals', 0.4 + s.strength * 0.6, s.midi, s.len);
   const notesOther = o.played ?? [];
-  for (const s of notesOther) add(s.sec, 'other', 0.4 + s.strength * 0.6, s.midi, s.len);
+  for (const s of notesOther) {
+    add(s.sec, 'other', 0.4 + s.strength * 0.6, s.midi, s.len);
+    // A chord struck (the piano's two hands): its other note too, a chord where the difficulty has them.
+    if (s.also != null) add(s.sec, 'other', 0.4 + s.strength * 0.6, s.also, s.len, true);
+  }
   for (const e of o.events) {
     if (!e.part || e.part === 'vocals' || (e.part === 'other' && notesOther.length)) continue;
     // Drums have no pitch: the kick low, the rest high, so the lanes split them.
@@ -177,7 +181,7 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       const pool = takeSecond ? [...own, ...fillFrom, ...accents] : own;
       const slots = new Set(own.map((c) => slotOf(c, p)));
       const twin = patterns.find((q) => q.part === one && jaccard(q.slots, slots) >= ALIKE);
-      const weight = (c: Cand) => metricOf.get(c)! + c.strength * 0.6 + (c.part === one ? LEAD_FIRST : c.part === two ? 0 : -1);
+      const weight = (c: Cand) => metricOf.get(c)! + c.strength * 0.6 + (c.part === one ? LEAD_FIRST : c.part === two ? 0 : -1) - (c.extra ? 0.01 : 0);
       const chosen: { c: Cand; chord: boolean }[] = [];
       const clash = (c: Cand) => [...picked, ...chosen].find((x) => Math.abs(x.c.sec - c.sec) < minGap);
       const order = twin ? pool.filter((c) => twin.chosen.has(keyOf(c, p))) : [...pool].sort((a, b) => weight(b) - weight(a) || a.sec - b.sec);
@@ -187,7 +191,8 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
         if (!x) { chosen.push({ c, chord: false }); continue; }
         // Two parts striking together: a chord where the difficulty has them.
         const accent = c.part !== one && c.part !== two;
-        const together = !accent && Math.abs(x.c.sec - c.sec) < 0.002 && x.c.part !== c.part && !x.chord && chordsLeft > 0
+        // (Two parts, or one part's chord struck: a played chord's other note.)
+        const together = !accent && Math.abs(x.c.sec - c.sec) < 0.002 && (x.c.part !== c.part || !!c.extra !== !!x.c.extra) && !x.chord && chordsLeft > 0
           && (prof.chords === 'always' || (prof.chords === 'strong' && c.strength >= 0.6 && x.c.strength >= 0.6));
         if (together) { x.chord = true; chosen.push({ c, chord: true }); chordsLeft--; }
       }
@@ -210,6 +215,29 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       if (c.part !== 'drums' && len >= HOLD_SEC && len / spb >= minHold) { n.hold = true; n.len = Math.round((len / spb) * 1000) / 1000; }
       notes.push(n);
       pitchOf.set(n, c.midi);
+    }
+    // Lanes that mirror the tune: in each phrase a note's lane is where its pitch ranks among the
+    // phrase's notes (the lowest left, the highest right; two notes in the middle lanes), so the
+    // same note comes back to the same lane and a phrase's shape is the tune's. Flowing (below)
+    // moves a tile off it only where it would be awkward to play. (They all started in lane 0:
+    // Open Your Eyes' Ultra had 53% of its tiles there, 17% quick repeats, the same note in the
+    // same lane 26% of the time.)
+    const byPhrase = new Map<number, ChartNote[]>();
+    for (let i = 0; i < notes.length; i++) {
+      const p = phraseOf(picked[i].c.beat);
+      if (!byPhrase.has(p)) byPhrase.set(p, []);
+      byPhrase.get(p)!.push(notes[i]);
+    }
+    let lastLane = 1;
+    for (const list of byPhrase.values()) {
+      const pitches = [...new Set(list.map((n) => pitchOf.get(n)).filter((m): m is number => m != null))].sort((a, b) => a - b);
+      const span = Math.min(3, pitches.length - 1), base = Math.floor((3 - span) / 2);
+      for (const n of list) {
+        const m = pitchOf.get(n);
+        if (m == null || span <= 0) { n.lane = lastLane; continue; }
+        n.lane = base + Math.round((pitches.indexOf(m) / (pitches.length - 1)) * span);
+        lastLane = n.lane;
+      }
     }
     for (let i = 0; i + 1 < notes.length; i++) {
       if (Math.abs(notes[i + 1].t - notes[i].t) >= 0.002) continue;

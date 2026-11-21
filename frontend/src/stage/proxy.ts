@@ -34,7 +34,7 @@ export type ToStage =
   | { type: 'pulse'; at: number };
 /** Worker → page. */
 export type FromStage =
-  | { type: 'tick'; pads: Float32Array; particles: number; at: number; t: number }
+  | { type: 'tick'; pads: Float32Array; particles: number; at: number; t: number; res?: number }
   | { type: 'sky'; x: number; y: number; strength: number }
   | { type: 'ghost'; lane: number; kind: HitKind }
   | { type: 'lost'; why: string }
@@ -125,6 +125,7 @@ export class StageProxy {
       const m = e.data;
       if (m.type === 'tick') {
         this.pads = m.pads; this.particles = m.particles;
+        if (m.res !== undefined) this.res = m.res;
         this.fpsFrames++;
         if (!this.fpsSince) this.fpsSince = m.at;
         else if (m.at - this.fpsSince >= 500) { this.fps = (this.fpsFrames * 1000) / (m.at - this.fpsSince); this.fpsFrames = 0; this.fpsSince = m.at; }
@@ -246,6 +247,9 @@ export class StageProxy {
     return best;
   }
   get particleCount() { return this.particles; }
+  /** The share of the full resolution the stage draws now (Stage3D.resolution). */
+  get resolution() { return this.res; }
+  private res = 1;
 
   setTiming(spb: number, travel: number) { this.call('setTiming', spb, travel); }
   setHues(hues: [number, number]) { this.call('setHues', [...hues]); }

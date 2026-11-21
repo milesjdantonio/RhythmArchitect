@@ -23,7 +23,8 @@ export interface PerfProfile {
 
 export const PROFILES: Record<ProfileId, PerfProfile> = {
   /** A: one stage, WebGL. */
-  unified: { id: 'unified', renderer: 'webgl', uiFx: 'full', fpsCap: 0 },
+  // (Lite too: the full effects' blur and letter-spacing cost the stage frames on every chip; Nov 20.)
+  unified: { id: 'unified', renderer: 'webgl', uiFx: 'lite', fpsCap: 0 },
   /**
    * B: A drawn with WebGPU (every shader in stage/shaders.ts has a TSL twin in stage/gpu.ts,
    * tone-mapped per material so the light adds up as it does in A). Falls back to WebGL where

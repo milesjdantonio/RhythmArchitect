@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DIFFICULTIES, type Chart } from '../../src/api/types';
-import { Game, OVERDRIVE_GRACE, OVERDRIVE_LOW, gradeFor, laneForCode, multiplierFor, type GameEvent } from '../../src/game/engine';
-import { OVERDRIVE_LENGTH, PERFECTS_TO_CHARGE, POINT_SCALE, replayRun } from '../../src/game/score';
+import { Game, OVERDRIVE_GRACE, gradeFor, laneForCode, multiplierFor, type GameEvent } from '../../src/game/engine';
+import { OVERDRIVE_LENGTH, PERFECTS_TO_CHARGE, POINT_SCALE, OVERDRIVE_DRAIN, replayRun, tileTimes } from '../../src/game/score';
 
 // 120 bpm: one beat = 0.5 s.
 const chart: Chart = {
@@ -105,16 +105,25 @@ describe('game engine', () => {
     while (!g.charged) hit();
     expect(i).toBe(PERFECTS_TO_CHARGE); // Perfects fill the charge (3 each, to 100)
     expect(g.overdrive()).toEqual([{ type: 'overdrive', level: 1 }]);
-    for (let k = 0; k < OVERDRIVE_LENGTH; k++) hit();
+    // Half a second apart: each tile uses one, and the half second before it 0.75 more
+    // (OVERDRIVE_DRAIN), so 27 tiles have it and the 28th's half second runs it out.
+    const per = 1 + 0.5 * OVERDRIVE_DRAIN, lasted = Math.ceil(OVERDRIVE_LENGTH / per) - 1;
+    for (let k = 0; k < OVERDRIVE_LENGTH && g.overdriveLevel; k++) {
+      // The bar drops between tiles too.
+      const before = g.overdriveLeft;
+      g.update(i * 0.5 - 0.25);
+      expect(g.overdriveLeft).toBeLessThan(before);
+      hit();
+    }
+    expect(i).toBe(PERFECTS_TO_CHARGE + lasted + 1);
     const kinds = events.map((e) => e.type);
     expect(kinds.filter((k) => k === 'overdriveLow')).toHaveLength(1);
-    // Told with the hit that leaves OVERDRIVE_LOW tiles (just before its judgement), before it runs out on the last one.
-    expect(kinds.slice(0, kinds.indexOf('overdriveLow')).filter((k) => k === 'judge')).toHaveLength(PERFECTS_TO_CHARGE + OVERDRIVE_LENGTH - OVERDRIVE_LOW - 1);
     expect(kinds.indexOf('overdriveLow')).toBeLessThan(kinds.indexOf('overdriveEnd'));
     expect(g.overdriveLevel).toBe(0);
     expect(events.find((e) => e.type === 'overdriveEnd')).toEqual({ type: 'overdriveEnd', broken: false });
-    expect(g.overdriveStats).toEqual({ peak: 1, fired: 1, bonus: OVERDRIVE_LENGTH * 100 * POINT_SCALE });
-    expect(replayRun(g.run)!.score).toBe(g.stats.score);
+    expect(g.overdriveStats).toEqual({ peak: 1, fired: 1, bonus: lasted * 100 * POINT_SCALE });
+    // The server's replay, on the chart's clock, counts the same.
+    expect(replayRun(g.run, tileTimes(long, 120))!.score).toBe(g.stats.score);
   });
 
   it("Overdrive's grace: for OVERDRIVE_GRACE seconds after the press a miss doesn't end it; after that one does", () => {
@@ -140,7 +149,7 @@ describe('game engine', () => {
     expect(g.update(late + 0.3)).toContainEqual({ type: 'overdriveEnd', broken: true });
     expect(g.charge).toBe(0);
     expect(g.run).toMatch(/O.*M.*U.*M$/);
-    expect(replayRun(g.run)!.score).toBe(g.stats.score);
+    expect(replayRun(g.run, tileTimes(long, 120))!.score).toBe(g.stats.score);
   });
 
   it('grades, multipliers and keys', () => {

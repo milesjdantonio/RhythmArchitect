@@ -26,6 +26,29 @@ describe("the score: main.Score's rules, the multiplier and holds on top", () =>
     expect(s.run).toBe(RUN);
   });
 
+  it('Overdrive also drains as the song plays, by the chart clock (GameScoreTest, RunReplay)', () => {
+    const s = new RunScore();
+    for (let i = 0; i < PERFECTS_TO_CHARGE; i++) s.add('PERFECT');
+    expect(s.startOverdrive()).toBe(true);
+    s.passTime(10);
+    expect(s.overdriveLeft).toBe(OVERDRIVE_LENGTH - 15);
+    s.add('PERFECT');
+    expect(s.overdriveLeft).toBe(OVERDRIVE_LENGTH - 16);
+    s.passTime(-5);
+    s.passTime(21.333);
+    expect(s.overdrive).toBe(1);
+    s.passTime(0.001);
+    expect(s.overdrive).toBe(0);
+    // Replayed on a chart: the k-th tile judged is at the k-th tile's time. Tiles a second apart,
+    // then a 40 s gap: 48 - 1 - 1.5 = 45.5 left after the first, then 60 tiles' worth goes.
+    const times = [...Array.from({ length: 36 }, (_, i) => i), 76];
+    const run = `${'P'.repeat(34)}OPPP`;
+    const r = replayRun(run, times)!;
+    expect(r.overdrive).toBe(0);
+    expect(replayRun(run)!.overdrive).toBe(1); // no chart, no clock
+    expect(r.score).toBeLessThan(replayRun(run)!.score); // the last tile scored without it
+  });
+
   it('multiplier, hold bonus, and runs that are not runs', () => {
     expect([0, 9, 10, 19, 20, 30, 39, 40, 99].map(multiplierFor)).toEqual([1, 1, 2, 2, 3, 4, 4, 5, 5]);
     expect(holdBonus(0.4)).toBe(120);

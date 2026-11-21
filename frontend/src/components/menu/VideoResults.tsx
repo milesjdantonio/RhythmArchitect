@@ -22,8 +22,10 @@ const previewFrom = (seconds: number) => (seconds > 90 ? Math.min(60, Math.round
  * Preview (it plays right there, in its own player under the row) and a Generate beatmap for that
  * video. So the player chooses which video is mapped, rather than the search guessing.
  */
-export function VideoResults({ search, busy, onStage, onGenerate }: {
+export function VideoResults({ search, busy, onStage, onGenerate, others = false }: {
   search: VideoSearch;
+  /** The song typed is mapped already (it's in the results above): these are its other videos, or other songs of the name. */
+  others?: boolean;
   /** The Generate dialog is open: no previews, no new ones. */
   busy: boolean;
   /** The song on stage (picking one stops a preview). */
@@ -94,7 +96,7 @@ export function VideoResults({ search, busy, onStage, onGenerate }: {
   return (
     <section className={`yt-results ${looking && results.length ? 'is-stale' : ''}`} aria-labelledby="yt-head" aria-busy={looking}>
       <h3 id="yt-head" className="yt-head">
-        <span className="yt-mark" aria-hidden /> On YouTube
+        <span className="yt-mark" aria-hidden /> {others ? 'Other versions on YouTube' : 'On YouTube'}
         {looking && <span className="yt-busy muted">Searching</span>}
       </h3>
       {results.length > 0 && <p className="yt-note muted">Preview a video, then generate a beatmap from the one you want.</p>}

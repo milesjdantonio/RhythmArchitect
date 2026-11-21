@@ -309,10 +309,33 @@ export async function trainedCharts(ort: Ort, pcm: Float32Array, sr: number, o: 
     const stars = tries.length > 1
       ? `${tries.map((t) => `${t.star}★`).join(' + ')} by stretch of the song (Ultra met ${pct(covers[0])} of its ${targets.reduce((a, b) => a + b, 0)}-tile target at ${STAR}★; ${tries.slice(1).map((t, i) => `with ${t.star}★ ${pct(covers[i + 1])}`).join(', ')})`
       : `${STAR}★ (Ultra met ${pct(covers[0])} of its target)`;
-    return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${stars}; each difficulty a subset, the easier ones thinned to their star ratings: ${DIFFS.map((d) => `${d[0].toUpperCase()} ${charts[d].stars?.toFixed(2)}★`).join(' ')}; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds${place.note}${sung.note})` };
+    return { charts, mapper: `Ensomi R2 trained mapper (${v}, ${stars}; ${canLead(on) ? "every difficulty the song's own lines (leadline.ts), on its grid, the easier ones at their star ratings" : "each difficulty a subset, the easier ones thinned to their star ratings"}: ${DIFFS.map((d) => `${d[0].toUpperCase()} ${charts[d].stars?.toFixed(2)}★`).join(' ')}; tiles moved ${Math.round(shift * 1000)} ms onto the measured sounds${place.note}${sung.note})` };
   } finally {
     await models.dispose().catch(() => {});
   }
+}
+
+/** The song can be charted from its own lines (leadline.ts): it was split, its sounds labelled by part, and some part's notes heard. */
+export const canLead = (o: Pick<Placing, 'events' | 'voice' | 'played'>) => !!(o.voice?.length || o.played?.length) && hasParts(o.events);
+
+/** osu!mania's star rating without the model: the runtime's core, handed its WebAssembly (which a bundler moves). */
+async function rater(): Promise<RateChart> {
+  const init = (await import('../../node_modules/@ensomi/runtime/pkg/ensomi_generate_wasm.js')).default;
+  await init({ module_or_path: coreUrl });
+  return (await import('@ensomi/runtime')).starRating;
+}
+
+/**
+ * Every difficulty from the song's own lines, without the trained mapper: when the song was split
+ * (canLead) and the beat tracker's grid is steady (the worker decides), the model's chart would
+ * be used for nothing (its grid replaces the first only where that isn't steady), so its ~120 MB
+ * and its charting are skipped.
+ */
+export async function linesCharts(on: Placing, onProgress?: (p: ChartProgress) => void): Promise<Trained> {
+  const place = placer(on);
+  const charts = await place.calibrated([], await rater());
+  for (const d of DIFFS) onProgress?.({ difficulty: d, done: 1, total: 1, tiles: charts[d].notes.length });
+  return { charts, mapper: `The song's own lines (leadline.ts: split into its parts, the beat steady, so the trained mapper wasn't needed; ${DIFFS.map((d) => `${d[0].toUpperCase()} ${charts[d].stars?.toFixed(2)}★`).join(' ')}${place.note})` };
 }
 
 /**
@@ -587,8 +610,8 @@ export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOption
   const thin = thinner(model, o, placed);
   // Every difficulty from the song's lines (leadline.ts) when the song was split; else thinned
   // from the trained mapper's chart.
-  const lead = o.voice?.length && hasParts(o.events)
-    ? leadLine({ bpm: o.bpm, offset: o.offset, events: o.events, voice: o.voice, played: o.played, map: placed?.map ?? null, meter: o.meter })
+  const lead = canLead(o)
+    ? leadLine({ bpm: o.bpm, offset: o.offset, events: o.events, voice: o.voice ?? [], played: o.played, map: placed?.map ?? null, meter: o.meter })
     : null;
   const make = (d: Difficulty, scale?: number) => (lead ? lead(d, scale) : thin(d, scale));
   const out = {} as Record<Difficulty, Chart>;

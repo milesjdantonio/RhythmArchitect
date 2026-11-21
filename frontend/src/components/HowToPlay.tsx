@@ -324,7 +324,7 @@ function topics(overdriveKey: string, laneKeys: string): Topic[] {
       id: 'overdrive', title: 'Overdrive',
       demo: () => <OverdriveDemo />,
       body: <>
-        <p>Accurate hits charge the bar: a Perfect most, a held-out hold too (about {PERFECTS_TO_CHARGE} Perfects in a row; hold {HOLD_CHARGE}). When it's full, press <kbd>{overdriveKey}</kbd>: +1 on the multiplier for {OVERDRIVE_LENGTH} tiles.</p>
+        <p>Accurate hits charge the bar: a Perfect most, a held-out hold too (about {PERFECTS_TO_CHARGE} Perfects in a row; hold {HOLD_CHARGE}). When it's full, press <kbd>{overdriveKey}</kbd>: +1 on the multiplier for up to {OVERDRIVE_LENGTH} tiles, draining as the song plays too, so use it in a busy stretch.</p>
         <p>Fill it again while it runs and press again to stack it, up to {MAX_OVERDRIVE} levels: ×{MAX_COMBO_MULTIPLIER + MAX_OVERDRIVE}.</p>
         <p className="muted">One miss ends every level, except in the {OVERDRIVE_GRACE} seconds after each press (time to get back to the lanes). When it ends, the bar starts again from empty.</p>
       </>,

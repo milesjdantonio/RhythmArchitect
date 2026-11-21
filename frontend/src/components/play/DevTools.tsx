@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { DIFFICULTIES, type Difficulty, type Song } from '../../api/types';
 import { mostMissed } from '../../game/heat';
+import { feelLine } from '../../game/feel';
 import { audioLevels, resyncPlaying } from '../../audio/playback';
 import { syncStatus, syncedOffset } from '../../audio/syncer';
 import { fallTime, type Game } from '../../game/engine';
@@ -23,6 +24,8 @@ export interface DevProbe {
   /** Song time in seconds (negative during the count-in), or null before a run starts. */
   time(): number | null;
   fps(): number;
+  /** Slow moments: what was set off when the frames fell (game/slow.ts). */
+  slow(): import('../../game/slow').SlowWatch;
   particles(): number | null;
   /** Recent hit offsets in seconds (negative = early). */
   offsets(): number[];
@@ -44,7 +47,7 @@ interface Props {
 }
 
 const BOTS: { mode: BotMode; label: string }[] = [
-  { mode: 'off', label: 'Off' }, { mode: 'perfect', label: 'Perfect' }, { mode: 'human', label: 'Human' }, { mode: 'sloppy', label: 'Sloppy' },
+  { mode: 'off', label: 'Off' }, { mode: 'perfect', label: 'On (perfect)' },
 ];
 const AHEAD = 4; // seconds of queue shown
 
@@ -174,6 +177,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
           </div>
           {song.source.kind === 'youtube' && song.source.credit && <p className="small muted dev-credit">{song.source.credit}</p>}
         </div>
+        <SlowMoments watch={probe.slow()} title={song.title} />
       </section>
 
       <section className="dev-sec">
@@ -210,6 +214,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
               return `${n ? ((n.t * 60) / song.bpm).toFixed(1) : '?'} s lane ${n ? n.lane + 1 : '?'}: ${x.miss}/${x.seen}`;
             }).join(' · ') || 'nothing yet'} ({song.heat[difficulty]!.runs} runs)</dd></div>
           )}
+          {feelLine(song.feel?.[difficulty]) && <div><dt>Felt</dt><dd>{feelLine(song.feel?.[difficulty])}</dd></div>}
         </dl>
         <p className="dev-note mono">{song.report.sections.map((s) => `${s.label} @${s.beat}`).join(' · ')}</p>
         {listenLog && (
@@ -296,4 +301,38 @@ function drawErrors(c: HTMLCanvasElement | null, probe: DevProbe) {
   g.font = '9px "JetBrains Mono", monospace';
   g.fillText('early', 2, h - 2);
   g.fillText('late', w - 22, h - 2);
+}
+
+/**
+ * When the frames fell during the runs here, and what was set off just before (game/slow.ts):
+ * the likeliest cost first, the last few moments, and the whole log to download.
+ */
+function SlowMoments({ watch, title }: { watch: import('../../game/slow').SlowWatch; title: string }) {
+  const list = watch.moments;
+  const download = () => {
+    const url = URL.createObjectURL(new Blob([JSON.stringify({ song: title, at: new Date().toISOString(), agent: navigator.userAgent, moments: list, suspects: watch.suspects() }, null, 1)], { type: 'application/json' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `slow-moments-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+  return (
+    <div className="dev-sync">
+      <span className="label">Slow moments</span>
+      {!list.length ? <p className="small muted">None yet: the frames haven't fallen in a run here.</p> : (
+        <>
+          <p className="small muted">Most often just before: {watch.suspects().slice(0, 4).map((s) => `${s.what} (${s.moments})`).join(', ') || 'nothing set off'}</p>
+          <ol className="dev-next mono">
+            {list.slice(-4).reverse().map((m, i) => (
+              <li key={i}>{m.song.toFixed(1)} s: {m.stage} fps stage, {m.page} page (usual {m.usual}), res {Math.round(m.res * 100)}% · {m.during.join(', ') || 'nothing set off'}</li>
+            ))}
+          </ol>
+          <div className="dev-fx"><button type="button" className="btn btn-sm" onClick={download} title="When the frames fell and what was set off just before; nothing else">Download slow moments</button></div>
+        </>
+      )}
+    </div>
+  );
 }

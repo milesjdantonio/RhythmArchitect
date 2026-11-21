@@ -51,8 +51,17 @@ public final class RunReplay {
         if (run == null || run.length() > 400_000 || !VALID.matcher(run).matches()) return null;
         if (chart != null && !fits(run, chart)) return null;
         GameScore s = new GameScore();
+        // The song's clock, as the game keeps it for Overdrive's drain: the k-th tile judged is at
+        // the k-th tile's time of the chart (GameScore.passTime between them).
+        double[] times = chart == null ? null : timesOf(chart);
+        int judged = 0;
         Matcher m = TOKEN.matcher(run);
         while (m.find()) {
+            char c = m.group().charAt(0);
+            if (times != null && m.group(1) == null && "PGELM".indexOf(c) >= 0) {
+                if (judged > 0 && judged < times.length) s.passTime(times[judged] - times[judged - 1]);
+                judged++;
+            }
             if (m.group(1) != null) {
                 s.addHoldDone(Integer.parseInt(m.group(1)) / 1000.0);
                 continue;
@@ -75,6 +84,19 @@ public final class RunReplay {
             }
         }
         return new Result(s.getScore(), s.getAccuracy() / 100, s.getMaxCombo());
+    }
+
+    /** The chart's tiles' times (seconds), in order; the chart is left as it was. */
+    static double[] timesOf(Queue<Note> chart) {
+        int n = chart.getSize();
+        double[] t = new double[n];
+        for (int i = 0; i < n; i++) {
+            Note x = chart.dequeue();
+            t[i] = x.getTimeStamp();
+            chart.enqueue(x);
+        }
+        java.util.Arrays.sort(t);
+        return t;
     }
 
     /**

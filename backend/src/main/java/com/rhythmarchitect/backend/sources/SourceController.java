@@ -52,7 +52,16 @@ public class SourceController {
     @GetMapping("/youtube/search")
     public VideoResults videos(@RequestParam(defaultValue = "") String title, @RequestParam(defaultValue = "") String artist) {
         checkFields(title, artist);
-        return new VideoResults(youtube.findAll(title.trim(), artist.trim()));
+        // A video already mapped isn't offered again (its song comes up in the search above it);
+        // another song of the same name still is.
+        java.util.Set<String> inBank = store.read(all -> {
+            java.util.Set<String> ids = new java.util.HashSet<>();
+            for (ObjectNode s : all) {
+                if ("youtube".equals(s.path("source").path("kind").asString(""))) ids.add(s.path("source").path("videoId").asString(""));
+            }
+            return ids;
+        });
+        return new VideoResults(youtube.findAll(title.trim(), artist.trim()).stream().filter(v -> !inBank.contains(v.videoId())).toList());
     }
 
     private static void checkFields(String title, String artist) {

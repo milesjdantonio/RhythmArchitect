@@ -14,6 +14,12 @@ describe('the singing (voice.ts)', () => {
     expect(s[0]).toMatchObject({ len: 0.4, midi: 67 });
   });
 
+  it('keeps a chord struck: another of its notes beside the longest, when they are 3 semitones or more apart', () => {
+    const s = syllables([note(1, 0.3, 0.8, 72), note(1.02, 0.2, 0.8, 60), note(2, 0.3, 0.8, 72), note(2.02, 0.2, 0.8, 73)]);
+    expect(s[0]).toMatchObject({ midi: 72, also: 60 });
+    expect(s[1].also).toBeUndefined(); // a semitone: bleed or a slide, not a chord
+  });
+
   it("counts a syllable only where the vocal carries a real share of the song's sound", () => {
     const sr = 1000;
     const mix = new Float32Array(3 * sr).fill(0.5);

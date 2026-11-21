@@ -27,12 +27,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Difficulty, FanChartRequest, NewSong, PlayInput, ScoreSubmit, Song, SongPatch, SongSummary } from '../src/api/types';
-import { keepRun, runInputs, startRun } from './play';
+import { keepRun, rateRun, runInputs, startRun } from './play';
 import { sortAtoZ } from '../src/library/bank';
 import { DIFFICULTIES } from '../src/api/types';
 import { rechartProblem, upgradeSong } from '../src/api/upgrade';
-import { replayRun, runFits } from '../src/game/score';
+import { replayRun, runFits, tileTimes } from '../src/game/score';
 import { addHeat } from '../src/game/heat';
+import { addFeel } from '../src/game/feel';
+import { norm, searchMatch } from '../src/library/near';
 import { gradeFor } from '../src/game/engine';
 import { builtInSongs } from './songs/builtins';
 import { fanSong } from '../src/mapping/osu';
@@ -42,23 +44,10 @@ type Next = (err?: unknown) => void;
 
 const MAX_FIELD = 120;
 
-/** Lowercase, no punctuation or accents, single spaces: how titles and artists are compared. */
-const norm = (s: string) => s.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
-/** How well `have` matches what was typed: exact 4, starts with it 3, a whole word 2, inside 1. */
-function match(have: string, typed: string) {
-  const h = norm(have), q = norm(typed);
-  if (!q) return 0;
-  if (h === q) return 4;
-  if (h.startsWith(q)) return 3;
-  if (h.split(' ').some((w) => w.startsWith(q)) || q.split(' ').every((w) => h.split(' ').some((x) => x.startsWith(w)))) return 2;
-  return h.includes(q) ? 1 : 0;
-}
-
 export function searchSongs(songs: Song[], title: string, artist: string): SongSummary[] {
   return songs
     .map((s) => {
-      const t = match(s.title, title), a = match(s.artist, artist);
+      const t = searchMatch(s.title, title), a = searchMatch(s.artist, artist);
       // Every field the player filled in has to match.
       const ok = (!norm(title) || t > 0) && (!norm(artist) || a > 0) && (t > 0 || a > 0);
       return { s, score: ok ? t * 2 + a : 0 };
@@ -86,7 +75,7 @@ export function librarySongs(songs: Song[]): SongSummary[] {
 export function favoriteSongs(songs: Song[], q: string): SongSummary[] {
   const query = norm(q);
   return songs
-    .filter((s) => s.favorite && (!query || match(s.title, q) > 0 || match(s.artist, q) > 0))
+    .filter((s) => s.favorite && (!query || searchMatch(s.title, q) > 0 || searchMatch(s.artist, q) > 0))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .map(summary);
 }
@@ -271,10 +260,23 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           // A difficulty whose chart changed loses its best score (it was set on another chart).
           for (const d of DIFFICULTIES) {
             const same = JSON.stringify(song.charts[d]?.notes ?? []) === JSON.stringify(u.charts[d].notes);
-            if (!same) { delete song.best[d]; if (song.heat) delete song.heat[d]; }
+            if (!same) { delete song.best[d]; if (song.heat) delete song.heat[d]; if (song.feel) delete song.feel[d]; }
             song.charts[d] = { difficulty: d, lanes: 4, notes: u.charts[d].notes };
           }
           song.report = { ...song.report, ladder: u.ladder };
+          save(songs);
+          return send(res, 200, song);
+        }
+        if (parts.length === 3 && parts[2] === 'feel' && method === 'POST') {
+          // How a run felt (RunFeel): only a run whose score was kept, once (rateRun: PlayController.rate).
+          const body = (await readJson(req)) as { difficulty?: Difficulty; play?: unknown; feel?: unknown; why?: unknown };
+          const d = body?.difficulty as Difficulty;
+          if (!DIFFICULTIES.includes(d)) return fail(res, 400, 'Bad difficulty');
+          // Checked first, so a bad answer doesn't use up the run's one say.
+          if (!addFeel(structuredClone({ charts: song.charts, feel: song.feel }), d, body.feel, body.why)) return fail(res, 400, 'Bad feel');
+          const refusal = rateRun(body.play, song.id, d);
+          if (refusal) return fail(res, refusal.status, refusal.message);
+          addFeel(song, d, body.feel, body.why);
           save(songs);
           return send(res, 200, song);
         }
@@ -287,7 +289,7 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           // It must be a run the controller reviewed and passed, kept once (keepRun: PlayController.keep).
           if (typeof body.run !== 'string') return fail(res, 400, 'Send the run as the game recorded it');
           const chart = song.charts[body.difficulty] ?? { difficulty: body.difficulty, lanes: 4, notes: [] };
-          const counted = replayRun(body.run);
+          const counted = replayRun(body.run, tileTimes(chart, song.bpm));
           const replayed = counted && !runFits(body.run, chart, song.bpm) ? null : counted;
           if (!replayed) return fail(res, 400, 'Bad run');
           const refusal = keepRun(body.play, song.id, body.difficulty, body.run);
@@ -344,7 +346,12 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
         if (!title) return fail(res, 400, 'Type the title of the song (or paste its YouTube link).');
         if (title.length > 300 || artist.length > MAX_FIELD) return fail(res, 400, `Keep the title and artist under ${MAX_FIELD} characters each.`);
         // The best video, or (search) the videos to choose from.
-        return send(res, 200, parts.length === 1 ? await findVideo(title, artist) : { results: await findVideos(title, artist) });
+        if (parts.length === 1) return send(res, 200, await findVideo(title, artist));
+        // A video already mapped isn't offered again (its song comes up in the search above it);
+        // another song of the same name still is.
+        // (Not the e2e tests' fixture video, MOCK_YT_VIDEO: it's every test's video, mapped by the first.)
+        const inBank = new Set(load().map((x) => (x.source?.kind === 'youtube' ? x.source.videoId : null)).filter((v) => v && v !== process.env.MOCK_YT_VIDEO));
+        return send(res, 200, { results: (await findVideos(title, artist)).filter((v) => !inBank.has(v.videoId)) });
       }
       if (parts[0] === 'fan-chart' && parts.length === 1 && method === 'POST') {
         const body = (await readJson(req)) as FanChartRequest;

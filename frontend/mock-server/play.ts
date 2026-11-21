@@ -7,7 +7,7 @@
 // and a best is kept only from a run it passed (keepRun).
 
 import type { Chart, Difficulty, PlayInput, PlayState, Song } from '../src/api/types';
-import { replayRun, runFits } from '../src/game/score';
+import { replayRun, runFits, tileTimes } from '../src/game/score';
 import { InputReview } from './review';
 
 type Result = 'PERFECT' | 'GOOD' | 'EARLY' | 'LATE' | 'MISS';
@@ -40,6 +40,8 @@ class MainRun {
   readonly difficulty: Difficulty;
   readonly practice: boolean;
   kept = false;
+  /** The player said how it felt (once a run). */
+  rated = false;
 
   constructor(song: Song, difficulty: Difficulty, part?: { from: number; to: number }) {
     this.songId = song.id;
@@ -89,7 +91,7 @@ class MainRun {
     if (typeof more !== 'string' || this.run.length + more.length > 400_000) { this.refused = true; return; }
     if (!more) return;
     this.run += more;
-    const c = runFits(this.run, this.chart, this.bpm) ? replayRun(this.run) : null;
+    const c = runFits(this.run, this.chart, this.bpm) ? replayRun(this.run, tileTimes(this.chart, this.bpm)) : null;
     if (!c) { this.refused = true; return; }
     this.confirmed = { score: c.score, accuracy: c.accuracy, maxCombo: c.maxCombo };
   }
@@ -166,5 +168,16 @@ export function keepRun(id: unknown, songId: string, difficulty: Difficulty, jud
   run.reviewer.reviewRun(judged);
   if (!run.reviewer.passed) return { status: 422, message: `The controller flagged this run (${run.reviewer.why()}), so its score wasn't kept` };
   run.kept = true;
+  return null;
+}
+
+/** The player says how a run felt (the feel route; PlayController.rate): a kept run of this song and difficulty, once. */
+export function rateRun(id: unknown, songId: string, difficulty: Difficulty): { status: number; message: string } | null {
+  const run = typeof id === 'string' ? runs.get(id) : undefined;
+  if (!run) return { status: 422, message: "The controller didn't review this run, so how it felt wasn't counted" };
+  if (run.songId !== songId || run.difficulty !== difficulty) return { status: 422, message: 'That run was of another song or difficulty' };
+  if (!run.kept) return { status: 422, message: 'Only a run whose score was kept can say how it felt' };
+  if (run.rated) return { status: 409, message: 'That run already said how it felt' };
+  run.rated = true;
   return null;
 }

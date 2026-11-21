@@ -89,7 +89,8 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
     // whole mix (the beat map and the repeats are built from those: found per part they charted
     // 2 phrases alike where the mix gave 11), and each is then labelled with the part it came from
     // (partOf), so every phrase of a chart can follow one part; the vocals give the syllables.
-    if ((split || trained) && gpu && ort) {
+    // (The page says whether: WebGPU there, and splitting not switched off: stemModel.ts canSplit.)
+    if (split && gpu && ort) {
       try {
         const { splitStems } = await import('./stems');
         stems = await splitStems(ort, pcm, sr, (stage, p) => post({ progress: stage === 'download' ? 'getting the song splitter' : 'splitting the song into its parts', p }), stereo);
@@ -106,7 +107,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
     mapped = true;
     if (!charting) return;
     try {
-      const { trainedCharts } = await import('./ensomi');
+      const { trainedCharts, linesCharts, canLead } = await import('./ensomi');
       // The trained mapper's own, larger beat tracker (right or exactly half or double on 27 of 28
       // test songs) sets the grid when the beat tracker found no steady beat (the grid is the onset
       // mapper's guess, which reads fast songs at 2/3 of their tempo), and when the two trackers
@@ -144,7 +145,12 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       } else voiceNote = gpu ? '; no parts (the split failed)' : '; no parts (no WebGPU to split the song)';
       // (Dev: what the steps after the model work from, handed back with the charts: ensomiModel.ts STUDY_KEY.)
       const raws: { star: number; objects: { lane: number; start_ms: number; end_ms?: number }[]; shift: number }[] = [];
-      const out = await trainedCharts(ort!, pcm, sr, {
+      const on = { bpm: result.bpm, offset: result.offset, events: result.events, onGrid: result.onBeatGrid, meter: result.meter, beats, voice, played };
+      // Split, its parts heard, and the beat tracker's grid steady (the model's grid would never
+      // replace it: regrid below): every difficulty is the song's own lines, so the trained mapper
+      // (its ~120 MB and its charting) isn't needed. Otherwise it charts, and its grid may be used.
+      const lines = !!(result.gridUsed && result.onBeatGrid && beats?.length && canLead(on));
+      const out = lines ? await linesCharts(on, (p) => post({ chart: p })) : await trainedCharts(ort!, pcm, sr, {
         ...(trained!.study ? { onRaw: (star: number, objects: { lane: number; start_ms: number; end_ms?: number }[], shift: number) => raws.push({ star, objects: objects.map((x) => ({ lane: x.lane, start_ms: x.start_ms, end_ms: x.end_ms })), shift }) } : {}),
         base: trained!.base, title: trained!.title, artist: trained!.artist,
         bpm: result.bpm, offset: result.offset, events: result.events,

@@ -142,6 +142,28 @@ class GameScoreTest
     }
 
     @Test
+    void overdriveAlsoDrainsAsTheSongPlays()
+    {
+        GameScore s = new GameScore();
+        for(int i = 0; i < 34; i++)
+        {
+            s.addHit(HitResult.PERFECT);
+        }
+        assertEquals(true, s.startOverdrive());
+        s.passTime(10);
+        assertEquals(GameScore.OVERDRIVE_LENGTH - 15, s.getOverdriveLeft(), "1.5 tiles' worth a second");
+        s.addHit(HitResult.PERFECT);
+        assertEquals(GameScore.OVERDRIVE_LENGTH - 16, s.getOverdriveLeft(), "and one a tile");
+        s.passTime(-5);
+        assertEquals(GameScore.OVERDRIVE_LENGTH - 16, s.getOverdriveLeft(), "time doesn't run back");
+        s.passTime(21.333);
+        assertEquals(1, s.getOverdrive(), "31.9995 tiles' worth: a sliver left");
+        s.passTime(0.001);
+        assertEquals(0, s.getOverdrive(), "run out with no tile judged");
+        assertEquals(0, s.getCharge());
+    }
+
+    @Test
     void aStrayPressScoresNothingAndDrainsTheCharge()
     {
         GameScore s = new GameScore();

@@ -23,7 +23,9 @@ package main;
  * length again, up to {@link #MAX_OVERDRIVE}; at the top level it can't be set off. A single miss
  * ends it (every level), except in its grace: from each press until the game ends the grace
  * ({@link #endGrace()}, {@link #OVERDRIVE_GRACE} seconds later) a miss doesn't. Otherwise it ends
- * when the length runs out.</p>
+ * when the length runs out: each tile judged uses one, and it drops on its own as the song plays,
+ * {@link #OVERDRIVE_DRAIN} tiles' worth a second ({@link #passTime(double)}), so a sparse stretch
+ * doesn't keep it going.</p>
  *
  * <p>The browser game counts the same way (frontend/src/game/score.ts, overdrive.ts); the server
  * replays each run through this class before it keeps a best score.</p>
@@ -36,6 +38,8 @@ public class GameScore extends Score
     public static final int MAX_OVERDRIVE = 3;
     /** Tiles judged before Overdrive ends. */
     public static final int OVERDRIVE_LENGTH = 48;
+    /** Tiles' worth of Overdrive's length used up each second of the song, besides the tiles. */
+    public static final double OVERDRIVE_DRAIN = 1.5;
     /** Seconds after each press when a miss doesn't end Overdrive (the game times it). */
     public static final double OVERDRIVE_GRACE = 5;
     /** The highest combo multiplier. */
@@ -50,7 +54,7 @@ public class GameScore extends Score
     private long total;
     private int charge;
     private int overdrive;
-    private int overdriveLeft;
+    private double overdriveLeft;
     private boolean grace;
 
     /**
@@ -223,7 +227,24 @@ public class GameScore extends Score
         charge = Math.max(0, Math.min(CHARGE_FULL, charge + amount));
     }
 
-    private void spendOverdrive(int tiles)
+    /**
+     * The song plays on: Overdrive's length drops by {@link #OVERDRIVE_DRAIN} a second, and it
+     * ends when that runs it out. (The game and the server pass the time between tiles judged,
+     * by the chart's times: RunReplay.)
+     *
+     * @param seconds how much of the song passed (to the millisecond; nothing when not positive)
+     */
+    public void passTime(double seconds)
+    {
+        // Whole milliseconds: the browser counts the same, to the last bit (frontend score.ts).
+        long ms = Math.round(seconds * 1000);
+        if(ms > 0)
+        {
+            spendOverdrive(ms * OVERDRIVE_DRAIN / 1000.0);
+        }
+    }
+
+    private void spendOverdrive(double tiles)
     {
         if(overdrive == 0)
         {
@@ -277,7 +298,7 @@ public class GameScore extends Score
      */
     public int getOverdriveLeft()
     {
-        return overdriveLeft;
+        return (int) Math.ceil(overdriveLeft);
     }
 
     /**

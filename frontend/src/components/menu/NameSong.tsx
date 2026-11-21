@@ -22,6 +22,7 @@ import { isWaking, useServer } from '../../lib/server';
 import type { ScopeHandle } from '../generate/ListenScope';
 import { GenerateDialog, type Flow, buildProgress, titleCase } from '../generate/GenerateDialog';
 import { VideoResults } from './VideoResults';
+import { edits } from '../../library/near';
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 /** A title's core: no brackets, no "feat." credits ("One Dance (feat. Wizkid & Kyla)" is "one dance"). */
@@ -50,11 +51,15 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
   const scope = useRef<ScopeHandle>(null);
 
   const typed = title.trim() || artist.trim();
-  // The song typed is already mapped: it comes up in the results, and Generate isn't offered.
+  // The song typed is already mapped: it comes up in the results, and its video isn't offered
+  // again on YouTube (the server leaves the bank's videos out), but other videos are: another
+  // song of the same name, another version (the user, Nov 20).
   const want = core(title), by = norm(artist);
-  const mapped = !!want && search.results.some((r) => core(r.title) === want && (!by || norm(r.artist).includes(by) || by.includes(norm(r.artist))));
-  // Not mapped yet: its videos on YouTube, once the typing pauses (each search costs quota).
-  const videos = useVideoSearch(title, artist, !!title.trim() && !mapped);
+  // (A slip of the keys counts: "once dance" is One Dance.)
+  const sameTitle = (t: string) => core(t) === want || edits(core(t).replace(/ /g, ''), want.replace(/ /g, '')) <= (want.length >= 7 ? 2 : 1);
+  const mapped = want.length >= 3 && search.results.some((r) => sameTitle(r.title) && (!by || norm(r.artist).includes(by) || by.includes(norm(r.artist))));
+  // Its videos on YouTube, once the typing pauses (each search costs quota, and is kept).
+  const videos = useVideoSearch(title, artist, !!title.trim());
 
   const type = (field: 'title' | 'artist', v: string) => {
     if (field === 'title') setTitle(v); else setArtist(v);
@@ -148,13 +153,14 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
     const step = (label: string, part: Parameters<typeof buildProgress>[0], p = 0) =>
       setFlow((f) => (f && f.step !== 'done' ? { ...f, label: titleCase(label), progress: Math.max(f.progress, buildProgress(part, p)) } : f));
     // The trained mapper charts the song (ensomi.ts): its model (about 120 MB, cached after the
-    // first time) downloads while the song is listened to. Without it, with WebGPU, the song is
-    // split into its parts before mapping (stems.ts; the splitter's model, about 172 MB, likewise).
+    // first time) downloads while the song is listened to. With WebGPU the song is split into its
+    // parts after the listen (stems.ts; the splitter's model, about 172 MB, likewise): its lines
+    // make the charts. Unless splitting is switched off (canSplit: NO_STEMS_KEY).
     const base = ensomiBase();
-    const split = base ? Promise.resolve(false) : canSplit();
+    const split = canSplit();
     let fetched = 0;
     const fetching = base ? prefetchEnsomi(base, (p) => { fetched = p; }).catch(() => {}) : null;
-    if (!base) void split.then((yes) => { if (yes) prefetchStemModel().catch(() => {}); });
+    void split.then((yes) => { if (yes) prefetchStemModel().catch(() => {}); });
     try {
       const heard = await listenTo(stream, {
         videoId: video.videoId, seconds: video.seconds, signal,
@@ -326,9 +332,9 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
         {typed && search.status === 'done' && search.results.length === 0 && (
           <p className="results-hint muted">No beatmap for that yet.</p>
         )}
-        {/* Not mapped yet: the song's videos on YouTube, to preview and to map the one chosen. */}
-        {typed && !mapped && (title.trim()
-          ? <VideoResults search={videos} busy={!!flow} onStage={onStage} onGenerate={generate} />
+        {/* The song's videos on YouTube (the bank's left out), to preview and to map the one chosen. */}
+        {typed && (title.trim()
+          ? <VideoResults search={videos} busy={!!flow} onStage={onStage} onGenerate={generate} others={mapped} />
           : <p className="results-hint muted">Add the title (or paste a YouTube link) to find the song on YouTube.</p>)}
         <AnimatePresence>
           {error && (

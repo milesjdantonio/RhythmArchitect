@@ -94,6 +94,8 @@ public class PlayController {
         boolean refused;
         /** Its score was kept (a run's score is kept once). */
         boolean kept;
+        /** The player said how it felt (once a run: SongController's feel route). */
+        boolean rated;
         RunReplay.Result confirmed = new RunReplay.Result(0, 1, 0);
         long used;
 
@@ -280,6 +282,26 @@ public class PlayController {
             r.review.reviewRun(runText);
             if (!r.review.passed()) throw new ApiException(422, "The controller flagged this run (" + r.review.why() + "), so its score wasn't kept");
             r.kept = true;
+        }
+    }
+
+    /**
+     * The player says how a run felt (SongController's feel route): it must be a run of this song
+     * and difficulty whose score was kept here, and not rated before. Throws why not.
+     */
+    public void rate(String runId, String songId, String difficulty) {
+        Run r;
+        synchronized (runs) {
+            r = runId == null ? null : runs.get(runId);
+        }
+        if (r == null) throw new ApiException(422, "The controller didn't review this run, so how it felt wasn't counted");
+        synchronized (r) {
+            if (!r.songId.equals(songId) || !r.level.name().equalsIgnoreCase(difficulty)) {
+                throw new ApiException(422, "That run was of another song or difficulty");
+            }
+            if (!r.kept) throw new ApiException(422, "Only a run whose score was kept can say how it felt");
+            if (r.rated) throw new ApiException(409, "That run already said how it felt");
+            r.rated = true;
         }
     }
 

@@ -1,7 +1,7 @@
 // Typed client for the songs, search and mapper API. Point VITE_API_BASE_URL at the real
 // backend; when it is empty the app talks to the mock in mock-server/ on the same origin.
 
-import type { ChartsUpdate, FanChartRequest, NewSong, PlayInput, PlayReply, PlayStart, ScoreSubmit, SearchResults, Song, SongList, SongPatch, SongSummary, VideoMatch, VideoResults } from './types';
+import type { ChartsUpdate, FanChartRequest, FeelSubmit, NewSong, PlayInput, PlayReply, PlayStart, ScoreSubmit, SearchResults, Song, SongList, SongPatch, SongSummary, VideoMatch, VideoResults } from './types';
 import { rethinSong, upgradeSong, upgradeSummary } from './upgrade';
 
 const BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
@@ -54,6 +54,8 @@ export const api = {
   updateSong: (id: string, patch: SongPatch) => song(request<Song>(`/songs/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(patch) })),
   deleteSong: (id: string) => request<void>(`/songs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   submitScore: (id: string, score: ScoreSubmit) => song(request<Song>(`/songs/${encodeURIComponent(id)}/scores`, { method: 'POST', body: JSON.stringify(score) })),
+  /** How a run felt: once a run, after its score was kept. */
+  sendFeel: (id: string, feel: FeelSubmit) => song(request<Song>(`/songs/${encodeURIComponent(id)}/feel`, { method: 'POST', body: JSON.stringify(feel) })),
   search: (title: string, artist: string, signal?: AbortSignal): Promise<SongSummary[]> =>
     request<SearchResults>(`/search?${new URLSearchParams({ title, artist })}`, { signal }).then(listOf),
   /** Every mapped song, A to Z by title: the music bank. */

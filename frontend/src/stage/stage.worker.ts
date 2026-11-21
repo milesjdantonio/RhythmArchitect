@@ -74,7 +74,7 @@ function loop(now: number) {
   }
   const pads = new Float32Array(8);
   for (let l = 0; l < 4; l++) { const p = stage.receptor(l); pads[l * 2] = p.x; pads[l * 2 + 1] = p.y; }
-  scope.postMessage({ type: 'tick', pads, particles: stage.particleCount, at: wall, t: started && carry ? t : -1 } satisfies FromStage, [pads.buffer]);
+  scope.postMessage({ type: 'tick', pads, particles: stage.particleCount, res: stage.resolution, at: wall, t: started && carry ? t : -1 } satisfies FromStage, [pads.buffer]);
 }
 
 // Messages that arrive while the stage is starting (WebGPU starts asynchronously) wait here.

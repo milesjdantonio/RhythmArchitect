@@ -173,6 +173,8 @@ export interface Song {
   favorite: boolean;
   /** Where players miss, per difficulty (the server keeps it from checked runs: game/heat.ts). */
   heat?: Partial<Record<Difficulty, TileHeat>>;
+  /** How runs felt, per difficulty (POST /api/songs/:id/feel after a kept run: game/feel.ts). */
+  feel?: Partial<Record<Difficulty, FeelCounts>>;
   /** Seeded test content; it can't be deleted from the dev tools. */
   builtIn?: boolean;
 }
@@ -330,6 +332,20 @@ export interface TileHeat {
   runs: number;
   seen: number[];
   miss: number[];
+}
+
+/** Why a run felt off: the notes didn't match the song, the timing, too hard, too easy. */
+export type FeelWhy = 'notes' | 'timing' | 'hard' | 'easy';
+
+/** A difficulty's answers: how many runs felt right and off, and how often each reason was given. */
+export type FeelCounts = Partial<Record<'right' | 'off' | FeelWhy, number>>;
+
+/** How a run felt (POST /api/songs/:id/feel): only for a run whose score was kept (`play`), once. */
+export interface FeelSubmit {
+  difficulty: Difficulty;
+  play: string;
+  feel: 'right' | 'off';
+  why?: FeelWhy[];
 }
 
 export interface ScoreSubmit {

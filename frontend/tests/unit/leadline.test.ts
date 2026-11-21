@@ -59,4 +59,38 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     const onBeat = easyNotes.filter((n) => Math.abs(n.t - Math.round(n.t)) < 1e-6).length;
     expect(onBeat / easyNotes.length).toBeGreaterThan(0.6);
   });
+
+  it('lanes mirror the tune: the lowest note left, the highest right, the same note the same lane', () => {
+    // A tune up and down a phrase, an 8th apart: C E G B G E C E ...
+    const tune = [60, 64, 67, 71, 67, 64];
+    const played = Array.from({ length: 24 }, (_, i) => ({ sec: i * 0.5, len: 0.2, midi: tune[i % tune.length], strength: 0.7 }));
+    const notes = leadLine({ bpm: 120, offset: 0, events: [], voice: [], played, map: null })('ultra').notes.sort((a, b) => a.t - b.t);
+    expect(notes.length).toBe(24);
+    const laneOf = new Map<number, Set<number>>();
+    notes.forEach((n, i) => { const m = tune[i % tune.length]; if (!laneOf.has(m)) laneOf.set(m, new Set()); laneOf.get(m)!.add(n.lane); });
+    // Each note keeps to one lane (most of the time), higher notes further right.
+    const main = (m: number) => Math.min(...laneOf.get(m)!);
+    expect(main(60)).toBeLessThan(main(67));
+    expect(main(64)).toBeLessThan(main(71));
+    let up = 0, steps = 0;
+    for (let i = 1; i < notes.length; i++) {
+      const dm = tune[i % tune.length] - tune[(i - 1) % tune.length], dl = notes[i].lane - notes[i - 1].lane;
+      if (dl) { steps++; if (Math.sign(dl) === Math.sign(dm)) up++; }
+    }
+    expect(up / steps).toBeGreaterThan(0.8);
+  });
+
+  it('a chord struck on the piano is a chord on Ultra, one tile on Easy', () => {
+    const played = Array.from({ length: 8 }, (_, i) => ({ sec: i, len: 0.2, midi: 72, strength: 0.8, also: 60 }));
+    const line = leadLine({ bpm: 120, offset: 0, events: [], voice: [], played, map: null });
+    const rows = (d: 'easy' | 'ultra') => {
+      const by = new Map<number, number[]>();
+      for (const n of line(d).notes) by.set(n.t, [...(by.get(n.t) ?? []), n.lane]);
+      return [...by.values()];
+    };
+    const ultra = rows('ultra');
+    expect(ultra.length).toBe(8);
+    expect(ultra.every((r) => r.length === 2 && r[0] !== r[1])).toBe(true);
+    expect(rows('easy').every((r) => r.length === 1)).toBe(true);
+  });
 });

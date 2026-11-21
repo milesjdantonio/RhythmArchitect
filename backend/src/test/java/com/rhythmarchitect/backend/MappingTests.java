@@ -42,6 +42,16 @@ class MappingTests {
         assertEquals("song", Text.bare("Song (feat. Someone) [Official Audio]"));
         assertEquals(4, Text.match("Halo", "halo"));
         assertEquals(3, Text.match("Halo Theme", "hal"));
+        // Near misses find the song (the cases in frontend tests/unit/search.test.ts).
+        assertEquals(1, Text.searchMatch("One Dance", "once dance"));
+        assertEquals(1, Text.searchMatch("One Dance", "onedance"));
+        assertEquals(1, Text.searchMatch("Open Your Eyes", "opne your eys"));
+        assertEquals(1, Text.searchMatch("Hotline Bling", "hotlien bl"));
+        assertEquals(1, Text.searchMatch("Blinding Lights", "blindng"));
+        assertEquals(0, Text.searchMatch("One Dance", "zq"));
+        assertEquals(0, Text.searchMatch("One Dance", "two dance"));
+        assertEquals(0, Text.searchMatch("Halo", "hello"));
+        assertEquals(4, Text.searchMatch("Halo", "halo"));
         assertEquals("dQw4w9WgXcQ", Text.videoIdIn("https://youtu.be/dQw4w9WgXcQ?t=3"));
         List<String> titles = new ArrayList<>(List.of("Track 10", "track 2", "Éclair", "apple"));
         titles.sort(Text.NATURAL);

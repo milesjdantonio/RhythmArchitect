@@ -17,7 +17,12 @@ export interface Syllable {
   len: number;
   midi: number;
   strength: number;
+  /** Struck as a chord: another of its notes (CHORD_APART or more from `midi`: the lowest, or the highest when `midi` is the lowest). */
+  also?: number;
 }
+
+/** Notes merged into one this many semitones or more apart are a chord (a piano's two hands), not bleed or a slide. */
+export const CHORD_APART = 3;
 
 /** Notes starting closer than this to the last syllable's start are part of it (a chord of bleed, a slide). */
 export const MERGE = 0.08;
@@ -47,8 +52,13 @@ export function syllables(notes: HeardNote[], audio?: { vocal: Float32Array; mix
     if (n.amp < MIN_AMP) continue;
     const last = out[out.length - 1];
     if (last && n.sec - last.sec < MERGE) {
+      const heard = [last.midi, n.midi, ...(last.also != null ? [last.also] : [])];
       if (n.len > last.len) { last.len = n.len; last.midi = n.midi; }
       last.strength = Math.max(last.strength, n.amp);
+      // Two notes far enough apart: a chord, another of its notes kept beside the longest.
+      const lowest = Math.min(...heard), highest = Math.max(...heard);
+      const other = Math.abs(last.midi - lowest) >= CHORD_APART ? lowest : highest;
+      if (Math.abs(last.midi - other) >= CHORD_APART) last.also = other;
       continue;
     }
     if (audio) {

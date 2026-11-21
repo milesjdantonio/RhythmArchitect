@@ -29,6 +29,7 @@ import { drawField, laneHue, layoutFor, type Layout } from '../game/render';
 import type { RiveHandle } from '../rive/RiveAnim';
 import { FAIL_SECONDS, Stage3D } from '../stage/Stage3D';
 import { StageProxy } from '../stage/proxy';
+import { SlowWatch } from '../game/slow';
 import { bus } from '../lib/bus';
 import { href, navigate, parse } from '../lib/router';
 import { getSettings, setSettings, useSettings } from '../lib/settings';
@@ -88,6 +89,8 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const [clock, setClock] = useState(0);
   const [result, setResult] = useState<RunResult | null>(null);
   const [saving, setSaving] = useState<'saving' | 'saved' | 'error' | 'skipped'>('saving');
+  // The run whose score was kept: the results ask how it felt (once a run).
+  const [kept, setKept] = useState<string | null>(null);
   const [saveError, setSaveError] = useState('');
   const [prevBest, setPrevBest] = useState<number | undefined>();
   const [layout, setLayout] = useState<Layout | null>(null);
@@ -162,6 +165,8 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   /** The finale has played (the song ended and the run cleared it). */
   const cleared = useRef(false);
   const fps = useRef({ value: 60, frames: 0, since: performance.now() });
+  // Slow moments (dev tools): what was set off when the frames fell (game/slow.ts).
+  const slow = useRef(new SlowWatch());
   const lastIntensity = useRef(0);
   const songEnergy = useRef(0);
 
@@ -350,6 +355,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       overdrive: g.overdriveStats,
     };
     setResult(r);
+    setKept(null);
     setPhase('results');
     bus.emit('intensity', g.failed ? 0.05 : 0.5);
     if (assisted.current || isTestSong(song.id)) { setSaving('skipped'); return; }
@@ -365,6 +371,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       const play = counted?.runId ?? undefined;
       const updated = await api.submitScore(song.id, { difficulty, score: r.score, accuracy, maxCombo: r.maxCombo, grade, run: g.run, tiles: g.tiles(), ...(play ? { play } : {}) });
       upsert(updated);
+      setKept(play ?? null);
       setSaving('saved');
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : '');
@@ -403,6 +410,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     if (!g || !song) return;
     let hudChanged = false;
     for (const e of events) {
+      slow.current.note(e.type === 'judge' ? (e.judgement === 'miss' ? 'miss' : 'hit') : e.type);
       if (e.type === 'judge') {
         hudChanged = true;
         const lane = e.note.lane;
@@ -552,7 +560,14 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     lastFrame.current = now;
     const f = fps.current;
     f.frames++;
-    if (now - f.since >= 500) { f.value = (f.frames * 1000) / (now - f.since); f.frames = 0; f.since = now; }
+    if (now - f.since >= 500) {
+      f.value = (f.frames * 1000) / (now - f.since); f.frames = 0; f.since = now;
+      if (phaseRef.current === 'playing') {
+        const st = stage.current;
+        const m = slow.current.sample({ page: f.value, stage: st instanceof StageProxy ? st.fps : f.value, res: st && 'resolution' in st ? (st as { resolution: number }).resolution : 1, song: songTime(beat0.current) }, now);
+        if (m && import.meta.env.DEV) console.warn('[slow]', m);
+      }
+    }
     const fail = failing.current;
     if (fail) {
       // The clock slows to a stop with the music; nothing is judged any more.
@@ -729,6 +744,8 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   }, [loop, phase]);
 
   useEffect(() => { if (count === 0) { const t = setTimeout(() => setCount(null), 600); return () => clearTimeout(t); } }, [count]);
+  useEffect(() => { if (banner) slow.current.note(`banner ${banner.kind}`); }, [banner]);
+  useEffect(() => { if (callout) slow.current.note(`callout ${callout.kind}`); }, [callout]);
   useEffect(() => { if (banner) { const t = setTimeout(() => setBanner(null), banner.kind === 'section' ? 1600 : 1500); return () => clearTimeout(t); } }, [banner]);
   // The end screen: the song plays again, quietly, from the top (round again when it ends).
   // A YouTube song plays in the results card (in the stars' place).
@@ -915,6 +932,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     },
     // A stage in a worker: the frames it draws, not the page's loop.
     fps: () => (stage.current instanceof StageProxy ? stage.current.fps : fps.current.value),
+    slow: () => slow.current,
     particles: () => stage.current?.particleCount ?? null,
     offsets: () => offsets.current,
     renderer: use3d ? '3D' : '2D',
@@ -1063,7 +1081,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       </AnimatePresence>
 
       {phase === 'results' && result && song && (
-        <Results song={song} difficulty={difficulty} result={result} previousBest={prevBest} saving={saving} saveError={saveError} model={modelStore} onRetry={() => { if (!result.assisted) setPrevBest(Math.max(prevBest ?? 0, result.failed ? 0 : result.score) || undefined); restart(); }} />
+        <Results song={song} difficulty={difficulty} result={result} previousBest={prevBest} saving={saving} saveError={saveError} model={modelStore} feelRun={kept} onRetry={() => { if (!result.assisted) setPrevBest(Math.max(prevBest ?? 0, result.failed ? 0 : result.score) || undefined); restart(); }} />
       )}
     </div>
   );

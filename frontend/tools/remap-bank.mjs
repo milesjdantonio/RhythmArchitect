@@ -66,7 +66,8 @@ for (const s of listed) {
 console.log(`${songs.length} song(s) to map again${apply ? ', applied to the bank' : ' (dry run: --apply to save them)'}`);
 
 // The video each was mapped from, as the search describes it now (its title and artist come from
-// the video's own wording); the old song's names if the search doesn't find it.
+// the video's own wording); the old song's names if the search doesn't find it (since Nov 20 the
+// search leaves out the bank's own videos, so that's the usual case: the names are the song's).
 for (const s of songs) {
   const found = await bank(`/youtube/search?${new URLSearchParams({ title: s.title, artist: s.artist })}`).catch(() => ({ results: [] }));
   s.match = found.results?.find((v) => v.videoId === s.source.videoId)
@@ -90,7 +91,7 @@ try {
         if (moved !== null) console.log(`  lined up with the old map: moved ${moved > 0 ? '+' : ''}${Math.round(moved * 1000)} ms`);
         const r = { id: s.id, title: sent.title, artist: sent.artist, bpm: sent.bpm, mapper: sent.report?.mapper ?? '', tiles: Object.fromEntries(Object.entries(sent.charts).map(([k, v]) => [k, v.notes.length])) };
         writeFileSync(join(outDir, `${s.id}.json`), JSON.stringify(sent));
-        const trained = /Ensomi/.test(r.mapper);
+        const trained = /Ensomi|song.s own lines/.test(r.mapper);
         console.log(`mapped ${s.id} in ${((Date.now() - started) / 1000).toFixed(0)} s: "${r.title}" by ${r.artist}, ${r.bpm} BPM, tiles E${r.tiles.easy} M${r.tiles.medium} H${r.tiles.hard} U${r.tiles.ultra}${trained ? '' : ' (NOT the trained mapper: not applied)'}`);
         if (apply && trained) {
           const made = await bank('/songs', { method: 'POST', body: JSON.stringify(sent) });
@@ -105,7 +106,7 @@ try {
         results.push({ id: s.id, failed: e.message });
       }
     }
-  }, { maxSeconds: Math.round(total * 2 + songs.length * 420 + 300), headless: false, mute: false, edge: true,
+  }, { maxSeconds: Math.round(total * 2.5 + songs.length * 600 + 300), headless: false, mute: false, edge: true,
     // Not --mute-audio: it silences the capture too; nor --disable-audio-output: without an audio
     // device YouTube's player fails now and then (error 5). The capture keeps the sound off the
     // speakers (mapOne: suppressLocalAudioPlayback).
@@ -161,9 +162,9 @@ async function mapOne(context, s) {
     await page.locator('#song-artist').fill(s.match.songArtist);
     await page.getByRole('button', { name: /^Generate beatmap from / }).first().click({ timeout: 30_000 });
     await page.getByRole('button', { name: 'Listen and map' }).click({ timeout: 30_000 });
-    const posted = page.waitForRequest((r) => r.method() === 'POST' && new URL(r.url()).pathname === '/api/songs', { timeout: ((s.match.seconds ?? 300) * 1.6 + 400) * 1000 });
+    const posted = page.waitForRequest((r) => r.method() === 'POST' && new URL(r.url()).pathname === '/api/songs', { timeout: ((s.match.seconds ?? 300) * 2.5 + 600) * 1000 });
     // A listen that went wrong comes back to the dialog with the problem and Try again.
-    const problem = page.locator('.listen-problem').waitFor({ timeout: ((s.match.seconds ?? 300) * 1.6 + 400) * 1000 })
+    const problem = page.locator('.listen-problem').waitFor({ timeout: ((s.match.seconds ?? 300) * 2.5 + 600) * 1000 })
       .then(async () => { throw new Error(`the listen failed: ${await page.locator('.listen-problem').textContent()}`); });
     const req = await Promise.race([posted, problem]);
     problem.catch(() => {});

@@ -7,6 +7,7 @@
 // Patterns: the gap to the tile before (seconds), the same lane again soon (a jack), a leap of three
 // lanes, in a chord, a hold, under another lane's hold. --min: groups with fewer tiles reached
 // than this are left out. A group's miss rate against its difficulty's is what to read.
+// Then how runs felt (the songs' "feel": backend RunFeel), per difficulty and per song.
 
 const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.split('=').slice(1).join('=');
 const API = (arg('api') ?? 'https://rhythmarchitect.onrender.com').replace(/\/$/, '');
@@ -39,8 +40,17 @@ function patternsOf(notes, i, spb) {
 const lib = (await json('/library')).results;
 const groups = Object.fromEntries(D.map((d) => [d, new Map()]));
 const totals = Object.fromEntries(D.map((d) => [d, { seen: 0, miss: 0, runs: 0, songs: 0 }]));
+const WHY = ['notes', 'timing', 'hard', 'easy'];
+const felt = Object.fromEntries(D.map((d) => [d, { right: 0, off: 0, notes: 0, timing: 0, hard: 0, easy: 0 }]));
+const feltSongs = [];
 for (const s of lib) {
   const song = await json(`/songs/${encodeURIComponent(s.id)}`);
+  for (const d of D) {
+    const f = song.feel?.[d];
+    if (!f) continue;
+    for (const k of Object.keys(felt[d])) felt[d][k] += f[k] ?? 0;
+    if (f.right || f.off) feltSongs.push({ title: song.title, d, f });
+  }
   if (!song.heat) continue;
   const spb = 60 / song.bpm;
   for (const d of D) {
@@ -76,3 +86,18 @@ for (const d of D) {
   }
 }
 if (!any) console.log('No heat yet: the bank keeps it from runs played since it was added (the game sends each run\'s tiles).');
+
+// How runs felt.
+const why = (f) => WHY.filter((w) => f[w]).map((w) => `${w === 'hard' || w === 'easy' ? `too ${w}` : w} ${f[w]}`).join(', ');
+const offShare = (f) => (f.off ?? 0) / Math.max(1, (f.off ?? 0) + (f.right ?? 0));
+if (D.some((d) => felt[d].right + felt[d].off)) {
+  console.log('\nHow runs felt (right / off, and why when off):');
+  for (const d of D) {
+    const f = felt[d];
+    if (!(f.right + f.off)) continue;
+    console.log(`  ${d.padEnd(7)} ${pct(f.right / (f.right + f.off)).padStart(6)} right of ${f.right + f.off}${why(f) ? `   off: ${why(f)}` : ''}`);
+  }
+  for (const x of feltSongs.sort((a, b) => offShare(b.f) - offShare(a.f))) {
+    console.log(`    ${`${x.title} ${x.d}`.padEnd(40)} ${x.f.right ?? 0} right, ${x.f.off ?? 0} off${why(x.f) ? `: ${why(x.f)}` : ''}`);
+  }
+} else console.log('\nNo answers yet on how runs felt (the results ask after each kept run).');

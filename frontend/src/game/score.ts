@@ -19,7 +19,11 @@
 //               again, up to MAX_OVERDRIVE (at the top it can't be set off). One miss ends it,
 //               every level, except in its grace: the first OVERDRIVE_GRACE seconds after each
 //               press (getting back to the lanes from the key), when a miss doesn't. Otherwise it
-//               ends when the length runs out.
+//               ends when the length runs out: each tile judged uses one, and it drops on its own
+//               as the song plays, OVERDRIVE_DRAIN tiles' worth a second (the user, Nov 20: "make
+//               overdrive also passively drop"). The song's clock for that is the chart's: the
+//               k-th tile judged is at the k-th tile's time (passTime between them, to the ms),
+//               so the server, which has no clock of the run, counts the same.
 //
 // The game counts with these as it plays (engine.ts) and records the run in order (`run`: P G E
 // L M for the hits and misses, H<ms>; for a hold held its length in milliseconds, B for a hold
@@ -39,6 +43,8 @@ export const MAX_OVERDRIVE = 3;
 export const OVERDRIVE_LENGTH = 48;
 /** Seconds after each press when a miss doesn't end Overdrive (the game ends the grace: U). */
 export const OVERDRIVE_GRACE = 5;
+/** Tiles' worth of Overdrive's length used up each second of the song, besides the tiles (GameScore.OVERDRIVE_DRAIN). */
+export const OVERDRIVE_DRAIN = 1.5;
 export const MAX_COMBO_MULTIPLIER = 5;
 /** Score's points are worth this many (GameScore.POINT_SCALE). */
 export const POINT_SCALE = 10;
@@ -62,6 +68,12 @@ export const holdBonus = (seconds: number) => Math.round(60 * Math.max(1, second
 
 /** A run as GameScore counts it. */
 export class RunScore {
+  /** `times`: the chart's tiles' times (seconds), in order: the clock Overdrive drains by (none: no drain). */
+  constructor(readonly times?: number[]) {}
+  /** Tiles judged (P G E L M), for the clock. */
+  private judgedTiles = 0;
+  /** The song time of the last tile judged, by the chart's clock (NaN before any). */
+  get lastTileTime() { return this.times && this.judgedTiles > 0 ? this.times[Math.min(this.judgedTiles, this.times.length) - 1] : NaN; }
   /** GameScore.getScore(): the points times the multiplier, and the holds. */
   score = 0;
   /** Score.getScore(): the hits' points without the multiplier. */
@@ -137,7 +149,16 @@ export class RunScore {
     this.charge = 0;
   }
 
+  /** GameScore.passTime: the song plays on (to the ms); Overdrive drains. */
+  passTime(seconds: number) {
+    const ms = Math.round(seconds * 1000);
+    if (ms > 0) this.spend((ms * OVERDRIVE_DRAIN) / 1000);
+  }
+
   add(r: HitResult) {
+    // The chart's clock: the time since the last tile judged (RunReplay does the same).
+    const k = this.judgedTiles++;
+    if (this.times && k > 0 && k < this.times.length) this.passTime(this.times[k] - this.times[k - 1]);
     this.run += CODE[r];
     this.count(r);
   }
@@ -194,10 +215,13 @@ export class RunScore {
   }
 }
 
-/** A recorded run counted again, or null when it isn't one. */
-export function replayRun(run: string): RunScore | null {
+/** The chart's tiles' times in seconds, in order (the clock Overdrive drains by: RunReplay.timesOf). */
+export const tileTimes = (chart: Pick<Chart, 'notes'>, bpm: number) => chart.notes.map((n) => n.t * (60 / bpm)).sort((a, b) => a - b);
+
+/** A recorded run counted again (on the chart's clock with `times`: tileTimes), or null when it isn't one. */
+export function replayRun(run: string, times?: number[]): RunScore | null {
   if (typeof run !== 'string' || run.length > 400_000 || !/^(?:[PGELMBOXU]|H\d{1,7};)*$/.test(run)) return null;
-  const s = new RunScore();
+  const s = new RunScore(times);
   for (const m of run.matchAll(/[PGELMBOXU]|H(\d+);/g)) {
     if (m[0] === 'O') { if (!s.startOverdrive()) return null; continue; }
     if (m[0] === 'U') { if (!s.grace) return null; s.endGrace(); continue; }

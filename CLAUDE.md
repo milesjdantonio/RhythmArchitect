@@ -68,8 +68,12 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   first: `src/components/menu/VideoResults.tsx`, `GET /api/youtube/search`), each with Preview (it
   plays in its own player under its row) and Generate beatmap for that video, so the player chooses
   what is mapped; no presets, no mapper notes. YouTube is searched only once the typing pauses
-  (`src/library/videos.ts`), never for a song already mapped, and each search is kept (quota: about
-  1% of a day's per search). Then the **Favorites** drop-down with its own search.
+  (`src/library/videos.ts`), and each search is kept (quota: about 1% of a day's per search). A
+  song already mapped still gets its YouTube results, headed "Other versions on YouTube", but the
+  server leaves out every video already in the bank (the user, Nov 20: another song of the same
+  name must still be mappable). The search takes near misses (`src/library/near.ts`, backend
+  `Text.searchMatch`, the same cases: a slip of one letter a word, two from 7 letters, or the
+  spaces: "once dance" finds One Dance). Then the **Favorites** drop-down with its own search.
 - The **music bank** is its own screen (`src/screens/MusicBank.tsx`, `#/bank`, `GET /api/library`):
   every song A to Z with a search and a letter rail, opened by the Bank button (♫ icon) under the
   settings gear (beside the gear: **How to play**, `src/components/HowToPlay.tsx`, a dialog of
@@ -115,7 +119,10 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 - Scoring is `main.Score`'s rules (Perfect 100, Good 75, Early/Late 50, accuracy, combo) with the
   game's on top: points ×10 (`POINT_SCALE`), the combo multiplier (×1-×5), the held-note bonus,
   **Overdrive** (a charge from accurate hits: Perfect 3, Good 2, Early/Late 1, a finished hold 3,
-  out of 100, ~34 Perfects; it empties when Overdrive ends; Space adds +1 per level for 48 tiles, up to three
+  out of 100, ~34 Perfects; it empties when Overdrive ends; Space adds +1 per level for up to 48 tiles, draining
+  as the song plays too (`OVERDRIVE_DRAIN`, 1.5 tiles' worth a second; the user, Nov 20: "make overdrive also
+  passively drop"; the clock is the chart's, the k-th tile judged at the k-th tile's time, to the ms, so
+  RunReplay, which has no clock of the run, counts the same; the bar drops between tiles), up to three
   levels: ×8; not at the top; any miss ends it, except in its grace: `OVERDRIVE_GRACE`, 5 song
   seconds after each press, timed by engine.ts) and stray presses (a key with no tile: signal and
   charge drain, no points): `main.GameScore` (Score.java itself is Darsh's: add on top, don't edit
@@ -142,9 +149,13 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 - The server takes every song into the model (`backend/.../songs/SongModel.java`: the bank's JSON
   → `SongWriter.writeSong(..., tiles)` → `main.Song`); new songs and fan charts it can't take in are
   refused (`NewSongCheck`). The bank itself stays JSON.
-- Dev tools live on the game screen (` key): autoplay (it spends Overdrive when charged), the note
-  queue, clock, judgements, Overdrive, tuning, effects (Overdrive steps through the levels' looks;
-  od ready, od fading), map data. Keep them working when gameplay changes.
+- Dev tools live on the game screen (` key): autoplay (Off or On, playing perfectly: the user, Nov 20;
+  it spends Overdrive when charged), the note queue, clock, judgements, Overdrive, tuning, effects
+  (Overdrive steps through the levels' looks; od ready, od fading), **slow moments** (`game/slow.ts`:
+  when the frames fell in a run, what was set off in the second before, and a log to download; the
+  user saw 100 fps fall to 24 "maybe when a certain animation plays": ask for that log, don't
+  guess), map data. Keep them working when gameplay changes. Every profile uses the lite UI
+  effects (`uiFx`: transform and opacity only; the full ones' blur and letter-spacing cost the stage frames).
 
 ## Generating a beatmap
 
@@ -221,7 +232,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     voice is: `played`); without that they're the trained mapper's, thinned as below. Each 2-bar
     phrase picks its lead (the singing where it's sung, else the strongest instrument:
     `LEAD_WEIGHT`; the last phrase's lead stays while it's `STAY` of the best) and a second part.
-    `PROFILE`: Easy the lead (the second part only where the lead is nearly silent: `EASY_FILL`),
+    `PROFILE`: Easy the lead (the second part only where the lead has under `EASY_FILL` (0.9) of
+    the notes it wants: when the star calibration asks Easy for more, the second part fills in),
     Medium the lead with the second where it runs short, Hard both with chords of two on strong hits
     that meet, Ultra both lines whole (every note of a piano solo), chords where they meet. Notes are
     kept by where they fall in the bar first (`METRIC`: downbeat, beat, 8th, triplet, 16th; a note
@@ -229,11 +241,22 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     (`LEAD_FIRST`): the easier charts are the same rhythm simplified (the user: "the times between
     notes" didn't match when tiles were dropped by loudness). Tiles go on the beat map's grid; a
     phrase whose lead plays an earlier one's rhythm (`ALIKE`) takes its pattern; long notes are
-    holds; lanes follow the lead's pitch (drums: kick low, the rest high), chords two lanes apart.
+    holds. **Lanes mirror the tune**: in each phrase a note starts in the lane its pitch ranks at
+    (lowest left, highest right, two notes in the middle lanes; drums: kick low, the rest high), and
+    flowing moves it only where it's awkward (Nov 20, Open Your Eyes: pitch steps with the tune
+    E 44→69%, M 64→82%, H 66→87%, U 64→94%; every tile had started in lane 0, so Ultra had 53% of
+    its tiles there and 17% quick repeats, now 22/29/32/17% and 10%). Chords two lanes apart; a
+    chord struck on the piano (voice.ts `also`: two notes 3 semitones or more apart within 80 ms)
+    is a chord where the difficulty has them (Ultra, Hard's strong hits), one tile on the others.
     Ultra keeps every note of its lines plus the other parts' big hits where nothing else is
     (`accents` 0.6), fewer only above `ULTRA_CEILING` (4★, a sanity ceiling; the user lifted its
     cap at the trained mapper's level, Nov 20: on Open Your Eyes that was never what held it, two
-    lines come to ~2.5★), and the easier ones take the usual star targets from it. The trained mapper still runs (its grid, and the fallback). Easy and
+    lines come to ~2.5★), and the easier ones take the usual star targets from it. The trained
+    mapper runs only when its grid could be used (the beat tracker's isn't steady) or the song
+    wasn't split (`linesCharts`, `canLead`, listen.worker.ts: split, its parts heard and the
+    grid steady, the charts come straight from the lines; its ~120 MB and its charting are
+    skipped, the star ratings from the runtime's core alone; the mapper string says "The song's own
+    lines", which `remap-bank.mjs` applies too). Easy and
     Medium of the first version (Easy/Medium only) on the two real listens: Easy's phrases on one
     part 99% and 96%. **The testing ground** (`#/testingGround`, `src/screens/TestingGround.tsx`):
     one song mapped two ways to play side by side, each a song file in `public/testing/` (id
@@ -472,7 +495,11 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   keeps per tile how often runs reached and missed it (`Song.heat`; backend `TileHeat`, mock
   `game/heat.ts`, cleared when a chart changes); the dev tools show a song's most missed tiles, and
   `node tools/heat-report.mjs` sums the bank's by pattern (quick repeats, leaps, chords, holds) per
-  difficulty, to tune the mapper's rules from real play.
+  difficulty, to tune the mapper's rules from real play. And how runs felt (Nov 20): after a kept
+  run the results ask once, Felt right / Felt off and why (notes didn't match the song, timing,
+  too hard, too easy: `FeelAsk.tsx`, `POST /api/songs/:id/feel`, backend `RunFeel` and
+  `PlayController.rate`, mock `game/feel.ts`: counts only, from a run whose score the controller
+  kept, once; cleared when a chart changes); the dev tools and heat-report show them.
 - After changing `src/mapping/automap.ts` or `charts.ts`, run `npm run map`. The band benchmark (`tests/unit/automap-band.test.ts`) must keep finding the notes (legato ones too).
 - Before finishing (in `frontend/`): `npx tsc -b`, `npm test`, `npm run test:e2e`, `npm run build`.
   On this Windows box run vitest from a path that starts with an upper-case `C:` (a lower-case

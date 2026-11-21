@@ -159,10 +159,11 @@ test.describe('Rythm Architect', () => {
     await expect(page.locator('textarea')).toHaveCount(0);
     await title(page).fill('Brightside');
     await expect(page.locator('.result', { hasText: 'Mr. Brightside' })).toBeVisible(); // mapped: it just comes up
-    // Already mapped (typed loosely, without punctuation or capitals): no Generate on offer.
-    await title(page).fill('mr brightside');
+    // Already mapped (typed loosely, with a slip of the keys): it comes up, and YouTube offers only
+    // the videos the bank doesn't have (another version, another song of the name).
+    await title(page).fill('mr brightsdie');
     await expect(page.locator('.result', { hasText: 'Mr. Brightside' })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Generate/ })).toHaveCount(0);
+    await expect(page.locator('#yt-head')).toHaveText(/Other versions on YouTube/);
     await title(page).fill('Levitating');
     await artist(page).fill('Dua Lipa');
     await expect(page.getByText('No beatmap for that yet.')).toBeVisible();
@@ -561,6 +562,13 @@ test.describe('Rythm Architect', () => {
     await expect(results.getByText('Score saved.')).toBeVisible();
     // The controller reviewed the presses, and the model confirmed the same score as the game's.
     await expect(results.locator('.results-model')).toContainText(/Controller\s*[1-9]\d* presses reviewed · score confirmed: [\d,]+ ✓/);
+    // How did it feel: off, and why (the server counts it once for the kept run).
+    const feel = results.getByRole('group', { name: 'How did that map feel?' });
+    await feel.getByRole('button', { name: 'Felt off' }).click();
+    await feel.getByRole('button', { name: 'Timing felt off' }).click();
+    await expect(feel.getByRole('button', { name: 'Timing felt off' })).toHaveAttribute('aria-pressed', 'true');
+    await feel.getByRole('button', { name: 'Send' }).click();
+    await expect(results.getByText('Thanks: that goes into how the maps are made.')).toBeVisible();
     await expect(results.getByRole('link')).toHaveCount(1); // Play again and Return to main menu, nothing else
     await results.getByRole('link', { name: /Return to main menu/ }).click();
     await expect(page.locator('.now-playing .diff-best').first()).toContainText(/Best (S|A)/);
@@ -573,7 +581,7 @@ test.describe('Rythm Architect', () => {
     await page.keyboard.press('Backquote');
     const dev = page.getByRole('complementary', { name: 'Dev tools' });
     await expect(dev).toBeVisible();
-    await dev.getByRole('radio', { name: 'Perfect' }).click();
+    await dev.getByRole('radio', { name: 'On (perfect)' }).click();
     await startButton(page).click();
     await expect(page.locator('.hud-bot')).toHaveText('Autoplay');
     await expect(dev.locator('.dev-next li').first()).toContainText(/tap|hold/);
@@ -754,8 +762,11 @@ test.describe('Rythm Architect', () => {
     await skipIntro(page);
     await fakeYouTube(page, { seconds: 20 });
     // The trained mapper on, its model somewhere that has none: it fails, and the app carries on.
+    // (No split: with the song split and its beat steady the charts come from its lines, and the
+    // trained mapper isn't asked at all.)
     await page.addInitScript(() => {
       localStorage.removeItem('rythm-architect:no-ensomi');
+      localStorage.setItem('rythm-architect:no-stems', '1');
       localStorage.setItem('rythm-architect:ensomi-base', `${location.origin}/no-model-here/`);
     });
     await page.goto('/#/');

@@ -132,6 +132,7 @@ public class SongController {
                     best.remove(name);
                     // Its tiles are other tiles now: where players missed the old ones says nothing.
                     if (next.path("heat") instanceof ObjectNode h) h.remove(name);
+                    if (next.path("feel") instanceof ObjectNode f) f.remove(name);
                 }
                 ObjectNode c = nextCharts.putObject(name);
                 c.put("difficulty", name);
@@ -210,6 +211,27 @@ public class SongController {
                 }
                 run.put("at", Instant.now().toString());
             }
+            return song.deepCopy();
+        });
+    }
+
+    /**
+     * How a run felt (RunFeel): `feel` "right" or "off", `why` the reasons it was off. Only from a
+     * run whose score the controller kept (`play`), once (PlayController.rate: 422/409 otherwise).
+     * Counts only; nothing about the player is kept.
+     */
+    @PostMapping("/songs/{id}/feel")
+    public ObjectNode feel(@PathVariable String id, @RequestBody JsonNode body) {
+        String difficulty = body.path("difficulty").asString("");
+        if (SongModel.difficulty(difficulty) == null) throw ApiException.badRequest("Bad difficulty");
+        String feel = body.path("feel").asString("");
+        String playRun = body.path("play").isString() ? body.path("play").asString() : null;
+        return store.write(all -> {
+            ObjectNode song = store.find(all, id).orElseThrow(SongController::missing);
+            // Checked before the run is marked, so a bad answer doesn't use up the run's one say.
+            if (!RunFeel.add(song.deepCopy(), difficulty, feel, body.path("why"))) throw ApiException.badRequest("Bad feel");
+            play.rate(playRun, id, difficulty);
+            RunFeel.add(song, difficulty, feel, body.path("why"));
             return song.deepCopy();
         });
     }

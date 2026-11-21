@@ -2,9 +2,9 @@
 // Times are seconds from beat 0 of the song.
 
 import type { Chart, ChartNote, Difficulty, Grade } from '../api/types';
-import { CHARGE_FULL, CODE, MAX_OVERDRIVE, OVERDRIVE_GRACE, OVERDRIVE_LENGTH, RunScore, multiplierFor, type HitResult } from './score';
+import { CHARGE_FULL, CODE, MAX_OVERDRIVE, OVERDRIVE_DRAIN, OVERDRIVE_GRACE, OVERDRIVE_LENGTH, RunScore, multiplierFor, type HitResult } from './score';
 
-export { multiplierFor, CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_GRACE, OVERDRIVE_LENGTH };
+export { multiplierFor, CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_DRAIN, OVERDRIVE_GRACE, OVERDRIVE_LENGTH };
 
 export type Judgement = 'perfect' | 'great' | 'good' | 'miss';
 
@@ -113,7 +113,7 @@ export class Game {
   stats: Stats;
   failed = false;
   /** The run as main.Score counts it (score.ts), recorded for the server to replay. */
-  readonly scoring = new RunScore();
+  readonly scoring: RunScore;
   private next: number[]; // per lane: index into byLane of the first unjudged note
   private byLane: LiveNote[][];
   private active: (LiveNote | null)[];
@@ -125,6 +125,8 @@ export class Game {
     this.notes = chart.notes
       .map((n: ChartNote, idx) => ({ idx, lane: n.lane, pitch: n.pitch, time: n.t * spb, end: (n.t + (n.hold ? n.len : 0)) * spb, hold: !!n.hold }))
       .sort((a, b) => a.time - b.time);
+    // Overdrive drains by the chart's clock (score.ts): the tiles' times, as the server has them.
+    this.scoring = new RunScore(this.notes.map((n) => n.time));
     this.byLane = Array.from({ length: this.lanes }, (_, l) => this.notes.filter((n) => n.lane === l));
     this.next = new Array(this.lanes).fill(0);
     this.active = new Array(this.lanes).fill(null);
@@ -165,8 +167,15 @@ export class Game {
   graceLeft(t: number) { return this.scoring.grace ? Math.max(0, this.graceUntil - t) : 0; }
   /** The Overdrive level, 0 (off) to 5. */
   get overdriveLevel() { return this.scoring.overdrive; }
-  /** What is left of Overdrive, 0..1. */
-  get overdriveLeft() { return this.scoring.overdriveLeft / OVERDRIVE_LENGTH; }
+  /**
+   * What is left of Overdrive, 0..1, now: the model's length less its drain since the last tile
+   * judged (it's taken at the next one: score.ts), so the bar drops as the song plays.
+   */
+  get overdriveLeft() { return Math.max(0, this.liveLeft()) / OVERDRIVE_LENGTH; }
+  private liveLeft() {
+    const s = this.scoring, last = s.lastTileTime;
+    return s.overdrive ? s.overdriveLeft - (Number.isFinite(last) ? Math.max(0, this.now - last) * OVERDRIVE_DRAIN : 0) : 0;
+  }
 
   /** For the results: the highest Overdrive level, how often it was set off, the points it added. */
   get overdriveStats() {
@@ -203,7 +212,7 @@ export class Game {
   private scored(level: number, charged: boolean, out: GameEvent[], missed = false) {
     if (level > 0 && this.scoring.overdrive === 0) out.push({ type: 'overdriveEnd', broken: missed });
     else if (missed && level > 0) out.push({ type: 'overdriveHeld' });
-    else if (this.scoring.overdrive > 0 && !this.warnedLow && this.scoring.overdriveLeft <= OVERDRIVE_LOW) {
+    else if (this.scoring.overdrive > 0 && !this.warnedLow && this.liveLeft() <= OVERDRIVE_LOW) {
       this.warnedLow = true;
       out.push({ type: 'overdriveLow' });
     }
