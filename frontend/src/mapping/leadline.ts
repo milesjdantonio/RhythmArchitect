@@ -101,6 +101,8 @@ const HOLD_GAP = 0.25;
 /** A drum hit this strong (or an accent) is emphasis: a chord where it meets the line (Hard; Ultra from CHORD_MIN). */
 const BIG = 0.7;
 const CHORD_MIN = 0.3;
+/** Hard: two firm hits together are a chord too (both at least this), as before 11ab68c. */
+const HARD_CHORD = 0.6;
 /** A phrase this much more intense than the one before (0..1 of the song's range) opens a part. */
 const LIFT = 0.3;
 /** A drum hit this weak doesn't fill in. */
@@ -126,13 +128,16 @@ const LINE_REST = 0.6;
 /**
  * What each difficulty plays beyond the line: the second part where the line rests at least `clear`
  * beats either side (and only on points at least `on` in the bar), under the line's holds or not,
- * and chords.
+ * and chords: Medium a few (a big hit on a beat, as thin.ts gives the trained mapper's Medium), Hard
+ * the big and firm ones, Ultra every one. Hard and Ultra take the second part wherever it plays
+ * (`clear` 0, Nov 21 evening: it came in only where the line rested half a beat, and Ultra was
+ * 10-25% sparser than the lead line before 11ab68c on the same listens).
  */
-const PROFILE: Record<Difficulty, { clear: number; on: number; chords: 'never' | 'big' | 'always'; under: boolean; beat: number }> = {
+const PROFILE: Record<Difficulty, { clear: number; on: number; chords: 'never' | 'few' | 'big' | 'always'; under: boolean; beat: number }> = {
   easy: { clear: 2, on: METRIC.beat, chords: 'never', under: false, beat: 0 },
-  medium: { clear: 1, on: METRIC.eighth, chords: 'never', under: false, beat: 0 },
-  hard: { clear: 0.5, on: METRIC.eighth, chords: 'big', under: true, beat: 0.5 },
-  ultra: { clear: 0.5, on: 0, chords: 'always', under: true, beat: 0.25 },
+  medium: { clear: 1, on: METRIC.eighth, chords: 'few', under: false, beat: 0 },
+  hard: { clear: 0, on: 0, chords: 'big', under: true, beat: 0.5 },
+  ultra: { clear: 0, on: 0, chords: 'always', under: true, beat: 0.25 },
 };
 
 /** A phrase whose kick and snare carry at least this much a beat (and above the song's lowest third) is driven by the drums. */
@@ -306,9 +311,13 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     const list = phrases.get(p) ?? [];
     energy.set(p, list.reduce((a, s) => a + s.strength * (s.layer === 'drums' && s.drum !== 'hat' ? 1.5 : 1), 0) + (drive.get(p) ?? 0) * meter * 2);
   }
-  // Where the song plays: a phrase at least SILENT of the median phrase's loudness, with sounds.
+  // Where the song plays: a phrase at least SILENT of the median phrase's loudness, with sounds, or
+  // with a line to follow however quiet it is (a fade is the sound stopping, not the volume: Hotline
+  // Bling's 43-s outro is 1-14% of the median's loudness with 15-20 sung notes a phrase, and the
+  // fan charts play it to the end; it was left empty on every difficulty).
   const medEnergy = [...energy.values()].sort((a, b) => a - b)[energy.size >> 1] || 0;
-  const plays = (p: number) => (phrases.get(p)?.length ?? 0) > 0 && (energy.get(p) ?? 0) >= SILENT * medEnergy;
+  const plays = (p: number) => (phrases.get(p)?.length ?? 0) > 0
+    && ((energy.get(p) ?? 0) >= SILENT * medEnergy || (follows.has(p) && count(p, follows.get(p)!) >= FOLLOW_MIN));
   // No part with enough notes to follow, yet the song plays: the strongest part there, so no
   // stretch where the music plays goes empty.
   for (const p of ids) {
@@ -423,6 +432,15 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       const gap = Math.min(...lineBeats.map((b) => Math.abs(b - h.beat)), Infinity);
       const under = ref.some((t) => t.until != null && h.beat > t.s.beat + 0.49 && h.beat < t.until - 0.24);
       tiles.push({ s: h, ref: false, keep: metric(h.beat) + h.strength * 0.5 + (h.strength >= BIG ? KEEP_BIG : 0), phrase: p, gap, under, ...(asBeat ? { beat: true } : {}), ...(asSecond || asAccent ? {} : { onlyBeat: true }), ...(asAccent ? { accent: true } : {}) });
+    }
+    // A fill tile another part strikes with (a kick with the bass, a stab with the snare) is a chord
+    // too, as a line note is: before, only the line's notes took a partner, so the part under the
+    // line never doubled (Hard's chords 2-37% before 11ab68c, 3-16% after it, on the same listens).
+    for (const t of tiles) {
+      if (t.phrase !== p || t.ref || t.chord) continue;
+      const h = all.filter((x) => x !== t.s && x.layer !== t.s.layer && x.layer !== layer && x.drum !== 'hat' && x.strength >= CHORD_MIN && Math.abs(x.beat - t.s.beat) < 0.01)
+        .sort((a, b) => weight(b) - weight(a))[0];
+      if (h) t.chord = h;
     }
   }
   tiles.sort((a, b) => a.s.beat - b.s.beat || Number(b.ref) - Number(a.ref));
@@ -560,7 +578,8 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
         : Math.max(mine.length * share * lean, k.floor * scale * span * lean);
       // Never under STRETCH_FLOOR tiles a second where the section plays (shape.ts): a calm verse
       // leaning low and the star calibration together could thin it to a tile every bar or two.
-      const budget = Math.max(1, d === 'ultra' ? 0 : Math.round(STRETCH_FLOOR[d] * span), Math.round(Math.min(want, ceiling)));
+      // Ultra's lines are whole: the ceiling and the section hold back only the part under them.
+      const budget = Math.max(1, d === 'ultra' ? Math.round(lines * share) : Math.round(STRETCH_FLOOR[d] * span), Math.round(Math.min(want, ceiling)));
       // An intense section lets the easier charts' tiles come closer (shape.ts spacing, the lean
       // taken at most SHAPE.hi; the user, Nov 21: "Easy can be made harder"), and Medium play taps
       // under a hold there (HOLDS_FREE), as Hard always does: else their spacing and holds, not
@@ -577,8 +596,11 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       const skel = skeletonOf(p, d, mine);
       const inSkel = new Set(skel);
       const rest = pattern ? [...same, ...byKeep.filter((t) => !pattern.has(keyOf(t, p)))] : byKeep;
-      const order = [...skel, ...rest.filter((t) => !inSkel.has(t))];
-      const cap = pattern ? new Set([...same, ...skel]).size + extra : Math.max(budget, skel.length);
+      const ordered = [...skel, ...rest.filter((t) => !inSkel.has(t))];
+      // Ultra: every note of the line before any of the part under it, and a repeat keeps its own
+      // line whole too (it was held to its twin's pattern: 23 of Hotline Bling's line notes lost).
+      const order = d === 'ultra' ? [...ordered.filter((t) => t.ref), ...ordered.filter((t) => !t.ref)] : ordered;
+      const cap = pattern && d !== 'ultra' ? new Set([...same, ...skel]).size + extra : Math.max(budget, skel.length);
       const chosen: Tile[] = [];
       for (const t of order) {
         if (chosen.length >= cap) break;
@@ -643,7 +665,8 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       const struck = t.s.also != null && t.ref && (metric(t.s.beat) >= METRIC.beat || t.s.strength >= 0.85);
       const chordSound = t.chord ?? (struck ? { ...t.s, midi: t.s.also! } : undefined);
       const chordOk = !!t.opens || prof.chords === 'always'
-        || (prof.chords === 'big' && ((!!t.chord && (t.chord.strength >= BIG || !!t.chord.accent)) || (struck && t.s.strength >= 0.85)));
+        || (prof.chords === 'big' && ((!!t.chord && (t.chord.strength >= BIG || !!t.chord.accent || Math.min(t.chord.strength, t.s.strength) >= HARD_CHORD)) || (struck && t.s.strength >= 0.85)))
+        || (prof.chords === 'few' && !!t.chord && (t.chord.strength >= BIG || !!t.chord.accent) && metric(t.s.beat) >= METRIC.beat);
       if (chordSound && chordOk) {
         const c: ChartNote = { t: n.t, lane: 0, pitch: 'C5', len: 0.25 };
         notes.push(c);

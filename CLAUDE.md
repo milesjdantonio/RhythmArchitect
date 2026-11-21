@@ -331,8 +331,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     significantly in higher difficulties", ~45% of Beat Saber quality). The form's intensity went
     as low as 0.13-0.4 where the music plays (Open Your Eyes' piano intro 0.30, One Dance's break
     0.27), so the lead line's `lean` is at least `LEAN_MIN` 0.7 (Hard and Ultra `LEAN_HIGH` 0.85)
-    wherever the song plays (`plays`: a phrase at least `SILENT` 0.2 of the median's loudness; the
-    fade's "nothing" now only where it's that quiet), and a phrase with no part to follow follows
+    wherever the song plays (`plays`: a phrase at least `SILENT` 0.2 of the median's loudness, or
+    one whose line has `FOLLOW_MIN` notes however quiet: round 4 below), and a phrase with no part to follow follows
     its strongest. Hard and Ultra take the other parts' big hits a 16th clear of the line (`ACCENT`:
     Ultra ≥0.45, Hard ≥0.7): the well-timed fan charts chart 74-91% of the mix's strong onsets, more
     than any other sound. Each syllable goes onto the mix's onset just before it (`onAttack`: up to
@@ -384,8 +384,38 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     and Medium 69-72% rhythm, 96-98% lanes. Kept; its cost is on the ladder below.
     **Easy and Medium fall short of their star targets** on the lead line: Easy 0.83-1.01★ against
     `EASY_STARS` 1.05 on every song, Medium up to 0.24★ under its even step (Ice Ice Baby 1.01 for
-    1.25), so Medium → Hard is the biggest step on several songs (E 0.87 / M 1.01 / H 1.46): the
-    calibration's top scale (`SCALE` 1.4) doesn't add enough tiles. Not yet looked into.
+    1.25), so Medium → Hard is the biggest step on several songs (E 0.87 / M 1.01 / H 1.46). Not the
+    budget: at `SCALE` 1.4 Medium takes 26% more tiles (Hotline Bling 434 → 549) for +0.0-0.1★, and
+    `SCALE` 2 or its second part from half a beat clear moved it +0.02-0.09★. Its stars stay low
+    because it had no chords (osu!'s rating climbs with them): round 4 below.
+    **Hard and Ultra back up** (round 4, Nov 21 evening; the user: "bring chords and the second part
+    back into Hard and Ultra"). From the same 8 listens: (1) a phrase whose line has `FOLLOW_MIN`
+    notes plays, however quiet (`plays`): Hotline Bling's 43-s outro (1-14% of the median's
+    loudness, 15-20 sung notes a phrase; the fan charts play it to the end) was empty on every
+    difficulty, 172 line notes; (2) Ultra keeps its lines whole: line first, its budget at least its
+    lines, a repeat not held to its twin's pattern (on Hotline Bling it kept 502 of 710 line notes);
+    (3) Hard and Ultra take the second part wherever it plays (`PROFILE` clear 0; Hard `on` 0), not
+    only where the line rests half a beat; (4) a fill tile another part strikes with is a chord too
+    (only line notes took one), Hard's chords also where both hits are firm (`HARD_CHORD` 0.6, as
+    before `11ab68c`), and Medium a few: a big hit (≥ `BIG` or an accent) on a beat with the line
+    (`chords: 'few'`). Ultra 1.67-2.68★ → 1.72-3.10 (Hotline Bling 2.15 → 2.45, change 2.68 →
+    3.10, California Gurls 2.11 → 2.42), Hard 1.24-1.99 → 1.44-2.30, Medium 1.01-1.28 → 1.04-1.37,
+    Easy the same; chords Ultra 10-28% → 10-33% of its moments, Hard 3-16% → 6-22%, Medium 0-2% →
+    1-14% (each below Hard's on every song); jacks and lane moves about the same (Ultra 0-30% →
+    1-33%, 1.06-1.39 → 1.07-1.35 lanes a step); no holes, no criteria breaks; downbeats Hard -2 to
+    +10 points, Ultra -1 to +8. The ladder: the mean Hard/Medium star ratio 1.38 → 1.41 (1.50 without
+    Medium's chords; 1.46 with them on downbeats or beats 1 and 3 only, 2-5% of its moments).
+    Against the fan charts (map-pop on the replays): F1 56% → 58% (Hotline Bling's two Hards 63-65%
+    → 70%, its density curve r 0.40-0.45 → 0.61), Ultra has 50% → 56% of the human tiles, the
+    stars at the nearest difficulty 2.05 → 2.35 (humans 4.23), chords 16% → 20% (47%).
+    California Gurls' alignment slides by whole bars on the replays (Speed Gurls -4 s, then -20 s;
+    +0.12 s on the bank's map), so its numbers there are noise. Still under the pre-`11ab68c` Ultra
+    on six of the 8 songs (MEANT TO BE 1.93 against 2.54, Open Your Eyes 2.28 against 2.74, Hotline
+    Bling 2.45 against 3.01; over it on Ice Ice Baby and Coffin). Some of that was jacks (the old
+    Ultra 13-36%, the fan charts 13-19%), the rest density (old 3.1-5.9 moments a second, now
+    2.9-5.4) and chords. Hotline
+    Bling has another part on the same grid point under only 124 of its 710 line notes, so its
+    chords are near what exact coincidences allow.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
