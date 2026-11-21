@@ -53,3 +53,24 @@ describe('figures', () => {
     expect(notes.slice(0, 4).map((n) => n.lane)).toEqual([0, 1, 2, 3]);
   });
 });
+
+describe('song shape by loudness', () => {
+  it('a loud phrase with few new sounds still scales up and can be a drop', () => {
+    // Even sounds a second throughout; the loudness jumps at phrase 4.
+    const secs: number[] = [];
+    for (let i = 0; i < 12 * 4 * 2; i++) secs.push(i / 2);
+    const loud = [0.3, 0.3, 0.3, 0.3, 1, 1, 1, 1, 0.3, 0.3, 0.3, 0.3];
+    const s = songShape(secs, (x) => Math.floor(x / 4), () => 4, (p) => loud[p] ?? null);
+    expect([...s.drops]).toContain(4);
+    expect(s.scale(5)).toBeGreaterThan(1.1);
+    expect(s.scale(10)).toBeLessThan(1);
+  });
+
+  it('a kick-snare back and forth is a trill by band', () => {
+    const notes = [40, 64, 40, 64, 40, 64].map((b, i) => ({ sec: i * 0.15, lane: 0, b }));
+    flowLanes(notes, 'hard', (n) => n.sec, (n) => n.sec, 1, { figure: (n) => n.b });
+    const lanes = notes.map((n) => n.lane);
+    for (let i = 2; i < lanes.length; i++) expect(lanes[i]).toBe(lanes[i - 2]);
+    expect(lanes[0]).not.toBe(lanes[1]);
+  });
+});

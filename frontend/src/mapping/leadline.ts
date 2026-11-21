@@ -25,7 +25,7 @@ import { KEEP } from './thin';
 import { flowChart } from './lanes';
 import { barOf, beatAt, divisionAt, secAt, type BeatMap } from './beatmap';
 import type { Syllable } from './voice';
-import { BREATH, songShape } from './shape';
+import { BREATH, phraseLoudness, songShape } from './shape';
 
 type Part = 'vocals' | 'drums' | 'bass' | 'other';
 interface Cand { sec: number; t: number; beat: number; part: Part; strength: number; midi: number | null; len: number; /** A chord's other note (voice.ts Syllable.also). */ extra?: boolean }
@@ -77,6 +77,8 @@ export interface LeadInput {
   played?: Syllable[];
   map: BeatMap | null;
   meter?: number;
+  /** How loud each bar is (the onset mapper's AutomapResult.barEnergy, bars from `offset` on the straight grid). */
+  barEnergy?: number[];
 }
 
 /** Whether a song has what a lead line needs: its sounds labelled by part. */
@@ -92,7 +94,9 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
   const phraseBeats = 2 * (o.map ? o.map.meter : meter);
   const phraseStart = (p: number) => (o.map ? o.map.downbeat : 0) + p * phraseBeats;
   // The song's shape (shape.ts): each phrase's scale, and where the drops land.
-  const shape = songShape(o.events.map((e) => e.sec), (sec) => phraseOf(beatOf(sec)), (p) => secOf(phraseStart(p) + phraseBeats) - secOf(phraseStart(p)));
+  const loudOf = phraseLoudness(o.barEnergy, o.offset, meter * spb);
+  const shape = songShape(o.events.map((e) => e.sec), (sec) => phraseOf(beatOf(sec)), (p) => secOf(phraseStart(p) + phraseBeats) - secOf(phraseStart(p)),
+    loudOf && ((p) => loudOf(secOf(phraseStart(p)), secOf(phraseStart(p) + phraseBeats))));
   /** The grid's nearest point to `sec` (the beat map's division there, 16ths where it has none), in beats. */
   const gridBeat = (sec: number) => {
     const b = beatOf(sec);
@@ -241,7 +245,8 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       });
       for (let i = picked.length - 1; i >= 0; i--) {
         const s = picked[i].c.sec;
-        if (gaps.some(([a, b]) => s > a && s < b)) picked.splice(i, 1);
+        // A sung syllable stays: the lyric runs into the drop.
+        if (picked[i].c.part !== 'vocals' && gaps.some(([a, b]) => s > a && s < b)) picked.splice(i, 1);
       }
     }
 

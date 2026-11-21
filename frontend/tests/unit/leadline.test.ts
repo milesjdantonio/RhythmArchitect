@@ -109,3 +109,13 @@ describe('the song shape in the lead line', () => {
     expect(ultra.some((s) => Math.abs(s - 15.5) < 1e-6)).toBe(true);
   });
 });
+
+describe('the breath before a drop keeps the lyric', () => {
+  const quiet = Array.from({ length: 32 }, (_, i) => drum(i * SPB));
+  const busy = Array.from({ length: 64 }, (_, i) => drum(16 + i * SPB / 2));
+  const make = leadLine({ bpm: 120, offset: 0, events: [...quiet, ...busy], voice: [12.25, 12.75, 13.25, 13.75, 14.25, 14.75, 15.25, 15.75].map((s) => syl(s)), map: null });
+  it('a syllable sung into the drop stays (Medium: its breath is the last ¾ beat)', () => {
+    const medium = make('medium').notes.map((n) => n.t * SPB);
+    expect(medium.some((s) => Math.abs(s - 15.75) < 1e-6)).toBe(true);
+  });
+});

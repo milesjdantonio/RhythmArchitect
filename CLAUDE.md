@@ -223,18 +223,25 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     (humans 44%); band strong notes E 80% → 76% (its strong notes are on the beat).
   - **The song's shape** (`src/mapping/shape.ts`, Nov 21: "make the mapper feel human"): each
     2-bar phrase's sounds a second against the song's median phrase (smoothed with its neighbours)
-    give it a scale, `rel^0.4` within 0.75-1.25 (`SHAPE`), that Easy, Medium and Hard multiply
+    times its loudness against the median (the onset mapper's `barEnergy`, passed with the sounds;
+    the two multiplied and square-rooted, so a loud chorus of held chords counts as busy) give it a
+    scale, `rel^0.4` within 0.75-1.25 (`SHAPE`), that Easy, Medium and Hard multiply
     their budget by (leadline.ts per phrase, thin.ts `intensity` per window; Ultra is never scaled):
     choruses busier than the verses around them, breaks sparser. A phrase `DROP_JUMP` (1.45) times
-    as busy as the two before it is a drop: the phrase before builds (`BUILD`, at least 1.1) and
-    the easier charts leave a breath before its first beat (`BREATH`: E 1, M ¾, H ½ a beat). A
+    as busy as the two before it, or `DROP_LOUD` (1.3) times as loud, is a drop: the phrase before
+    builds (`BUILD`, at least 1.1) and the easier charts leave a breath before its first beat
+    (`BREATH`: E 1, M ¾, H ½ a beat; a sung syllable there stays). A
     repeat in a busy part builds on its pattern (leadline.ts `GROW`: +10% of its notes from its
     second time, at most +25%; thin.ts lets it add rows its twin left out). **Figures**
     (`lanes.ts` `figuresOf`): four or more evenly spaced single tiles under 0.3 s apart whose pitch
     climbs or falls every step are a run, charted as a staircase the tune's way
     (`FIGURE_AGAINST`); two pitches back and forth are a trill on two lanes (`FIGURE_TRILL`);
-    neither pays `REPEAT_COST`. Not yet measured with map-bench or against the human charts: do
-    that before tuning the numbers.
+    neither pays `REPEAT_COST`; unpitched sounds count by band for figures (`FlowHints.figure`:
+    kick 40, mid 64, high 84, as the lead line places drums), so a kick-snare back and forth is a
+    trill. A rough replay (Nov 21: Open Your Eyes' saved Ultra thinned again, its tiles as the
+    sounds, its 48-point energy as the loudness) moved Medium's quiet phrases 9.8 → 8.5 tiles and
+    Hard's 13.2 → 12.0 (busy 20.9 → 22.1); Easy hardly moved (7.5 / 5.8: its `minGap` binds, not its
+    budget). Not yet measured with map-bench or against the human charts: do that before tuning.
   - Chords were left as the model makes them (Nov 20): ours match the human charts' share and how
     they cluster on the CC set (27% vs 29%; 61% vs 60% within a beat of the last); humans range
     3-64% from song to song (3% and 45% on one song), and neither the sounds' strength nor

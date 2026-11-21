@@ -96,6 +96,8 @@ export function figuresOf(rows: { t: number; pitch: number | null }[]): (Figure 
 export interface FlowHints<T> {
   twin?: (n: T) => T | undefined;
   pitch?: (n: T) => number | null;
+  /** What figures are found by (figuresOf), when not the pitch: e.g. drums by their band. */
+  figure?: (n: T) => number | null;
 }
 
 /** A chart's tiles (beats; `spb` seconds a beat) with their lanes flowed: copies, the rest as they were. */
@@ -107,6 +109,7 @@ export function flowChart(notes: ChartNote[], difficulty: Difficulty, spb: numbe
   const h: FlowHints<ChartNote> | undefined = hints && {
     twin: hints.twin && ((c) => { const tw = hints.twin!(of.get(c)!); return tw && back.get(tw); }),
     pitch: hints.pitch && ((c) => hints.pitch!(of.get(c)!)),
+    figure: hints.figure && ((c) => hints.figure!(of.get(c)!)),
   };
   return flowLanes(copies, difficulty, (n) => n.t, (n) => n.t + (n.hold ? n.len : 0), spb, h);
 }
@@ -135,10 +138,11 @@ export function flowLanes<T extends { lane: number; hold?: boolean }>(notes: T[]
     let j = i + 1;
     while (j < sorted.length && (at(sorted[j]) - at(sorted[i])) * scale < 0.002) j++;
     rowStart.set(i, figRows.length);
-    figRows.push({ t: at(sorted[i]) * scale, pitch: j - i === 1 && hints?.pitch ? hints.pitch(sorted[i]) : null });
+    const by = hints?.figure ?? hints?.pitch;
+    figRows.push({ t: at(sorted[i]) * scale, pitch: j - i === 1 && by ? by(sorted[i]) : null });
     i = j;
   }
-  const figures = hints?.pitch ? figuresOf(figRows) : figRows.map(() => null);
+  const figures = hints?.figure || hints?.pitch ? figuresOf(figRows) : figRows.map(() => null);
   let prev2: number[] | null = null;
   for (let i = 0; i < sorted.length;) {
     // The row: tiles within 2 ms.
