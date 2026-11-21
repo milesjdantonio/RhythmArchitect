@@ -94,3 +94,18 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     expect(rows('easy').every((r) => r.length === 1)).toBe(true);
   });
 });
+
+describe('the song shape in the lead line', () => {
+  // Four quiet phrases (a drum each beat), then four busy ones (a drum each 8th): a drop at 16 s.
+  const quiet = Array.from({ length: 32 }, (_, i) => drum(i * SPB));
+  const busy = Array.from({ length: 64 }, (_, i) => drum(16 + i * SPB / 2));
+  const make = leadLine({ bpm: 120, offset: 0, events: [...quiet, ...busy], voice: [], map: null });
+
+  it('Easy leaves a breath before the drop, Ultra keeps every note', () => {
+    const easy = make('easy').notes.map((n) => n.t * SPB);
+    expect(easy.some((s) => s > 15.5 && s < 15.99)).toBe(false);
+    expect(easy.some((s) => Math.abs(s - 16) < 1e-6)).toBe(true);
+    const ultra = make('ultra').notes.map((n) => n.t * SPB);
+    expect(ultra.some((s) => Math.abs(s - 15.5) < 1e-6)).toBe(true);
+  });
+});

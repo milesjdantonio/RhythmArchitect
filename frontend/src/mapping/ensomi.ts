@@ -18,6 +18,7 @@ import { barOf, beatAt, beatMap, beatPlace, divisionAt, secAt, snapSec, type Bea
 import { findRepeats, twinSec, type Repeats } from './repeats';
 import { noteName, syllableAt, type Syllable } from './voice';
 import { hasParts, leadLine } from './leadline';
+import { BREATH, songShape } from './shape';
 
 export { KEEP };
 // The runtime finds these beside its own module, which a bundler moves; so they're handed to it.
@@ -537,6 +538,14 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
   const phrase = (t: number) => (map ? Math.floor(barOf(map, beatAt(map, secOf(t))) / 2) : Math.floor(t / 8));
   const twin = repeats ? (t: number) => { const s = twinSec(repeats, secOf(t)); return s == null ? null : (s - o.offset) / spb; } : undefined;
   const pitch = (n: ChartNote) => syllable(n.t)?.midi ?? soundAt(secOf(n.t), 0.03)?.midi ?? null;
+  // The song's shape (shape.ts): each phrase's scale for the easier charts, and the drops.
+  const phraseStartSec = (p: number) => (map ? secAt(map, map.downbeat + p * 2 * map.meter) : secOf(p * 8));
+  const shape = songShape(events.map((e) => e.sec), (sec) => phrase((sec - o.offset) / spb), (p) => phraseStartSec(p + 1) - phraseStartSec(p));
+  const dropAt = [...shape.drops].map((p) => { const at = phraseStartSec(p); return { at, beat: at - (map ? secAt(map, map.downbeat + p * 2 * map.meter - 1) : secOf(p * 8 - 1)) }; });
+  const breath = (d: Difficulty) => (BREATH[d] > 0 && dropAt.length ? (t: number) => {
+    const sec = secOf(t);
+    return dropAt.some(({ at, beat }) => sec > at - BREATH[d] * beat && sec < at - 0.01);
+  } : undefined);
   // Each difficulty's tiles, then its lanes flowed for its own speed (lanes.ts: thinning keeps the
   // model's lanes, written for its whole chart), a repeated phrase's tiles in their twins' lanes.
   return (d: Difficulty, scale = 1): Chart => {
@@ -548,6 +557,8 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
       ...(twin ? { twin } : {}),
       ...(d !== 'ultra' ? { kind, phrase, follow: FOLLOW } : {}),
       ...(voice ? { sung: (t: number) => syllable(t)?.strength ?? 0 } : {}),
+      ...(d !== 'ultra' ? { intensity: (t: number) => shape.scale(phrase(t)) } : {}),
+      ...(breath(d) ? { breath: breath(d) } : {}),
     });
     const sorted = [...kept].sort((a, b) => a.t - b.t);
     const tol = 0.03 / spb;

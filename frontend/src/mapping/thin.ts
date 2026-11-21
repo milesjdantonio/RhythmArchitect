@@ -80,7 +80,17 @@ export interface ThinOptions {
   follow?: number;
   /** How clearly a row's moment is sung (0: not; voice.ts): sung rows weigh SUNG more, scaled by it. */
   sung?: (t: number) => number;
+  /**
+   * The song's shape at a moment (beats; shape.ts): each window keeps its share times the mean of
+   * its rows' scales, so a busy part keeps more than its share and a quiet one less.
+   */
+  intensity?: (t: number) => number;
+  /** A moment (beats) in the breath before a drop: left out. */
+  breath?: (t: number) => boolean;
 }
+
+/** A repeated phrase in a part this busy (intensity) isn't held to what its twin left out: it can build on it. */
+const GROW_FROM = 1.05;
 
 /**
  * Anticipations (syncopation): a sound off the beat at least ANTICIPATION_CUT strong, leading
@@ -212,18 +222,26 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
   const win = (r: Row) => Math.floor((r.t * o.spb) / WINDOW);
   const inWin = new Map<number, number>();
   for (const r of rows) inWin.set(win(r), (inWin.get(win(r)) ?? 0) + r.notes.length);
+  // Each window's scale from the song's shape: the mean of its rows'.
+  const winScale = new Map<number, number>();
+  if (o.intensity && keep < 1) {
+    const sum = new Map<number, [number, number]>();
+    for (const r of rows) { const k = win(r), x = sum.get(k) ?? [0, 0]; x[0] += o.intensity(r.t); x[1]++; sum.set(k, x); }
+    for (const [k, [a, n]] of sum) winScale.set(k, a / n);
+  }
   const gapBeats = o.minGap / o.spb;
   let prevLane = -1;
   /** The heaviest rows that fit, by the rules above. */
   const select = (weight: (r: Row) => number) => {
     const budget = new Map<number, number>();
-    for (const [k, n] of inWin) budget.set(k, Math.max(1, Math.round(n * keep)));
+    for (const [k, n] of inWin) budget.set(k, Math.max(1, Math.min(n, Math.round(n * keep * (winScale.get(k) ?? 1)))));
     // Chords: the heaviest rows with more than one tile, up to `chords` of the rows kept.
     let chordsLeft = o.maxChord < 2 ? 0 : o.chords >= 1 ? Infinity : Math.round(o.chords * keep * rows.length);
     const kept: { r: Row; notes: ChartNote[] }[] = [];
     for (const r of [...rows].sort((a, b) => weight(b) - weight(a) || a.t - b.t)) {
       const k = win(r);
       if ((budget.get(k) ?? 0) <= 0) continue;
+      if (o.breath?.(r.t)) continue;
       const clash = kept.some(({ r: q }) => Math.abs(q.t - r.t) < gapBeats || (o.holdsAlone && (
         // nothing starts while a kept hold is held, and a hold doesn't run over a kept tile
         (q.end > q.t && r.t > q.t && r.t < q.end + gapBeats)
@@ -248,7 +266,10 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     for (const r of rows) {
       const tw = o.twin(r.t);
       if (tw == null || !near(allAt, tw, tol)) continue;
-      nudge.set(r, near(keptAt, tw, tol) ? TWIN_KEEP : -TWIN_KEEP);
+      const kept = near(keptAt, tw, tol);
+      // In a busy part a repeat may add to what its twin kept (it builds), not only copy it.
+      if (!kept && o.intensity && o.intensity(r.t) >= GROW_FROM) continue;
+      nudge.set(r, kept ? TWIN_KEEP : -TWIN_KEEP);
     }
     if (nudge.size) kept = select((r) => r.w + (nudge.get(r) ?? 0));
   }

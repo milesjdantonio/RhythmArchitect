@@ -221,6 +221,20 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     charts march on the beat under syncopated songs (One Dance's Easy 9% off 16ths, Medium 8%, the
     fan chart 34%; now 19% and 15%). CC benchmark unchanged (F1 63%), Easy 66% → 58% on the beat
     (humans 44%); band strong notes E 80% → 76% (its strong notes are on the beat).
+  - **The song's shape** (`src/mapping/shape.ts`, Nov 21: "make the mapper feel human"): each
+    2-bar phrase's sounds a second against the song's median phrase (smoothed with its neighbours)
+    give it a scale, `rel^0.4` within 0.75-1.25 (`SHAPE`), that Easy, Medium and Hard multiply
+    their budget by (leadline.ts per phrase, thin.ts `intensity` per window; Ultra is never scaled):
+    choruses busier than the verses around them, breaks sparser. A phrase `DROP_JUMP` (1.45) times
+    as busy as the two before it is a drop: the phrase before builds (`BUILD`, at least 1.1) and
+    the easier charts leave a breath before its first beat (`BREATH`: E 1, M ¾, H ½ a beat). A
+    repeat in a busy part builds on its pattern (leadline.ts `GROW`: +10% of its notes from its
+    second time, at most +25%; thin.ts lets it add rows its twin left out). **Figures**
+    (`lanes.ts` `figuresOf`): four or more evenly spaced single tiles under 0.3 s apart whose pitch
+    climbs or falls every step are a run, charted as a staircase the tune's way
+    (`FIGURE_AGAINST`); two pitches back and forth are a trill on two lanes (`FIGURE_TRILL`);
+    neither pays `REPEAT_COST`. Not yet measured with map-bench or against the human charts: do
+    that before tuning the numbers.
   - Chords were left as the model makes them (Nov 20): ours match the human charts' share and how
     they cluster on the CC set (27% vs 29%; 61% vs 60% within a beat of the last); humans range
     3-64% from song to song (3% and 45% on one song), and neither the sounds' strength nor

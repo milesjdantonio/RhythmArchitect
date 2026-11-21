@@ -45,6 +45,53 @@ export const CONTOUR_COST = 0.35;
 const CONTOUR_STEP = 2;
 const CONTOUR_GAP = 0.6;
 
+/**
+ * Figures: a run of evenly spaced single tiles whose pitch climbs (or falls) every step, or a trill
+ * (two pitches back and forth), at least FIGURE_MIN tiles, each under FIGURE_GAP s after the last,
+ * the gaps within FIGURE_EVEN of the first. A human charts these as a shape: a run as a staircase
+ * the way the tune goes, a trill as two lanes back and forth. Tile by tile, flow went the cheapest
+ * way at each step and REPEAT_COST broke up the very staircases and trills a run is charted as. In a
+ * figure a tile pays FIGURE_AGAINST for a step against the run (FIGURE_STAY for standing still), a
+ * trill's tile FIGURE_TRILL off the lane two back, and neither pays REPEAT_COST.
+ */
+export const FIGURE_MIN = 4;
+const FIGURE_GAP = 0.3;
+const FIGURE_EVEN = 0.25;
+export const FIGURE_AGAINST = 1.0;
+const FIGURE_STAY = 0.6;
+export const FIGURE_TRILL = 0.8;
+
+type Figure = { kind: 'run'; dir: number } | { kind: 'trill' };
+
+/** The figures among rows (time s, a single tile's pitch or null): for each row in one (after its first), what it is. */
+export function figuresOf(rows: { t: number; pitch: number | null }[]): (Figure | null)[] {
+  const out: (Figure | null)[] = rows.map(() => null);
+  const even = (i: number, g0: number) => {
+    const g = rows[i].t - rows[i - 1].t;
+    return g > 0 && g < FIGURE_GAP && Math.abs(g - g0) <= FIGURE_EVEN * g0;
+  };
+  // Runs.
+  for (let i = 0; i + 1 < rows.length;) {
+    const a = rows[i].pitch, b = rows[i + 1].pitch, g0 = rows[i + 1].t - rows[i].t;
+    if (a == null || b == null || a === b || !(g0 > 0 && g0 < FIGURE_GAP)) { i++; continue; }
+    const dir = Math.sign(b - a);
+    let j = i + 1;
+    while (j + 1 < rows.length && rows[j + 1].pitch != null && Math.sign(rows[j + 1].pitch! - rows[j].pitch!) === dir && even(j + 1, g0)) j++;
+    if (j - i + 1 >= FIGURE_MIN) for (let k = i + 1; k <= j; k++) out[k] = { kind: 'run', dir };
+    i = j > i + 1 ? j : i + 1;
+  }
+  // Trills.
+  for (let i = 0; i + 2 < rows.length;) {
+    const a = rows[i].pitch, b = rows[i + 1].pitch, g0 = rows[i + 1].t - rows[i].t;
+    if (a == null || b == null || a === b || !(g0 > 0 && g0 < FIGURE_GAP)) { i++; continue; }
+    let j = i + 1;
+    while (j + 1 < rows.length && rows[j + 1].pitch === rows[j - 1].pitch && rows[j + 1].pitch !== rows[j].pitch && even(j + 1, g0)) j++;
+    if (j - i + 1 >= FIGURE_MIN) for (let k = i + 1; k <= j; k++) out[k] = out[k] ?? { kind: 'trill' };
+    i = j > i + 1 ? j : i + 1;
+  }
+  return out;
+}
+
 /** What lane flow can go by beyond the tiles' times: a tile's twin (already flowed: it comes earlier), a tile's pitch (MIDI). */
 export interface FlowHints<T> {
   twin?: (n: T) => T | undefined;
@@ -81,6 +128,18 @@ export function flowLanes<T extends { lane: number; hold?: boolean }>(notes: T[]
   const history: string[] = [];
   let prev: { t: number; lanes: number[] } | null = null;
   let run = 0, runHand = -1;
+  // The figures (runs, trills) among the rows, by the single tiles' pitches.
+  const figRows: { t: number; pitch: number | null }[] = [];
+  const rowStart = new Map<number, number>();
+  for (let i = 0; i < sorted.length;) {
+    let j = i + 1;
+    while (j < sorted.length && (at(sorted[j]) - at(sorted[i])) * scale < 0.002) j++;
+    rowStart.set(i, figRows.length);
+    figRows.push({ t: at(sorted[i]) * scale, pitch: j - i === 1 && hints?.pitch ? hints.pitch(sorted[i]) : null });
+    i = j;
+  }
+  const figures = hints?.pitch ? figuresOf(figRows) : figRows.map(() => null);
+  let prev2: number[] | null = null;
   for (let i = 0; i < sorted.length;) {
     // The row: tiles within 2 ms.
     let j = i + 1;
@@ -88,6 +147,7 @@ export function flowLanes<T extends { lane: number; hold?: boolean }>(notes: T[]
     const row = sorted.slice(i, j);
     const t = at(row[0]) * scale;
     const pitch = row.length === 1 && hints?.pitch ? hints.pitch(row[0]) : null;
+    const fig = figures[rowStart.get(i)!] ?? null;
     if (row.length === 1) {
       const n = row[0];
       const twin = hints?.twin?.(n);
@@ -110,8 +170,13 @@ export function flowLanes<T extends { lane: number; hold?: boolean }>(notes: T[]
           if (gap < f.jack && hand === runHand && run + 1 >= f.run) cost += 0.6 * (run + 2 - f.run);
         }
         cost += f.spread * recent.filter((l) => l === lane).length;
+        if (fig && prev && prev.lanes.length === 1) {
+          const dl = lane - prev.lanes[0];
+          if (fig.kind === 'run') cost += dl === 0 ? FIGURE_STAY : Math.sign(dl) !== fig.dir ? FIGURE_AGAINST : 0;
+          else if (prev2 && prev2.length === 1 && lane !== prev2[0]) cost += FIGURE_TRILL;
+        }
         const h = history.length;
-        if (h >= 7 && history[h - 4] === String(lane) && history[h - 3] === history[h - 7] && history[h - 2] === history[h - 6] && history[h - 1] === history[h - 5]) cost += REPEAT_COST;
+        if (!fig && h >= 7 && history[h - 4] === String(lane) && history[h - 3] === history[h - 7] && history[h - 2] === history[h - 6] && history[h - 1] === history[h - 5]) cost += REPEAT_COST;
         if (cost < bestCost - 1e-9) { bestCost = cost; best = lane; }
       }
       n.lane = best;
@@ -126,6 +191,7 @@ export function flowLanes<T extends { lane: number; hold?: boolean }>(notes: T[]
     history.push(lanes.join('+'));
     if (history.length > 8) history.shift();
     while (recent.length > RECENT) recent.shift();
+    prev2 = prev ? prev.lanes : null;
     prev = { t, lanes };
     prevPitch = pitch;
     i = j;
