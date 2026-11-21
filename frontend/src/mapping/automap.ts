@@ -22,7 +22,8 @@
 // Pure functions over a mono Float32Array, so it runs in a browser, a worker or a test.
 
 import type { MapReport, SoundEvent } from '../api/types';
-import { buildCharts, type MelodyNote } from './charts';
+import { buildCharts, type ChartShape, type MelodyNote } from './charts';
+import { breathsOf, inBreath, phraseLoudness, songShape } from './shape';
 import { SCALES, midiToName, rootIndex } from './theory';
 
 /** A sound counts as pitched (a note) above this harmonic clarity; below it, it's noise (a drum). */
@@ -627,7 +628,6 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
       accent: o.strength >= accentCut && onBeat && Math.round(o.beat) % meter === 0,
     };
   });
-  const charts = buildCharts(melody, scale, baseMidi, bpm);
   const BANDS = ['low', 'mid', 'high'] as const;
   const events: SoundEvent[] = onsets.map((o, i) => {
     const m = melody[i];
@@ -675,6 +675,16 @@ export function automap(samples: Float32Array, sr: number, opts: AutomapOptions 
   });
   const barMax = Math.max(...barE, 1e-9);
   const barEnergy = barE.map((e) => Math.round((e / barMax) * 100) / 100);
+  // The onset mapper's charts, shaped by the song (shape.ts: busier choruses, sparser breaks, a
+  // breath before each drop, its first beat kept). Phrases of two bars on the grid.
+  const phraseBeats = 2 * meter;
+  const song = songShape(onsets.map((o) => o.sec), (sec) => Math.floor((sec - offset) / spb / phraseBeats), (p) => offset + p * phraseBeats * spb, phraseLoudness(barEnergy, offset, meter * spb));
+  const chartShape: ChartShape = {
+    scale: (t) => song.scale(Math.floor(t / phraseBeats)),
+    breath: (d) => { const b = breathsOf(song, d, () => spb); return (t) => inBreath(b, offset + t * spb); },
+    drops: song.dropSecs.map((s) => Math.round(((s - offset) / spb) * 1000) / 1000),
+  };
+  const charts = buildCharts(melody, scale, baseMidi, bpm, chartShape);
   const cues: { beat: number; kind: 'build' | 'drop' | 'break' | 'flash'; strength: number }[] = [];
   let lastDrop = -99, lastBreak = -99;
   for (let b = 4; b < bars; b++) {

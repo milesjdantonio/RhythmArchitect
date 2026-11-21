@@ -11,6 +11,21 @@
 import type { Chart, ChartNote, Difficulty } from '../api/types';
 import { midiToName } from './theory';
 import { flowChart } from './lanes';
+import { spacing } from './shape';
+
+/**
+ * The song's shape for the onset mapper's charts (shape.ts, in beats): each moment's scale (a busy
+ * phrase keeps more of its notes, closer together; a quiet one fewer), the breath before each drop
+ * for a difficulty, and the drops' first beats (the note there is kept first). Ultra is never shaped.
+ */
+export interface ChartShape {
+  scale: (t: number) => number;
+  breath: (d: Difficulty) => (t: number) => boolean;
+  drops: number[];
+}
+/** What a note on a drop's first beat (within DROP_NEAR beats) counts extra, so it's kept first. */
+const DROP_LIFT = 1;
+const DROP_NEAR = 0.1;
 
 export interface MelodyNote {
   /** Beat the note sounds. Exact: notes from real audio may fall between 16ths. */
@@ -76,18 +91,26 @@ function thirdBelow(midi: number, scale: number[], root: number) {
 type Picked = MelodyNote & { hold: boolean };
 
 /** Which notes become tiles: the most prominent first, as long as they keep their distance. */
-function pick(melody: MelodyNote[], rule: Rules): Picked[] {
+function pick(melody: MelodyNote[], rule: Rules, shape?: ChartShape, difficulty?: Difficulty): Picked[] {
   const notes = [...melody].sort((a, b) => a.t - b.t);
-  const prom = notes.map(prominence);
+  const shaped = !!shape && difficulty !== 'ultra';
+  const sc = (t: number) => (shaped ? shape!.scale(t) : 1);
+  const breath = shaped ? shape!.breath(difficulty!) : null;
+  const lift = (n: MelodyNote) => (shape?.drops.some((d) => Math.abs(n.t - d) <= DROP_NEAR) ? DROP_LIFT : 0);
+  const prominent = (n: MelodyNote) => prominence(n) + lift(n);
+  const prom = notes.map(prominent);
   // Prominence is judged against the notes within 4 beats, so quiet passages still get tiles.
   const eligible = notes.filter((n, i) => {
     if (rule.keep >= 1) return true;
+    if (breath?.(n.t)) return false;
+    const keep = Math.min(1, rule.keep * sc(n.t));
+    if (keep >= 1) return true;
     let lower = 0, count = 0;
     for (let j = i; j >= 0 && n.t - notes[j].t <= 4; j--) { count++; if (prom[j] < prom[i]) lower++; }
     for (let j = i + 1; j < notes.length && notes[j].t - n.t <= 4; j++) { count++; if (prom[j] < prom[i]) lower++; }
-    return count <= 1 || lower / (count - 1) >= 1 - rule.keep - 1e-9;
+    return count <= 1 || lower / (count - 1) >= 1 - keep - 1e-9;
   });
-  const order = eligible.map((n) => ({ n, p: prominence(n) })).sort((a, b) => b.p - a.p || a.n.t - b.n.t);
+  const order = eligible.map((n) => ({ n, p: prominent(n) })).sort((a, b) => b.p - a.p || a.n.t - b.n.t);
   const chosen: Picked[] = [];
   const at = (t: number) => {
     let lo = 0, hi = chosen.length;
@@ -98,8 +121,10 @@ function pick(melody: MelodyNote[], rule: Rules): Picked[] {
     const i = at(n.t);
     const prev = chosen[i - 1], next = chosen[i];
     // (A little short of the gap still counts: sounds where the grid drifts keep their own times.)
-    if (prev && n.t - prev.t < rule.minGap * 0.95) continue;
-    if (next && next.t - n.t < rule.minGap * 0.95) continue;
+    // A busy phrase lets them come closer (shape.ts spacing).
+    const gap = rule.minGap * 0.95 * spacing(sc(n.t));
+    if (prev && n.t - prev.t < gap) continue;
+    if (next && next.t - n.t < gap) continue;
     // Nothing else is played inside a hold on Easy and Medium.
     if (!rule.playDuringHold && prev?.hold && n.t < prev.t + prev.len + 0.25) continue;
     let len = n.len;
@@ -113,11 +138,13 @@ function pick(melody: MelodyNote[], rule: Rules): Picked[] {
   return chosen;
 }
 
-export function chartFor(melody: MelodyNote[], difficulty: Difficulty, scale: number[], baseMidi: number, bpm?: number): Chart {
+export function chartFor(melody: MelodyNote[], difficulty: Difficulty, scale: number[], baseMidi: number, bpm?: number, shape?: ChartShape): Chart {
   const rule = tempoRule(RULES[difficulty], difficulty, bpm);
   const L = rule.lanes;
   const root = ((baseMidi % 12) + 12) % 12;
-  const kept = pick(melody, rule);
+  const kept = pick(melody, rule, shape, difficulty);
+  // What figures (lanes.ts) go by: each tile's sound's height (pitch, or brightness for noise).
+  const heightOf = new Map<ChartNote, number>();
 
   const notes: ChartNote[] = [];
   const holdEnd = new Array<number>(L).fill(-1);
@@ -154,7 +181,9 @@ export function chartFor(melody: MelodyNote[], difficulty: Difficulty, scale: nu
       if (!free.length) continue;
       lane = free[0];
     }
-    notes.push({ t: round(n.t, 1000), lane, pitch: midiToName(midi), len: round(n.len, 100), ...(n.hold ? { hold: true } : {}) });
+    const tile: ChartNote = { t: round(n.t, 1000), lane, pitch: midiToName(midi), len: round(n.len, 100), ...(n.hold ? { hold: true } : {}) };
+    notes.push(tile);
+    heightOf.set(tile, Math.round(n.degree));
     if (n.hold) holdEnd[lane] = n.t + n.len + 0.25;
     lastLane = lane;
 
@@ -173,16 +202,16 @@ export function chartFor(melody: MelodyNote[], difficulty: Difficulty, scale: nu
   // The lanes follow the pitch; then they're flowed for this difficulty's speed (lanes.ts), which
   // keeps the pitch's lane wherever it plays well: following the pitch alone hopped about 1.5
   // lanes a step on Easy and Medium (human charts: 1.1) and left Hard quick repeats.
-  return { difficulty, lanes: L, notes: bpm && L === 4 ? flowChart(notes, difficulty, 60 / bpm) : notes };
+  return { difficulty, lanes: L, notes: bpm && L === 4 ? flowChart(notes, difficulty, 60 / bpm, { figure: (n) => heightOf.get(n) ?? null }) : notes };
 }
 
 const round = (x: number, k: number) => Math.round(x * k) / k;
 
-export function buildCharts(melody: MelodyNote[], scale: number[], baseMidi: number, bpm?: number): Record<Difficulty, Chart> {
+export function buildCharts(melody: MelodyNote[], scale: number[], baseMidi: number, bpm?: number, shape?: ChartShape): Record<Difficulty, Chart> {
   return {
-    easy: chartFor(melody, 'easy', scale, baseMidi, bpm),
-    medium: chartFor(melody, 'medium', scale, baseMidi, bpm),
-    hard: chartFor(melody, 'hard', scale, baseMidi, bpm),
-    ultra: chartFor(melody, 'ultra', scale, baseMidi, bpm),
+    easy: chartFor(melody, 'easy', scale, baseMidi, bpm, shape),
+    medium: chartFor(melody, 'medium', scale, baseMidi, bpm, shape),
+    hard: chartFor(melody, 'hard', scale, baseMidi, bpm, shape),
+    ultra: chartFor(melody, 'ultra', scale, baseMidi, bpm, shape),
   };
 }

@@ -145,7 +145,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       } else voiceNote = gpu ? '; no parts (the split failed)' : '; no parts (no WebGPU to split the song)';
       // (Dev: what the steps after the model work from, handed back with the charts: ensomiModel.ts STUDY_KEY.)
       const raws: { star: number; objects: { lane: number; start_ms: number; end_ms?: number }[]; shift: number }[] = [];
-      const on = { bpm: result.bpm, offset: result.offset, events: result.events, onGrid: result.onBeatGrid, meter: result.meter, beats, voice, played, levels };
+      const on = { bpm: result.bpm, offset: result.offset, events: result.events, onGrid: result.onBeatGrid, meter: result.meter, beats, voice, played, levels, barEnergy: result.barEnergy };
       // Split, its parts heard, and the beat tracker's grid steady (the model's grid would never
       // replace it: regrid below): every difficulty is the song's own lines, so the trained mapper
       // (its ~120 MB and its charting) isn't needed. Otherwise it charts, and its grid may be used.
@@ -154,7 +154,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
         ...(trained!.study ? { onRaw: (star: number, objects: { lane: number; start_ms: number; end_ms?: number }[], shift: number) => raws.push({ star, objects: objects.map((x) => ({ lane: x.lane, start_ms: x.start_ms, end_ms: x.end_ms })), shift }) } : {}),
         base: trained!.base, title: trained!.title, artist: trained!.artist,
         bpm: result.bpm, offset: result.offset, events: result.events,
-        onGrid: result.onBeatGrid, meter: result.meter, beats, voice, played, levels, gpu,
+        onGrid: result.onBeatGrid, meter: result.meter, beats, voice, played, levels, gpu, barEnergy: result.barEnergy,
         onStage: (stage, p) => post({ stage, p }),
         onProgress: (p) => post({ chart: p }),
         regrid: (g) => {
@@ -168,7 +168,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
           const again = automap(pcm, sr, { grid: { ...g, confidence: 1, fit: 1 }, stems });
           again.report.beat = `the trained mapper's beat tracker: ${g.bpm} BPM, ${g.meter}/4 (used: ${why}) · ${result.report.beat ?? 'no beat tracker'}`;
           regridded = again;
-          return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid, meter: again.meter, levels };
+          return { bpm: again.bpm, offset: again.offset, events: again.events, onGrid: again.onBeatGrid, meter: again.meter, levels, barEnergy: again.barEnergy };
         },
       });
       let study: unknown;
@@ -177,7 +177,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
         const r = regridded ?? result;
         study = {
           seconds: pcm.length / sr, tracked: { beats: beats ?? [] }, regridded: !!regridded, raws, mapper: out.mapper,
-          on: { bpm: r.bpm, offset: r.offset, meter: r.meter, events: r.events, onGrid: r.onBeatGrid, gridUsed: r.gridUsed, lengthBeats: r.lengthBeats, sections: r.report.sections, beat: r.report.beat },
+          on: { bpm: r.bpm, offset: r.offset, meter: r.meter, events: r.events, onGrid: r.onBeatGrid, gridUsed: r.gridUsed, lengthBeats: r.lengthBeats, barEnergy: r.barEnergy, sections: r.report.sections, beat: r.report.beat },
           notes: await hearNotes(ort!, pcm, sr, { providers: gpu ? ['webgpu', 'wasm'] : ['wasm'] }).catch(() => []),
           voice: voice ?? [],
           played: played ?? [],

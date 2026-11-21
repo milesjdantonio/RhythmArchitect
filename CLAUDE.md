@@ -221,6 +221,43 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     charts march on the beat under syncopated songs (One Dance's Easy 9% off 16ths, Medium 8%, the
     fan chart 34%; now 19% and 15%). CC benchmark unchanged (F1 63%), Easy 66% → 58% on the beat
     (humans 44%); band strong notes E 80% → 76% (its strong notes are on the beat).
+  - **The song's shape** (`src/mapping/shape.ts`, Nov 21: "make the mapper feel human"): for the
+    charts that don't come from the lead line (thin.ts: the trained mapper's, thinned; charts.ts:
+    the onset mapper's fallback). The lead line goes by the song's form instead (sections.ts,
+    below), so the two never stack. Each 2-bar phrase's sounds a second against the song's median
+    phrase (smoothed with its neighbours) times its loudness against the median (the onset
+    mapper's `barEnergy`, passed with the sounds; multiplied and square-rooted) give it a scale,
+    `rel^0.4` within 0.75-1.25 (`SHAPE`), that Easy, Medium and Hard multiply their budget by
+    (thin.ts `intensity` per window, charts.ts each note's keep share; Ultra never). A phrase
+    `DROP_JUMP` (1.45) times as busy as the two before it, or `DROP_LOUD` (1.3) times as loud, is a
+    drop, landing on the bar whose loudness jumps most (`dropSecs`): the phrase before builds
+    (`BUILD`, at least 1.1), Easy leaves a breath before it (`BREATH`: half a beat, Easy only
+    since Nov 21: E 1, M ¾, H ½ before read as pauses; a sung syllable there stays; a hold ringing into it ends where it starts, `cutHolds`),
+    and its first beat keeps a tile (thin.ts `drop`, charts.ts `DROP_LIFT`; a chord on Medium and
+    up where the row is one). A busy repeat builds on its pattern (`growth`: +10% from its second
+    time, at most +25%, `GROW_MAX` its last time in the song), and isn't held to what its twin left
+    out; repeats are found on the straight grid when there's no beat map (`straightMap`, ensomi.ts:
+    for telling phrases apart only). No 4 s window passes `PEAK` (1.5) times its difficulty's rate
+    (`maxRate`). **Shared with the lead line** (its section intensity as the scale, the lean taken
+    at most `SHAPE.hi`): in a busy part the easier charts' tiles may come closer (`spacing`:
+    `minGap` divided by the scale; the user, Nov 21: "Easy can be made harder"; else Easy's spacing,
+    not its budget, held a chorus back), Medium plays taps under a hold there (`HOLDS_FREE`, 1.05),
+    and every stretch keeps at least `STRETCH_FLOOR` tiles a second where it plays (E 0.5, M 0.8,
+    H 1.1: thin.ts per 4 s window, the lead line per phrase), so a calm verse and the star
+    calibration together can't empty it; the lead line's own breath before a drop cuts a hold
+    ringing into it too. **Figures** (`lanes.ts` `figuresOf`, in lane flow, so not the lead line,
+    which places its own lanes): four or more evenly spaced single tiles under 0.3 s apart whose
+    pitch climbs or falls every step are a run, charted as a staircase the tune's way
+    (`FIGURE_AGAINST`); two pitches back and forth are a trill on two lanes (`FIGURE_TRILL`);
+    neither pays `REPEAT_COST`. Swing counts as even (the second gap up to ~2:1 the first, then
+    each gap like the first or the one two before); a chord in a run goes by its top note;
+    unpitched sounds count by band and brightness (`soundFigure`), so a kick-snare back and forth
+    is a trill and a tom fill a run. Favouring held words and line-ending holds when capping holds
+    was tried and taken out (the human charts held 0-1 of 21 sung line ends: the form's notes
+    below). A rough replay (Open Your Eyes' saved Ultra thinned again, its tiles as the sounds,
+    its 48-point energy as the loudness, before calibration): Easy busy phrases 7.5 → 10.8 tiles,
+    quiet 5.8 → 5.7; Medium busy 12.6 → 14.5, quiet 9.8 → 8.5; Hard busy 20.9 → 22.3, quiet 13.2 →
+    12.0. Not yet measured with map-bench or against the human charts: do that before tuning.
   - Chords were left as the model makes them (Nov 20): ours match the human charts' share and how
     they cluster on the CC set (27% vs 29%; 61% vs 60% within a beat of the last); humans range
     3-64% from song to song (3% and 45% on one song), and neither the sounds' strength nor
@@ -284,10 +321,49 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     so a return is charted from its first time phrase by phrase (`SECTION_ALIKE`) and may grow
     (`GROW`); one part a section (`STICKY_MIN`); every chart ends on a chord (15 of 26 Creative
     Commons charts do, ours never did); Easy at most 5 tiles in a row half a beat apart (osu!mania's
-    ranking criteria); the beat before a drop clear on Easy and Medium (human charts leave it empty
-    at a lift 28% of the time, 12% at any section). Not done, by the same measures: more holds at
+    ranking criteria); the half beat before a drop clear on Easy (`DROP_BREATH`; human charts leave
+    the beat empty at a lift 28% of the time, 12% at any section; the whole beat on Easy and Medium
+    read as pauses). Not done, by the same measures: more holds at
     sung line ends (the human charts held 0-1 of 21; ours already hold most on Hard), rests after
     long runs (ours rest far more often than theirs).
+  - **No pauses, Hard and Ultra back up, syllables on their attacks** (Nov 21, the user's playtest:
+    "significant pauses for parts that definitely should be played", "difficulty dropped
+    significantly in higher difficulties", ~45% of Beat Saber quality). The form's intensity went
+    as low as 0.13-0.4 where the music plays (Open Your Eyes' piano intro 0.30, One Dance's break
+    0.27), so the lead line's `lean` is at least `LEAN_MIN` 0.7 (Hard and Ultra `LEAN_HIGH` 0.85)
+    wherever the song plays (`plays`: a phrase at least `SILENT` 0.2 of the median's loudness; the
+    fade's "nothing" now only where it's that quiet), and a phrase with no part to follow follows
+    its strongest. Hard and Ultra take the other parts' big hits a 16th clear of the line (`ACCENT`:
+    Ultra ≥0.45, Hard ≥0.7): the well-timed fan charts chart 74-91% of the mix's strong onsets, more
+    than any other sound. Each syllable goes onto the mix's onset just before it (`onAttack`: up to
+    120 ms and under 0.85 of a 16th early, 30 ms late, the vocals' onsets first): Basic Pitch hears
+    a syllable 20-80 ms after its attack, not by one amount, so the voice's one `lateness` couldn't
+    follow it (fan charts put a tile on 17-37% of the raw syllables, at or below chance; on 38-62%
+    moved). On the saved listens of 8 songs: two-bar holes 1-2 on four songs → 0 everywhere; Ultra's
+    downbeats 61-88% → 64-92%; Hard 1.15-1.84★ → 1.15-1.94; Ultra 1.36-2.46 → 1.41-2.54; F1 against
+    the Hotline Bling fan charts (30 ms) Hard 47-49% → 48-50%, Ultra 56-59% → 56-60%. Ultra is still
+    ~2★ against 2.9-6.4★ for the fan charts and 2.2-3.35 for the Nov 20 lead line: it keeps 951 of
+    the 1,076 tiles open to it on Hotline Bling, so its pool (what the analysis hears) is the limit,
+    not ULTRA_FILL or ULTRA_RATE (both off: +0-0.4★). The ranked bottlenecks and what's next:
+    `docs/mapper-bottlenecks.html` (updated each round).
+  - **A rhythm you can count with the sound off** (Nov 21, round 2; the user: "with sound off, I
+    could not find the rhythm or chorus"). osu!mania's ranking criteria: an Easy is "mostly 1/1", a
+    Normal "mostly 1/1 and 1/2" (`soundoff.ts` `criteria` counts a chart's breaks of them, in
+    seconds at their ~180 BPM: ours break none, the ladder is well inside them). Each bar keeps a
+    tile on its `SKELETON` beats (Easy beats 1 and 3, Medium and Hard the downbeat; `skeletonOf`,
+    first in a phrase's order, counted against its budget): the line's note there, else the line's
+    note pushing up to half a beat ahead (it counts as the beat), else the strongest sound on the
+    beat (the line is silent there), and a bar with sounds but none of those keeps its strongest.
+    Letting the line's note after the beat stand in too kept Easy's downbeats at 46-71%. Downbeats
+    with a tile, Easy 31-49% → 55-83%, Medium 36-68% → 59-84%, Hard 49-80% → 66-92% (the fan
+    charts 82-92%); a chorus's return keeps more of its first time's rhythm on Easy (Hotline Bling
+    43 → 52%, California Gurls 45 → 57%); the same stars, no holes. Chords come from any part
+    striking with the line, not only the drums, from strength 0.3 (`CHORD_MIN`; Hard still only
+    the big ones): Ultra's chords 3-18% → 10-28% of its moments (the fan charts 29-36%), Ultra
+    1.41-2.54★ → 1.67-2.68. What the star gap is made of: Hotline Bling's fan Hard rates 2.92★, its
+    chords taken out 2.40 at 4.5 rows a second (ours 4.5 a second rate 2.0-2.15), only its tiles on
+    sounds we heard 2.32-2.50: chords are about half of it. Lane patterns are not: Ultra moves 1.0-1.1
+    lanes a step (the fan charts 1.15-1.31), quick repeats 17% (13-19%).
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
@@ -303,7 +379,7 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     Easy charts put 26-50% of their tiles on the beat, ours already ~40%, and more made them less alike.
 - **Star ratings** (`calibratedCharts`, `starTargets`): every chart is rated with the runtime's
   `starRating` (osu!mania's star rating) and saved as `Chart.stars` (the start card and the dev
-  tools show it). Easy is thinned to `EASY_STARS` (0.95) on every song, Medium and Hard to even
+  tools show it). Easy is thinned to `EASY_STARS` (1.05 since Nov 21, for the song's shape; 0.95 before) on every song, Medium and Hard to even
   steps of stars between it and the song's Ultra (KEEP's share and rate scaled only 0.7-1.4; one
   that would crowd the difficulty above it stays as KEEP made it). By share alone the same
   difficulty ranged 0.85-1.11 / 1.14-1.50 / 1.57-2.14 stars from song to song; now 0.86-1.02 /
@@ -346,8 +422,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   a listen also hands back what the steps after the model work from (its raw charts, the sounds,
   the beats, the notes heard; never the audio) as `window.__rythmStudy`;
   `node tools/remap-bank.mjs --only=<id> --study` saves it to `.data/remap/<id>.study.json`, to
-  replay ideas offline against human charts. The user asked that real-listen tests remake only One
-  Dance until a change is judged good (Nov 20).
+  replay ideas offline against human charts. Real-listen tests remake only One Dance and Open Your
+  Eyes (the user, Nov 21; One Dance only before), never the whole bank.
 - Only if it's off or fails: with WebGPU the song is split with Demucs (`src/mapping/stems.ts`,
   ~172 MB, `stemModel.ts`; e2e: `rythm-architect:no-stems`), and the onset mapper's own charts
   (`charts.ts`) are used. All the models run on one ONNX Runtime (`src/mapping/ort.ts`); any of
@@ -518,6 +594,16 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   text only, cached in `.data/pop-charts/`). Charts timed at another tempo than the song's are left
   out (One Dance's at 141 and 92 BPM: mistimed and an edit). Nov 20: Hotline Bling F1 80% against
   a human Hard (2.92★), its humans' gaps 27-29% swung against our 9%.
+- What a player sees with the sound off (`src/mapping/soundoff.ts`, Nov 21: "with sound off, I could
+  not find the rhythm or chorus"): the longest stretch with no tile while the song plays, two-bar
+  holes, the share of downbeats with a tile, a section's returns against its first time (rhythm,
+  lanes). map-pop prints it for ours and each human chart (human: 64-92% downbeats, no holes, returns
+  82-87% of their rhythm on Hotline Bling). The offline way, in seconds: replay the saved listens
+  (`.data/remap/*.study.json` with their song files' `levels`) through `placer(...).calibrated` in a
+  scratch `tests/unit/zz-*.test.ts` (moved out before committing: `tsc -b` fails on them), as the
+  Nov 21 study did. After each round, update
+  `docs/mapper-bottlenecks.html` (plain: the measures against the human charts, the analysis, the
+  ranked bottlenecks, a change log).
 - Where players miss: the game sends each scored run's tiles (`engine.ts` `tiles()`), the server
   keeps per tile how often runs reached and missed it (`Song.heat`; backend `TileHeat`, mock
   `game/heat.ts`, cleared when a chart changes); the dev tools show a song's most missed tiles, and

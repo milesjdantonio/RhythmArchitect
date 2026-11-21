@@ -80,7 +80,27 @@ export interface ThinOptions {
   follow?: number;
   /** How clearly a row's moment is sung (0: not; voice.ts): sung rows weigh SUNG more, scaled by it. */
   sung?: (t: number) => number;
+  /**
+   * The song's shape at a moment (beats; shape.ts): each window keeps its share times the mean of
+   * its rows' scales, so a busy part keeps more than its share and a quiet one less.
+   */
+  intensity?: (t: number) => number;
+  /** A moment (beats) in the breath before a drop: left out. */
+  breath?: (t: number) => boolean;
+  /** How much closer than `minGap` tiles may come at a moment (beats): 1 the difficulty's own (shape.ts spacing). */
+  spacing?: (t: number) => number;
+  /** Each window keeps at least this many tiles a second (where it has them: shape.ts STRETCH_FLOOR). */
+  minRate?: number;
+  /** ...and at most this many (shape.ts PEAK times `rate`). */
+  maxRate?: number;
+  /** A moment (beats) a drop lands on: its row is kept first, and as a chord where it is one (shape.ts DROP_NEAR). */
+  drop?: (t: number) => boolean;
+  /** Where `holdsAlone` is waived (beats): a busy phrase (shape.ts HOLDS_FREE). */
+  holdsFree?: (t: number) => boolean;
 }
+
+/** A repeated phrase in a part this busy (intensity) isn't held to what its twin left out: it can build on it. */
+const GROW_FROM = 1.05;
 
 /**
  * Anticipations (syncopation): a sound off the beat at least ANTICIPATION_CUT strong, leading
@@ -109,6 +129,8 @@ export const SUNG = { weight: 2 };
 const TWIN_KEEP = 0.6;
 
 const WINDOW = 4; // seconds
+/** What a row a drop lands on weighs extra (kept first). */
+const DROP_WEIGHT = 3;
 
 type Row = { t: number; notes: ChartNote[]; w: number; end: number; s: number; onBeat: boolean };
 
@@ -170,7 +192,7 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     const len = Math.max(0, ...notes.map((n) => (n.hold ? n.len : 0)));
     const s = strengthAt(o.events, sec, cursor);
     const sung = o.sung ? o.sung(r.t) : 0;
-    return { t: r.t, notes, w: s + 0.25 * (r.notes.length - 1) + grid + SUNG.weight * sung, end: r.t + len, s, onBeat: !!at?.beat };
+    return { t: r.t, notes, w: s + 0.25 * (r.notes.length - 1) + grid + SUNG.weight * sung + (o.drop?.(r.t) ? DROP_WEIGHT : 0), end: r.t + len, s, onBeat: !!at?.beat };
   });
   // Anticipations: a strong sound off the beat, just before a beat whose sound is no stronger,
   // is the rhythm's push (syncopation): it weighs more, and the beat it leads into less. (Only
@@ -212,24 +234,36 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
   const win = (r: Row) => Math.floor((r.t * o.spb) / WINDOW);
   const inWin = new Map<number, number>();
   for (const r of rows) inWin.set(win(r), (inWin.get(win(r)) ?? 0) + r.notes.length);
+  // Each window's scale from the song's shape: the mean of its rows'.
+  const winScale = new Map<number, number>();
+  if (o.intensity && keep < 1) {
+    const sum = new Map<number, [number, number]>();
+    for (const r of rows) { const k = win(r), x = sum.get(k) ?? [0, 0]; x[0] += o.intensity(r.t); x[1]++; sum.set(k, x); }
+    for (const [k, [a, n]] of sum) winScale.set(k, a / n);
+  }
   const gapBeats = o.minGap / o.spb;
   let prevLane = -1;
   /** The heaviest rows that fit, by the rules above. */
   const select = (weight: (r: Row) => number) => {
     const budget = new Map<number, number>();
-    for (const [k, n] of inWin) budget.set(k, Math.max(1, Math.round(n * keep)));
+    const least = Math.round((o.minRate ?? 0) * WINDOW), most = o.maxRate ? Math.max(least, Math.round(o.maxRate * WINDOW)) : Infinity;
+    for (const [k, n] of inWin) budget.set(k, Math.max(1, Math.min(n, most, Math.max(least, Math.round(n * keep * (winScale.get(k) ?? 1))))));
     // Chords: the heaviest rows with more than one tile, up to `chords` of the rows kept.
     let chordsLeft = o.maxChord < 2 ? 0 : o.chords >= 1 ? Infinity : Math.round(o.chords * keep * rows.length);
     const kept: { r: Row; notes: ChartNote[] }[] = [];
     for (const r of [...rows].sort((a, b) => weight(b) - weight(a) || a.t - b.t)) {
       const k = win(r);
       if ((budget.get(k) ?? 0) <= 0) continue;
-      const clash = kept.some(({ r: q }) => Math.abs(q.t - r.t) < gapBeats || (o.holdsAlone && (
+      if (o.breath?.(r.t)) continue;
+      const g = gapBeats * (o.spacing ? o.spacing(r.t) : 1);
+      const alone = o.holdsAlone && !o.holdsFree?.(r.t);
+      const clash = kept.some(({ r: q }) => Math.abs(q.t - r.t) < g || (alone && !o.holdsFree?.(q.t) && (
         // nothing starts while a kept hold is held, and a hold doesn't run over a kept tile
         (q.end > q.t && r.t > q.t && r.t < q.end + gapBeats)
         || (r.end > r.t && q.t > r.t && q.t < r.end + gapBeats))));
       if (clash) continue;
-      const chord = r.notes.length > 1 && chordsLeft > 0;
+      const landing = !!o.drop?.(r.t);
+      const chord = r.notes.length > 1 && (chordsLeft > 0 || (landing && o.maxChord >= 2));
       const notes = capChord(r.notes, chord ? o.maxChord : 1, prevLane);
       if (notes.length > 1) chordsLeft--;
       kept.push({ r, notes });
@@ -248,7 +282,10 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     for (const r of rows) {
       const tw = o.twin(r.t);
       if (tw == null || !near(allAt, tw, tol)) continue;
-      nudge.set(r, near(keptAt, tw, tol) ? TWIN_KEEP : -TWIN_KEEP);
+      const kept = near(keptAt, tw, tol);
+      // In a busy part a repeat may add to what its twin kept (it builds), not only copy it.
+      if (!kept && o.intensity && o.intensity(r.t) >= GROW_FROM) continue;
+      nudge.set(r, kept ? TWIN_KEEP : -TWIN_KEEP);
     }
     if (nudge.size) kept = select((r) => r.w + (nudge.get(r) ?? 0));
   }
@@ -260,7 +297,9 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     out.push(...pick);
     prevLane = pick[pick.length - 1].lane;
   }
-  // Too many holds: the shortest become taps until the rest fit.
+  // Too many holds: the shortest become taps until the rest fit. (Favouring held words and holds
+  // that end a line was tried, Nov 21, and taken out: the human charts held 0-1 of 21 sung line
+  // ends: sections.ts notes in CLAUDE.md.)
   const holds = out.filter((n) => n.hold);
   const room = Math.floor((o.maxHolds ?? 1) * out.length);
   if (holds.length > room) {

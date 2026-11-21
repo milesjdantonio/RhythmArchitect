@@ -14,11 +14,12 @@ import { decodeLevels } from './levels';
 import type { Ort } from './ort';
 import { cachedSource } from './ensomiModel';
 import { KEEP, thinChart } from './thin';
-import { flowChart } from './lanes';
+import { flowChart, soundFigure } from './lanes';
 import { barOf, beatAt, beatMap, beatPlace, divisionAt, secAt, snapSec, type BeatMap } from './beatmap';
 import { findRepeats, twinSec, type Repeats } from './repeats';
 import { noteName, syllableAt, type Syllable } from './voice';
 import { hasParts, leadLine } from './leadline';
+import { DROP_NEAR, HOLDS_FREE, PEAK, STRETCH_FLOOR, breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
 
 export { KEEP };
 // The runtime finds these beside its own module, which a bundler moves; so they're handed to it.
@@ -100,6 +101,8 @@ export interface TrainedOptions {
   meter?: number;
   /** The beat tracker's own beats (seconds): the beat map tiles are placed on (beatmap.ts). */
   beats?: number[];
+  /** How loud each bar is (the onset mapper's AutomapResult.barEnergy): the song's shape goes by it too (shape.ts). */
+  barEnergy?: number[];
   /** The sung syllables (voice.ts, from the vocal split): tiles go on them and thinning favours them. */
   voice?: Syllable[];
   /** The instruments' notes (the "other" part, heard as the voice is): a lead line can follow them (leadline.ts). */
@@ -124,7 +127,7 @@ export interface TrainedOptions {
 }
 
 /** What the tiles are placed by: the song's grid, its sounds, and the beat tracker's beats. */
-export type Placing = Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'meter' | 'beats' | 'voice' | 'played' | 'levels'>;
+export type Placing = Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'meter' | 'beats' | 'voice' | 'played' | 'levels' | 'barEnergy'>;
 
 /**
  * Hearing the singing (the vocal split and its syllables: voice.ts, before the model), loading the
@@ -419,7 +422,10 @@ export interface Placed { map: BeatMap | null; repeats: Repeats | null }
 export function placer(on: Placing) {
   const secs = [...on.events].map((e) => e.sec).sort((a, b) => a - b);
   const map = on.beats?.length ? beatMap({ beats: on.beats }, secs, { spb: 60 / on.bpm, offset: on.offset, meter: on.meter ?? 4 }) : null;
-  const placed: Placed = { map, repeats: map ? findRepeats(map, on.events) : null };
+  // Repeats are found on the beat map, or (without the beat tracker's beats) on the song's straight
+  // grid: only for telling phrases apart, never for placing a tile (where the beat drifts off the
+  // straight grid its phrases just don't match).
+  const placed: Placed = { map, repeats: on.events.length ? findRepeats(map ?? straightMap(on, secs), on.events) : null };
   const tiled = map ? map.division.filter((d) => d > 0).length / Math.max(1, map.division.length) : 0;
   const triplets = map ? map.division.filter((d) => d === 3 || d === 6).length / Math.max(1, map.division.length) : 0;
   return {
@@ -437,6 +443,13 @@ export function placer(on: Placing) {
     /** For the report: how much of the song has its own grid, and the repeats found. */
     note: map ? `; tiles on the beat map's 16ths or triplets where its sounds follow them (${Math.round(tiled * 100)}% of the song, triplets ${Math.round(triplets * 100)}%), ${placed.repeats?.of.size ?? 0} repeated phrases charted alike` : '',
   };
+}
+
+/** The song's straight grid as a beat map (every beat `spb` from `offset`, a downbeat on beat 0, no subdivision), over its sounds `secs`. */
+export function straightMap(g: { bpm: number; offset: number; meter?: number }, secs: number[]): BeatMap {
+  const spb = 60 / g.bpm, last = secs.length ? secs[secs.length - 1] : g.offset;
+  const n = Math.max(2, Math.ceil((last - g.offset) / spb) + 2);
+  return { secs: Array.from({ length: n }, (_, k) => g.offset + k * spb), meter: g.meter ?? 4, downbeat: 0, division: new Uint8Array(n) };
 }
 
 /**
@@ -521,7 +534,7 @@ export function easierCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' |
  * Makes one difficulty from the model's chart (`scale` times KEEP's share and rate: calibrate's
  * dial), everything about the song worked out once.
  */
-export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice'>, placed?: Placed): (d: Difficulty, scale?: number) => Chart {
+export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice' | 'meter' | 'barEnergy'>, placed?: Placed): (d: Difficulty, scale?: number) => Chart {
   const spb = 60 / o.bpm;
   const map = placed?.map ?? null, repeats = placed?.repeats ?? null;
   const events = [...o.events].sort((a, b) => a.sec - b.sec);
@@ -541,21 +554,58 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
   // A sung row is of the voice's kind: a phrase that's sung follows the singing.
   // (Its part when the song was split: vocals, drums, bass, other; else its band in the mix.)
   const kind = (t: number) => { if (syllable(t)) return 'vocals'; const e = soundAt(secOf(t), 0.05); return e ? e.part ?? e.band : null; };
-  const phrase = (t: number) => (map ? Math.floor(barOf(map, beatAt(map, secOf(t))) / 2) : Math.floor(t / 8));
+  const meter = o.meter ?? 4;
+  const phrase = (t: number) => (map ? Math.floor(barOf(map, beatAt(map, secOf(t))) / 2) : Math.floor(t / (2 * meter)));
   const twin = repeats ? (t: number) => { const s = twinSec(repeats, secOf(t)); return s == null ? null : (s - o.offset) / spb; } : undefined;
   const pitch = (n: ChartNote) => syllable(n.t)?.midi ?? soundAt(secOf(n.t), 0.03)?.midi ?? null;
+  // For figures (lanes.ts): an unpitched sound by its band and brightness (soundFigure), so a
+  // kick-snare back and forth is a trill and a tom fill a run.
+  const figure = (n: ChartNote) => { const p = pitch(n); if (p != null) return p; const e = soundAt(secOf(n.t), 0.03); return e ? soundFigure(e) : null; };
+  // The song's shape (shape.ts): each phrase's scale for the easier charts, and the drops.
+  const phraseStartSec = (p: number) => (map ? secAt(map, map.downbeat + p * 2 * map.meter) : secOf(p * 2 * meter));
+  const loudOf = phraseLoudness(o.barEnergy, o.offset, meter * spb);
+  const shape = songShape(events.map((e) => e.sec), (sec) => phrase((sec - o.offset) / spb), phraseStartSec, loudOf);
+  const beatSec = (sec: number) => (map ? secAt(map, beatAt(map, sec)) - secAt(map, beatAt(map, sec) - 1) : spb);
+  // How many times each phrase's pattern has been played (repeats.ts: 1 the first time), for a
+  // busy repeat to build on it (shape.ts growth).
+  const timeOf = new Map<number, number>(), lastOf = new Map<number, number>();
+  if (repeats) {
+    const seen = new Map<number, number>();
+    for (const [ph, root] of [...repeats.of.entries()].sort((a, b) => a[0] - b[0])) {
+      const n = (seen.get(root) ?? 1) + 1;
+      seen.set(root, n);
+      timeOf.set(ph, n);
+      lastOf.set(root, ph);
+    }
+  }
+  const isLast = (p: number) => { const root = repeats?.of.get(p); return root !== undefined && lastOf.get(root) === p; };
+  const intensity = (t: number) => { const p = phrase(t), sc = shape.scale(p); return sc * (1 + growth(sc, timeOf.get(p) ?? 1, isLast(p))); };
+  const dropT = shape.dropSecs.map((s) => s);
+  const onDrop = dropT.length ? (t: number) => dropT.some((s) => Math.abs(secOf(t) - s) <= DROP_NEAR) : undefined;
+  const breath = (d: Difficulty) => {
+    const b = breathsOf(shape, d, beatSec);
+    // A sung syllable stays: the lyric runs into the drop.
+    return b.length ? { breaths: b, at: (t: number) => !syllable(t) && inBreath(b, secOf(t)) } : null;
+  };
   // Each difficulty's tiles, then its lanes flowed for its own speed (lanes.ts: thinning keeps the
   // model's lanes, written for its whole chart), a repeated phrase's tiles in their twins' lanes.
   return (d: Difficulty, scale = 1): Chart => {
     const k = KEEP[d];
-    const kept = thinChart(model, {
+    const br = breath(d);
+    const thinned = thinChart(model, {
       ...k, ...(scale !== 1 ? { share: Math.min(1, k.share * scale), rate: k.rate * scale, floor: k.floor * scale } : {}),
       spb, offset: o.offset, events: o.events, onGrid: o.onGrid,
       ...(place ? { place } : {}),
       ...(twin ? { twin } : {}),
       ...(d !== 'ultra' ? { kind, phrase, follow: FOLLOW } : {}),
       ...(voice ? { sung: (t: number) => syllable(t)?.strength ?? 0 } : {}),
+      ...(d !== 'ultra' ? { intensity, spacing: (t: number) => spacing(shape.scale(phrase(t))), minRate: STRETCH_FLOOR[d], maxRate: PEAK * k.rate * scale } : {}),
+      ...(onDrop ? { drop: onDrop } : {}),
+      ...(d === 'medium' ? { holdsFree: (t: number) => shape.scale(phrase(t)) >= HOLDS_FREE } : {}),
+      ...(br ? { breath: br.at } : {}),
     });
+    // Holds end where a breath starts (on copies: thinning hands back the model's own tiles).
+    const kept = br ? cutHolds(thinned.map((n) => ({ ...n })), br.breaths, secOf, (sec) => (sec - o.offset) / spb) : thinned;
     const sorted = [...kept].sort((a, b) => a.t - b.t);
     const tol = 0.03 / spb;
     const twinNote = twin ? (n: ChartNote) => {
@@ -565,7 +615,7 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
       while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m].t < tw) lo = m + 1; else hi = m; }
       return [sorted[lo - 1], sorted[lo]].find((x) => x && x !== n && Math.abs(x.t - tw) <= tol && x.t < n.t);
     } : undefined;
-    return { difficulty: d, lanes: 4, notes: flowChart(kept, d, spb, { twin: twinNote, pitch }) };
+    return { difficulty: d, lanes: 4, notes: flowChart(kept, d, spb, { twin: twinNote, pitch, figure }) };
   };
 }
 
@@ -577,7 +627,11 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
  * were tried first and broke the ladder: on a song whose Ultra is 2.2 stars, Hard at 1.9 sat right
  * under it (×1.05 the tiles) and Easy to Medium doubled; on a sparse one Easy outgrew Medium.
  */
-export const EASY_STARS = 0.95;
+// 1.05 since Nov 21 (0.95 before): the song's shape lets Easy's busy phrases come closer (shape.ts
+// spacing: on Open Your Eyes' busy phrases 7.5 → 10.8 tiles, 13% more in all), and the user chose
+// a harder Easy for it ("Easy can be made harder for this change"); at 0.95 the calibration would
+// thin that back out of the whole chart.
+export const EASY_STARS = 1.05;
 const STAR_SPREAD = 0.06;
 /** Calibration only nudges KEEP: its share and rate scaled within these. */
 const SCALE: [number, number] = [0.7, 1.4];
@@ -613,7 +667,7 @@ export async function chartStars(notes: ChartNote[], g: { bpm: number; offset: n
 const ULTRA_KEEP = 0.5;
 const ULTRA_CEILING = 4;
 
-export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice' | 'played' | 'meter' | 'levels'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
+export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice' | 'played' | 'meter' | 'levels' | 'barEnergy'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
   const thin = thinner(model, o, placed);
   // Every difficulty from the song's lines (leadline.ts) when the song was split; else thinned
   // from the trained mapper's chart.

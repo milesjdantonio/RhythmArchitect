@@ -31,6 +31,7 @@ import { barOf, beatAt, divisionAt, secAt, type BeatMap } from './beatmap';
 import type { Syllable } from './voice';
 import type { DecodedLevels } from './levels';
 import { phraseFeatures, reportSections, songForm, type SongForm } from './sections';
+import { HOLDS_FREE, SHAPE, STRETCH_FLOOR, spacing } from './shape';
 
 type Layer = 'vocals' | 'other' | 'drums' | 'bass';
 type Drum = 'kick' | 'snare' | 'hat';
@@ -67,10 +68,22 @@ interface Tile {
   /** A kick or snare in a phrase the drums drive (the beat under the line), and whether it's only that. */
   beat?: boolean;
   onlyBeat?: boolean;
+  /** A big hit of a part that's neither the line nor the second (a drum fill, a stab): Ultra's, where nothing else is. */
+  accent?: boolean;
   /** The first note of a part, on a big hit: a chord on every difficulty. */
   opens?: boolean;
 }
 
+/**
+ * The other parts' big hits Hard and Ultra take (strength at least this), where the line rests
+ * ACCENT_CLEAR beats either side (Nov 21). Without them Ultra was the line and one part under it:
+ * 3.3-4.8 tiles a second on the saved listens against 4.6-6.1 on Nov 20, 1.9-2.5 stars against
+ * 2.2-3.35 (Hotline Bling's fan Hard: 2.93, 5.6 a second). The fan charts that are well timed chart
+ * 74-91% of the mix's strong onsets (soundoff study), more than any other kind of sound. With
+ * these: Ultra 4.1 → 4.6 a second on Hotline Bling, its downbeats 65% → 74%, Hard 1.50 → 1.66 stars.
+ */
+const ACCENT: Record<Difficulty, number> = { easy: Infinity, medium: Infinity, hard: 0.7, ultra: 0.45 };
+const ACCENT_CLEAR = 0.25;
 /** A part needs this many notes in a phrase to be followed there. */
 const FOLLOW_MIN = 3;
 /** A section's part (the one most of its phrases follow) is followed in a phrase where it has this many notes. */
@@ -87,7 +100,7 @@ const HOLD_BEATS = 0.75;
 const HOLD_GAP = 0.25;
 /** A drum hit this strong (or an accent) is emphasis: a chord where it meets the line (Hard; Ultra from CHORD_MIN). */
 const BIG = 0.7;
-const CHORD_MIN = 0.45;
+const CHORD_MIN = 0.3;
 /** A phrase this much more intense than the one before (0..1 of the song's range) opens a part. */
 const LIFT = 0.3;
 /** A drum hit this weak doesn't fill in. */
@@ -121,6 +134,7 @@ const PROFILE: Record<Difficulty, { clear: number; on: number; chords: 'never' |
   hard: { clear: 0.5, on: METRIC.eighth, chords: 'big', under: true, beat: 0.5 },
   ultra: { clear: 0.5, on: 0, chords: 'always', under: true, beat: 0.25 },
 };
+
 /** A phrase whose kick and snare carry at least this much a beat (and above the song's lowest third) is driven by the drums. */
 const DRIVE_MIN = 0.3;
 /** Ultra's tiles a second at most, in the song's calmest phrase and its most intense. */
@@ -131,6 +145,30 @@ const ULTRA_RATE = [3.5, 8];
  * [0.45, 1] 0.44, [0.6, 1.15] 0.43, [0.3, 0.9] 0.35.
  */
 const ULTRA_FILL = [0.45, 1];
+/**
+ * The least a phrase leans (its section's intensity, sections.ts) wherever the song plays: Easy and
+ * Medium LEAN_MIN, Hard and Ultra LEAN_HIGH. The form drove calm stretches to 0.13-0.4 (Open Your
+ * Eyes' piano intro 0.30, One Dance's break 0.27, Hotline Bling's outro 0.38), and Easy at a tile a
+ * bar there read as a pause in music that plays (the user, Nov 21: "significant pauses for parts
+ * that definitely should be played"; a section "slightly lighter is fine"). Human charts move their
+ * density far less (CV 0.23-0.30 per 4 bars).
+ */
+const LEAN_MIN = 0.7;
+const LEAN_HIGH = 0.85;
+/** A phrase quieter than this share of the song's median phrase is silence: no tiles (a fade's sound stopping, not its volume). */
+const SILENT = 0.2;
+/**
+ * The rhythm you can count with the sound off (Nov 21, the user: "with sound off, I could not find
+ * the rhythm or chorus"): the beats of every bar (0 the downbeat) each difficulty keeps a tile on
+ * wherever a sound is there (skeletonOf). osu!mania's ranking criteria: an Easy is "mostly 1/1",
+ * a Normal "mostly 1/1 and 1/2"; the well-timed fan charts put a tile on 82-92% of the downbeats,
+ * ours 31-49% on Easy, 49-80% on Hard. A note pushing up to SKELETON_AHEAD beats ahead of an empty
+ * beat stands for it (a syncopated line).
+ */
+const SKELETON: Record<Difficulty, number[]> = { easy: [0, 2], medium: [0], hard: [0], ultra: [] };
+const SKELETON_AHEAD = 0.5;
+/** Easy's breath before a drop (beats); the others play into it. */
+const DROP_BREATH = 0.5;
 /** How much each part counts when choosing the second part. */
 const SECOND_WEIGHT: Record<Layer, number> = { vocals: 1.4, other: 1.2, drums: 1, bass: 0.6 };
 /** The same lane again within this (s) is a quick repeat: avoided unless it's the same note again. */
@@ -204,8 +242,11 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     byKey.set(key, s);
     sounds.push(s);
   };
+  // Each syllable on its attack in the mix where one is just before it (onAttack); the rest by the
+  // voice's lateness.
   const voiceLate = lateness(o.voice.map((s) => s.sec));
-  for (const s of held(o.voice)) put(s.sec - voiceLate, 'vocals', 0.4 + s.strength * 0.6, s.midi, s.len);
+  const attack = onAttack(o.events, spb);
+  for (const s of held(o.voice)) put(attack(s.sec) ?? s.sec - voiceLate, 'vocals', 0.4 + s.strength * 0.6, s.midi, s.len);
   const played = o.played ?? [];
   const playedLate = lateness(played.map((s) => s.sec));
   for (const s of played) put(s.sec - playedLate, 'other', 0.4 + s.strength * 0.6, s.midi, s.len, s.also != null ? { also: s.also } : {});
@@ -262,6 +303,18 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     }
     const list = phrases.get(p) ?? [];
     energy.set(p, list.reduce((a, s) => a + s.strength * (s.layer === 'drums' && s.drum !== 'hat' ? 1.5 : 1), 0) + (drive.get(p) ?? 0) * meter * 2);
+  }
+  // Where the song plays: a phrase at least SILENT of the median phrase's loudness, with sounds.
+  const medEnergy = [...energy.values()].sort((a, b) => a - b)[energy.size >> 1] || 0;
+  const plays = (p: number) => (phrases.get(p)?.length ?? 0) > 0 && (energy.get(p) ?? 0) >= SILENT * medEnergy;
+  // No part with enough notes to follow, yet the song plays: the strongest part there, so no
+  // stretch where the music plays goes empty.
+  for (const p of ids) {
+    if (follows.has(p) || !plays(p)) continue;
+    const sum = new Map<Layer, number>();
+    for (const s of phrases.get(p)!) if (s.layer !== 'drums' || s.drum !== 'hat' || s.strength >= 0.5) sum.set(s.layer, (sum.get(s.layer) ?? 0) + s.strength);
+    const best = [...sum].sort((a, b) => b[1] - a[1])[0];
+    if (best) follows.set(p, best[0]);
   }
   // The song's form (sections.ts): where its sections are and how dense each wants to be.
   const lastPhrase = ids.length ? ids[ids.length - 1] : 0;
@@ -332,14 +385,15 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       lastEnd = secOf(t.until ?? s.beat) + (t.until ? 0 : Math.min(s.len, spb));
       tiles.push(t);
     }
-    // A kick or snare with a note of the line: a chord (Ultra any firm one, Hard the big ones, the
-    // easier ones only to open a part).
-    if (layer !== 'drums') {
-      for (const h of all) {
-        if (h.layer !== 'drums' || h.strength < CHORD_MIN || h.drum === 'hat') continue;
-        const same = tiles.find((t) => t.phrase === p && t.ref && Math.abs(t.s.beat - h.beat) < 0.01);
-        if (same && (!same.chord || h.strength > same.chord.strength)) { if (!same.chord && (h.strength >= BIG || h.accent)) same.keep += KEEP_BIG; same.chord = h; }
-      }
+    // Another part striking with a note of the line: a chord (Ultra any firm one, Hard the big ones,
+    // the easier ones only to open a part). A kick or snare first; else the bass, an instrument or
+    // the voice under a drum line (Nov 21: 4K layering is two parts at once; with CHORD_MIN 0.3 Ultra
+    // chords 3-18% → 10-28% of its moments, the fan charts 29-36%, Ultra +0.1-0.3 stars).
+    const weight = (h: Sound) => h.strength + (h.layer === 'drums' ? 1 : 0);
+    for (const h of all) {
+      if (h.layer === layer || h.strength < CHORD_MIN || h.drum === 'hat') continue;
+      const same = tiles.find((t) => t.phrase === p && t.ref && Math.abs(t.s.beat - h.beat) < 0.01);
+      if (same && (!same.chord || weight(h) > weight(same.chord))) { if (!same.chord && (h.strength >= BIG || h.accent)) same.keep += KEEP_BIG; same.chord = h; }
     }
     // A part opens (the line changes, a section starts, or the song lifts) on a big hit on its
     // downbeat: that tile is the "beginning of a part with a heavy cymbal", a chord on every difficulty.
@@ -361,11 +415,12 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     for (const h of all) {
       const asSecond = h.layer === two && !(h.layer === 'drums' && h.drum === 'hat' && h.strength < 0.6);
       const asBeat = backbone && h.layer === 'drums' && h.drum !== 'hat';
-      if ((!asSecond && !asBeat) || h.strength < FILL_MIN) continue;
+      const asAccent = !asSecond && !asBeat && h.layer !== layer && h.strength >= Math.min(...Object.values(ACCENT));
+      if ((!asSecond && !asBeat && !asAccent) || h.strength < FILL_MIN) continue;
       if (lineBeats.some((b) => Math.abs(b - h.beat) < 0.01) || tiles.some((t) => t.phrase === p && t.s === h)) continue;
       const gap = Math.min(...lineBeats.map((b) => Math.abs(b - h.beat)), Infinity);
       const under = ref.some((t) => t.until != null && h.beat > t.s.beat + 0.49 && h.beat < t.until - 0.24);
-      tiles.push({ s: h, ref: false, keep: metric(h.beat) + h.strength * 0.5 + (h.strength >= BIG ? KEEP_BIG : 0), phrase: p, gap, under, ...(asBeat ? { beat: true } : {}), ...(asSecond ? {} : { onlyBeat: true }) });
+      tiles.push({ s: h, ref: false, keep: metric(h.beat) + h.strength * 0.5 + (h.strength >= BIG ? KEEP_BIG : 0), phrase: p, gap, under, ...(asBeat ? { beat: true } : {}), ...(asSecond || asAccent ? {} : { onlyBeat: true }), ...(asAccent ? { accent: true } : {}) });
     }
   }
   tiles.sort((a, b) => a.s.beat - b.s.beat || Number(b.ref) - Number(a.ref));
@@ -403,6 +458,49 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     }
   }
 
+  /**
+   * A phrase's skeleton for a difficulty: a tile on each of SKELETON's beats of every bar, from the
+   * line's note there, else the line's note pushing up to SKELETON_AHEAD ahead of it (it counts as
+   * the beat), else the strongest sound on that beat (any part: the line is silent there; the plan
+   * agreed Nov 21). A bar with sounds but none of those, its strongest. With the line's note after
+   * the beat standing in too, Easy's downbeats were 46-71% (66-92% this way; humans 82-92%).
+   * Only real sounds: a bar with none stays empty.
+   */
+  function skeletonOf(p: number, d: Difficulty, mine: Tile[]): Tile[] {
+    const beats = SKELETON[d];
+    if (!beats.length) return [];
+    const layer = follows.get(p);
+    const all = phrases.get(p) ?? [];
+    const out: Tile[] = [];
+    for (let bar = 0; bar < 2; bar++) {
+      const had = out.length;
+      for (const k of beats) {
+        if (k >= meter) continue;
+        const b = firstBeatOfPhrase(p) + bar * meter + k;
+        const at = (t: Tile) => Math.abs(t.s.beat - b) < 0.01;
+        // The line's note on the beat, or pushing ahead of it (a syncopated line keeps its own
+        // rhythm); else anything on the beat.
+        let t = mine.find((x) => at(x) && x.ref)
+          ?? mine.filter((x) => x.ref && x.s.beat < b - 0.01 && x.s.beat >= b - SKELETON_AHEAD - 1e-6).sort((x, y) => y.s.beat - x.s.beat)[0]
+          ?? mine.find(at);
+        if (!t) {
+          const s = all.filter((x) => Math.abs(x.beat - b) < 0.01 && x.strength >= FILL_MIN && (x.layer !== 'drums' || x.drum !== 'hat' || x.strength >= 0.5))
+            .sort((x, y) => Number(y.layer === layer) - Number(x.layer === layer) || y.strength - x.strength)[0];
+          if (s) t = { s, ref: s.layer === layer, keep: METRIC.downbeat + s.strength * 0.5, phrase: p, gap: 0 };
+        }
+        if (t && !out.includes(t)) out.push(t);
+      }
+      // A bar with sounds but none on its beats (a chord ringing, a syncopated riff): its strongest.
+      if (out.length === had) {
+        const from = firstBeatOfPhrase(p) + bar * meter, inBar = (x: number) => x >= from - 1e-6 && x < from + meter - 1e-6;
+        const t = [...mine].filter((x) => inBar(x.s.beat)).sort((x, y) => Number(y.ref) - Number(x.ref) || y.keep - x.keep)[0];
+        const s = t ? null : all.filter((x) => inBar(x.beat) && x.strength >= FILL_MIN && (x.layer !== 'drums' || x.drum !== 'hat' || x.strength >= 0.5)).sort((x, y) => y.strength - x.strength)[0];
+        if (t) out.push(t);
+        else if (s) out.push({ s, ref: s.layer === layer, keep: metric(s.beat) + s.strength * 0.5, phrase: p, gap: 0 });
+      }
+    }
+    return out;
+  }
   /** A phrase's second part: of the others with enough notes, the strongest (weighted by part). */
   function secondOf(p: number, layer: Layer): Layer | null {
     const score = new Map<Layer, number>(), n = new Map<Layer, number>();
@@ -438,9 +536,10 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     const keyOf = (t: Tile, p: number) => `${t.ref ? 'r' : 'f'}:${Math.round((t.s.beat - firstBeatOfPhrase(p)) * 12)}`;
     for (const p of ids) {
       const mine = tiles.filter((t) => t.phrase === p && (t.ref || fillOk(t)));
-      // How dense its section wants it (sections.ts: the song's average 1; nothing once it's faded).
-      const lean = form.intensity[p] ?? 1;
-      if (!mine.length || lean <= 0) continue;
+      // How dense its section wants it (sections.ts: the song's average 1), never under LEAN_MIN
+      // (Hard and Ultra LEAN_HIGH) while the song plays; nothing once it's silent.
+      if (!mine.length || !plays(p)) continue;
+      const lean = Math.max(d === 'hard' || d === 'ultra' ? LEAN_HIGH : LEAN_MIN, form.intensity[p] ?? 1);
       const span = Math.max(meter * spb, secOf(Math.max(...mine.map((t) => t.s.beat))) - secOf(Math.min(...mine.map((t) => t.s.beat))) + spb);
       // The most a second: Ultra's by how intense the phrase is; the others' rate, leaning with the section.
       const ceiling = d === 'ultra' ? (ULTRA_RATE[0] + (ULTRA_RATE[1] - ULTRA_RATE[0]) * intensity(p)) * scale * span : k.rate * lean * scale * span;
@@ -449,36 +548,54 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       const lines = mine.filter((t) => t.ref).length;
       const want = d === 'ultra' ? (lines + (mine.length - lines) * Math.min(1, Math.max(0, (lean - ULTRA_FILL[0]) / (ULTRA_FILL[1] - ULTRA_FILL[0])))) * share
         : Math.max(mine.length * share * lean, k.floor * scale * span * lean);
-      const budget = Math.max(1, Math.round(Math.min(want, ceiling)));
+      // Never under STRETCH_FLOOR tiles a second where the section plays (shape.ts): a calm verse
+      // leaning low and the star calibration together could thin it to a tile every bar or two.
+      const budget = Math.max(1, d === 'ultra' ? 0 : Math.round(STRETCH_FLOOR[d] * span), Math.round(Math.min(want, ceiling)));
+      // An intense section lets the easier charts' tiles come closer (shape.ts spacing, the lean
+      // taken at most SHAPE.hi; the user, Nov 21: "Easy can be made harder"), and Medium play taps
+      // under a hold there (HOLDS_FREE), as Hard always does: else their spacing and holds, not
+      // their budget, held a chorus back.
+      const gap = d === 'ultra' ? minGap : minGap * spacing(Math.min(SHAPE.hi, lean));
+      const under = prof.under || (d === 'medium' && lean >= HOLDS_FREE);
       const twin = twinOf.get(p);
       const pattern = twin != null ? chosenKeys.get(twin) : undefined;
       const byKeep = [...mine].sort((a, b) => b.keep - a.keep || a.s.beat - b.s.beat);
       // A repeat: its twin's pattern (all of it, the budget aside), and where it grows a few of its own.
       const same = pattern ? byKeep.filter((t) => pattern.has(keyOf(t, p))) : [];
       const extra = pattern && growsOn.has(p) ? Math.min(Math.max(0, budget - same.length), Math.ceil(same.length * GROW)) : 0;
-      const order = pattern ? [...same, ...byKeep.filter((t) => !pattern.has(keyOf(t, p)))] : byKeep;
-      const cap = pattern ? same.length + extra : budget;
+      // The beats every bar keeps (skeletonOf) go first: the rhythm you can count with the sound off.
+      const skel = skeletonOf(p, d, mine);
+      const inSkel = new Set(skel);
+      const rest = pattern ? [...same, ...byKeep.filter((t) => !pattern.has(keyOf(t, p)))] : byKeep;
+      const order = [...skel, ...rest.filter((t) => !inSkel.has(t))];
+      const cap = pattern ? new Set([...same, ...skel]).size + extra : Math.max(budget, skel.length);
       const chosen: Tile[] = [];
       for (const t of order) {
         if (chosen.length >= cap) break;
         const at = t.s.sec;
-        if ([...kept.slice(-8), ...chosen].some((x) => Math.abs(x.s.sec - at) < minGap)) continue;
-        if (!prof.under && [...kept.slice(-8), ...chosen].some((x) => x.until != null && at > x.s.sec - 1e-6 && at < secOf(x.until) + minGap)) continue;
-        if (!prof.under && t.until != null && [...kept.slice(-8), ...chosen].some((x) => x.s.sec > at && x.s.sec < secOf(t.until!) + minGap)) continue;
+        if ([...kept.slice(-8), ...chosen].some((x) => Math.abs(x.s.sec - at) < gap)) continue;
+        if (!under && [...kept.slice(-8), ...chosen].some((x) => x.until != null && at > x.s.sec - 1e-6 && at < secOf(x.until) + minGap)) continue;
+        if (!under && t.until != null && [...kept.slice(-8), ...chosen].some((x) => x.s.sec > at && x.s.sec < secOf(t.until!) + minGap)) continue;
         chosen.push(t);
       }
       chosen.sort((a, b) => a.s.beat - b.s.beat);
       chosenKeys.set(p, new Set(chosen.map((t) => keyOf(t, p))));
       kept.push(...chosen);
     }
-    // Room before a drop (Easy, Medium): the beat before it clear of all but the line's own notes on
-    // the beat (human charts leave it empty at a lift 28% of the time, at any section 12%).
-    if (d === 'easy' || d === 'medium') {
+    // Room before a drop (Easy): the half beat before it clear of all but the line's own notes on
+    // the beat (human charts leave it empty at a lift 28% of the time, at any section 12%). It was
+    // the whole beat on Easy and Medium: with the form's calm sections that read as a pause.
+    if (d === 'easy') {
       for (const p of drops) {
-        const down = firstBeatOfPhrase(p);
+        const down = firstBeatOfPhrase(p), from = down - DROP_BREATH;
         for (let i = kept.length - 1; i >= 0; i--) {
           const t = kept[i];
-          if (t.s.beat >= down - 1 - 1e-6 && t.s.beat < down - 1e-6 && !(t.ref && metric(t.s.beat) >= METRIC.beat)) kept.splice(i, 1);
+          if (t.s.beat >= from - 1e-6 && t.s.beat < down - 1e-6 && !(t.ref && metric(t.s.beat) >= METRIC.beat)) kept.splice(i, 1);
+          // A hold ringing on into that beat ends where it starts (a tap if that leaves under half a beat).
+          else if (t.until != null && t.s.beat < from - 1e-6 && t.until > from + 1e-6) {
+            if (from - t.s.beat >= 0.5) kept[i] = { ...t, until: from };
+            else { const { until: _u, ...rest } = t; kept[i] = rest; }
+          }
         }
       }
     }
@@ -553,6 +670,7 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
 
     function fillOk(t: Tile) {
       if (t.ref || t.opens) return true;
+      if (t.accent) return t.s.strength >= ACCENT[d] && (t.under ? prof.under : (t.gap ?? Infinity) >= ACCENT_CLEAR - 1e-6);
       if (t.under) return prof.under;
       const gap = t.gap ?? Infinity;
       if (t.beat && prof.beat > 0 && gap >= prof.beat - 1e-6 && metric(t.s.beat) >= METRIC.eighth - 1e-6) return true;
@@ -718,6 +836,31 @@ export function held(voice: Syllable[]): Syllable[] {
   }
   return out;
 }
+/**
+ * Where a sung syllable starts: the mix's onset (the vocals' own first) at most ATTACK_BEFORE
+ * before it (and under 0.85 of a 16th, so not the 16th before) or ATTACK_AFTER after it, nearest;
+ * null where there's none. The pitch tracker hears a syllable once its pitch settles, 20-80 ms
+ * after its attack and not by one fixed amount (Nov 21: against the well-timed fan charts of
+ * Hotline Bling and California Gurls, the syllables were charted 17-37% of the time, at or below
+ * chance; moved onto their attacks 38-62%, 1.5-2.2 times chance). The voice's one lateness
+ * (`lateness`, at most 45 ms) couldn't follow it syllable by syllable.
+ */
+export function onAttack(events: Pick<SoundEvent, 'sec' | 'part'>[], spb: number): (sec: number) => number | null {
+  const voc = events.filter((e) => e.part === 'vocals').map((e) => e.sec).sort((a, b) => a - b);
+  const all = events.map((e) => e.sec).sort((a, b) => a - b);
+  const before = Math.min(ATTACK_BEFORE, (spb / 4) * 0.85);
+  const nearest = (list: number[], sec: number) => {
+    let lo = 0, hi = list.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (list[m] < sec - before) lo = m + 1; else hi = m; }
+    let best: number | null = null;
+    for (let i = lo; i < list.length && list[i] <= sec + ATTACK_AFTER; i++) if (best == null || Math.abs(list[i] - sec) < Math.abs(best - sec)) best = list[i];
+    return best;
+  };
+  return (sec) => nearest(voc, sec) ?? nearest(all, sec);
+}
+const ATTACK_BEFORE = 0.12;
+const ATTACK_AFTER = 0.03;
+
 const HELD_LONG = 0.6;
 const HELD_JOIN = 0.03;
 
