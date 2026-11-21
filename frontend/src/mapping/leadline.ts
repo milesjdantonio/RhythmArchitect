@@ -739,7 +739,7 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
   /**
    * Lanes: the line's notes by pitch (each phrase's notes ranked: lowest left, highest right, the
    * same note the same lane; up the tune moves right), the drums in fixed places on the hand the
-   * line isn't on (kick outside, snare and hat inside), a chord's second tile on the other hand.
+   * line isn't on (kick outside, snare and hat inside), a chord's second tile on the lane played least lately.
    * A lane held is never taken; a quick repeat of a lane moves next door unless it's the same note.
    */
   function placeLanes(notes: ChartNote[], info: Map<ChartNote, { t: Tile; second?: boolean }>, d: Difficulty) {
@@ -772,12 +772,15 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       const ok = (l: number, same: boolean) => free(l) && (same || n.t - lastAt[l] >= jack - 1e-6);
       let want: number;
       if (second) {
-        // The chord's partner: the other hand from its first tile, outside for a kick.
+        // The chord's partner: the lane played least lately, either hand (round 6). A fixed lane on
+        // the other hand, outside for a kick, put a doubled kick on every beat in the one lane
+        // (Hotline Bling's Ultra jacks 17% → 27%, the fan charts 13-19%; this way 18%), and chords
+        // only ever split across the hands kept the chart centred (lane moves 0.89-0.95 a step, the
+        // fan charts 1.15-1.47; this way 0.98-1.11): human 4K charts jump on one hand too.
         const first = order.slice(0, i).reverse().find((x) => Math.abs(x.t - n.t) < 0.002 && !info.get(x)!.second);
         const from = first?.lane ?? lineLane;
-        const hand = from < 2 ? [2, 3] : [0, 1];
-        const pref = t.s.drum === 'kick' ? (from < 2 ? 3 : 0) : t.s.midi != null && t.s.midi < (first ? info.get(first)!.t.s.midi ?? 60 : 60) ? Math.min(...hand) : t.s.drum ? (from < 2 ? 2 : 1) : Math.max(...hand);
-        want = pick([pref, ...hand, 0, 1, 2, 3].filter((l) => l !== from), (l) => ok(l, false));
+        const hand = [0, 1, 2, 3].filter((l) => l !== from).sort((a, b) => lastAt[a] - lastAt[b]);
+        want = pick([...hand, 0, 1, 2, 3].filter((l) => l !== from), (l) => ok(l, false));
       } else if (t.ref && t.s.layer !== 'drums') {
         const ranked = t.s.midi != null ? rankLane(t.phrase, t.s.midi) : null;
         let pref = ranked ?? lineLane;

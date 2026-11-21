@@ -436,6 +436,17 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     between unheard tiles. osu!'s criteria chart swing on 1/6 or 1/12 "only when the song calls for
     it"; this one doesn't. The sung syllables spread evenly through the beat (Basic Pitch's timing),
     so a swung vocal can't be told from them.
+    **Chord shapes** (round 6). A chord's partner went on a fixed lane of the other hand (outside
+    for a kick), so a doubled kick on every beat hit one lane: Hotline Bling's Ultra jacks 17% →
+    27% in round 5 (map-pop; the fan charts 13-19%). Now it takes the lane played least lately,
+    either hand (human 4K charts jump on one hand too: chords only split across the hands kept the
+    chart centred). Against the timed fan charts: jacks Hotline Bling 27% → 18%, California Gurls
+    23% → 21%, change 14% → 11% (humans 3%); lane moves a step 0.89-0.95 → 0.98-1.11 (humans
+    1.15-1.47); stars within 0.08; no holes, no criteria breaks. **Returns were checked and left
+    alone**: of a first time's slots a return didn't keep on Easy and Medium, most have a return
+    tile within a 16th, but 70 ms or more from the slot in nearly every case (raw times, before
+    snapping): the sounds really come elsewhere the second time (the singer, or what's heard), not
+    a snap that could have gone either way, so keeping the slot would move a tile off its sound.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
