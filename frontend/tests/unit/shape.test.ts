@@ -134,3 +134,39 @@ describe('a floor for every stretch', () => {
     for (let w = 0; w < 10; w++) expect(floored.filter((n) => n.t >= w * 4 && n.t < w * 4 + 4).length).toBeGreaterThanOrEqual(2);
   });
 });
+
+describe('peaks, holds worth keeping, chords in runs, the onset mapper', () => {
+  it('no window of an easier chart passes PEAK times its rate', async () => {
+    const { thinChart, KEEP } = await import('../../src/mapping/thin');
+    const notes = Array.from({ length: 160 }, (_, i) => ({ t: i / 4, lane: i % 4, pitch: 'C5', len: 0.25 }));
+    const events = notes.map((n, i) => ({ id: i, t: n.t, sec: n.t, band: 'mid' as const, pitched: false, midi: null, note: null, bright: 60, strength: 0.5, len: 0.25, onBeat: false, accent: false }));
+    const out = thinChart(notes, { ...KEEP.easy, share: 1, minGap: 0.01, spb: 1, offset: 0, events, onGrid: false, maxRate: 1.5 * KEEP.easy.rate });
+    for (let w = 0; w < 10; w++) expect(out.filter((n) => n.t >= w * 4 && n.t < w * 4 + 4).length).toBeLessThanOrEqual(Math.round(1.5 * KEEP.easy.rate * 4));
+  });
+
+  it('a held word that ends a line outlasts a longer hold mid-line', async () => {
+    const { holdWorth } = await import('../../src/mapping/shape');
+    expect(holdWorth(1, true, true)).toBeGreaterThan(holdWorth(1.6, false, false));
+  });
+
+  it('a chord in a run does not break it', () => {
+    const rows = [60, 62, 64, 65, 67].map((pitch, i) => ({ t: i * 0.15, pitch }));
+    expect(figuresOf(rows).filter((f) => f?.kind === 'run')).toHaveLength(4);
+    const notes = [60, 62, 64, 64, 65, 67].map((p, i) => ({ sec: [0, 0.15, 0.3, 0.3, 0.45, 0.6][i], lane: i === 3 ? 0 : 0, p }));
+    // With the chord's two tiles at 0.3 s, the run still climbs around it.
+    flowLanes(notes, 'hard', (n) => n.sec, (n) => n.sec, 1, { figure: (n) => n.p });
+    expect(notes[5].lane).toBeGreaterThan(notes[1].lane);
+  });
+
+  it('the onset mapper charts a busy phrase busier on Easy', async () => {
+    const { chartFor } = await import('../../src/mapping/charts');
+    // A note every 8th for 32 beats; the second half busy.
+    const melody = Array.from({ length: 64 }, (_, i) => ({ t: i / 2, len: 0.25, degree: 60 + (i % 5), strong: i % 2 === 0, midi: 60 + (i % 5), strength: 0.5 }));
+    const shape = { scale: (t: number) => (t >= 16 ? 1.25 : 0.8), breath: () => () => false, drops: [] };
+    const plain = chartFor(melody, 'easy', [0, 2, 3, 5, 7, 8, 10], 48, 120).notes;
+    const shaped = chartFor(melody, 'easy', [0, 2, 3, 5, 7, 8, 10], 48, 120, shape).notes;
+    const busyShaped = shaped.filter((n) => n.t >= 16).length, quietShaped = shaped.filter((n) => n.t < 16).length;
+    expect(busyShaped).toBeGreaterThan(quietShaped);
+    expect(busyShaped).toBeGreaterThanOrEqual(plain.filter((n) => n.t >= 16).length);
+  });
+});

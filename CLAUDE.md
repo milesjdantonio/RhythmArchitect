@@ -244,7 +244,19 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     when there's no beat map (`straightMap`, ensomi.ts: for telling phrases apart only, never for
     placing a tile). Every stretch keeps at least `STRETCH_FLOOR` tiles a second where it has
     sounds (E 0.5, M 0.8, H 1.1: thin.ts `minRate` per 4 s window, the lead line per phrase), so
-    the shape and the star calibration together can't empty a quiet verse. **Figures**
+    the shape and the star calibration together can't empty a quiet verse, and no 4 s window
+    of an easier chart passes `PEAK` (1.5) times its `rate` (thin.ts `maxRate`: the star rating
+    judges the whole chart, so a chorus could spike). **Drops land**: every difficulty keeps a tile
+    on a drop's first beat (within `DROP_NEAR`, 60 ms; thin.ts `drop` weighs its row first, the
+    lead line adds the strongest sound there and clears tiles crowding it), Medium and up a chord
+    of two where two parts strike. **The last chorus pays off**: a busy pattern's last time in
+    the song takes `GROW_MAX` (`growth(..., last)`). **Holds worth keeping**: past `maxHolds`
+    the ones worth least become taps (`holdWorth`: length, half again for a held word, half again
+    for one that ends a line, a rest of `REST` (1) beat after; the song's last note keeps its
+    hold), not simply the shortest. The onset mapper's charts (`charts.ts`, the fallback) take the
+    shape too (`ChartShape` from automap.ts: each note's keep share and spacing scaled, the breath,
+    the drop's note kept first) and their lanes flow with figures by each sound's height. A chord
+    in a run goes by its top note (lanes.ts), so it doesn't break the run. **Figures**
     (`lanes.ts` `figuresOf`): four or more evenly spaced single tiles under 0.3 s apart whose pitch
     climbs or falls every step are a run, charted as a staircase the tune's way
     (`FIGURE_AGAINST`); two pitches back and forth are a trill on two lanes (`FIGURE_TRILL`);

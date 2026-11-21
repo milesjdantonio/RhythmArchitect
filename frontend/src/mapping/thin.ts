@@ -11,6 +11,7 @@
 // in tiles, so a chord counts twice.
 
 import type { ChartNote, Difficulty, SoundEvent } from '../api/types';
+import { REST, holdWorth } from './shape';
 
 /**
  * How each difficulty keeps tiles of the full chart (Ultra). Each step keeps about 0.7 of the tiles
@@ -91,6 +92,10 @@ export interface ThinOptions {
   spacing?: (t: number) => number;
   /** Each window keeps at least this many tiles a second (where it has them: shape.ts STRETCH_FLOOR). */
   minRate?: number;
+  /** ...and at most this many (shape.ts PEAK times `rate`). */
+  maxRate?: number;
+  /** A moment (beats) a drop lands on: its row is kept first, and as a chord where it is one (shape.ts DROP_NEAR). */
+  drop?: (t: number) => boolean;
   /** Where `holdsAlone` is waived (beats): a busy phrase (shape.ts HOLDS_FREE). */
   holdsFree?: (t: number) => boolean;
 }
@@ -125,6 +130,8 @@ export const SUNG = { weight: 2 };
 const TWIN_KEEP = 0.6;
 
 const WINDOW = 4; // seconds
+/** What a row a drop lands on weighs extra (kept first). */
+const DROP_WEIGHT = 3;
 
 type Row = { t: number; notes: ChartNote[]; w: number; end: number; s: number; onBeat: boolean };
 
@@ -186,7 +193,7 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     const len = Math.max(0, ...notes.map((n) => (n.hold ? n.len : 0)));
     const s = strengthAt(o.events, sec, cursor);
     const sung = o.sung ? o.sung(r.t) : 0;
-    return { t: r.t, notes, w: s + 0.25 * (r.notes.length - 1) + grid + SUNG.weight * sung, end: r.t + len, s, onBeat: !!at?.beat };
+    return { t: r.t, notes, w: s + 0.25 * (r.notes.length - 1) + grid + SUNG.weight * sung + (o.drop?.(r.t) ? DROP_WEIGHT : 0), end: r.t + len, s, onBeat: !!at?.beat };
   });
   // Anticipations: a strong sound off the beat, just before a beat whose sound is no stronger,
   // is the rhythm's push (syncopation): it weighs more, and the beat it leads into less. (Only
@@ -240,8 +247,8 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
   /** The heaviest rows that fit, by the rules above. */
   const select = (weight: (r: Row) => number) => {
     const budget = new Map<number, number>();
-    const least = Math.round((o.minRate ?? 0) * WINDOW);
-    for (const [k, n] of inWin) budget.set(k, Math.max(1, Math.min(n, Math.max(least, Math.round(n * keep * (winScale.get(k) ?? 1))))));
+    const least = Math.round((o.minRate ?? 0) * WINDOW), most = o.maxRate ? Math.max(least, Math.round(o.maxRate * WINDOW)) : Infinity;
+    for (const [k, n] of inWin) budget.set(k, Math.max(1, Math.min(n, most, Math.max(least, Math.round(n * keep * (winScale.get(k) ?? 1))))));
     // Chords: the heaviest rows with more than one tile, up to `chords` of the rows kept.
     let chordsLeft = o.maxChord < 2 ? 0 : o.chords >= 1 ? Infinity : Math.round(o.chords * keep * rows.length);
     const kept: { r: Row; notes: ChartNote[] }[] = [];
@@ -256,7 +263,8 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
         (q.end > q.t && r.t > q.t && r.t < q.end + gapBeats)
         || (r.end > r.t && q.t > r.t && q.t < r.end + gapBeats))));
       if (clash) continue;
-      const chord = r.notes.length > 1 && chordsLeft > 0;
+      const landing = !!o.drop?.(r.t);
+      const chord = r.notes.length > 1 && (chordsLeft > 0 || (landing && o.maxChord >= 2));
       const notes = capChord(r.notes, chord ? o.maxChord : 1, prevLane);
       if (notes.length > 1) chordsLeft--;
       kept.push({ r, notes });
@@ -290,11 +298,20 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
     out.push(...pick);
     prevLane = pick[pick.length - 1].lane;
   }
-  // Too many holds: the shortest become taps until the rest fit.
+  // Too many holds: the ones worth least become taps until the rest fit (shape.ts holdWorth: a
+  // held word and a hold that ends a line are worth more; the song's last note keeps its hold).
   const holds = out.filter((n) => n.hold);
   const room = Math.floor((o.maxHolds ?? 1) * out.length);
   if (holds.length > room) {
-    const drop = new Set([...holds].sort((a, b) => a.len - b.len).slice(0, holds.length - room));
+    const starts = out.map((n) => n.t).sort((a, b) => a - b);
+    const nextAfter = (x: number) => { let lo = 0, hi = starts.length; while (lo < hi) { const m = (lo + hi) >> 1; if (starts[m] <= x + 1e-6) lo = m + 1; else hi = m; } return starts[lo]; };
+    const last = starts[starts.length - 1];
+    const worth = (n: ChartNote) => {
+      if (n.t >= last - 1e-6) return Infinity;
+      const after = nextAfter(n.t + n.len - 1e-6);
+      return holdWorth(n.len, (o.sung?.(n.t) ?? 0) > 0, after === undefined || after - (n.t + n.len) >= REST);
+    };
+    const drop = new Set([...holds].sort((a, b) => worth(a) - worth(b) || a.len - b.len).slice(0, holds.length - room));
     return out.map((n) => (drop.has(n) ? tap(n) : n));
   }
   return out;

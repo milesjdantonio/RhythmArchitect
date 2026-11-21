@@ -163,7 +163,9 @@ export function flowLanes<T extends { lane: number; hold?: boolean }>(notes: T[]
     while (j < sorted.length && (at(sorted[j]) - at(sorted[i])) * scale < 0.002) j++;
     rowStart.set(i, figRows.length);
     const by = hints?.figure ?? hints?.pitch;
-    figRows.push({ t: at(sorted[i]) * scale, pitch: j - i === 1 && by ? by(sorted[i]) : null });
+    // A chord in a figure goes by its top note, so a run isn't broken by one chord in it.
+    const tops = by ? sorted.slice(i, j).map((n) => by(n)).filter((x): x is number => x != null) : [];
+    figRows.push({ t: at(sorted[i]) * scale, pitch: tops.length ? Math.max(...tops) : null });
     i = j;
   }
   const figures = hints?.figure || hints?.pitch ? figuresOf(figRows) : figRows.map(() => null);

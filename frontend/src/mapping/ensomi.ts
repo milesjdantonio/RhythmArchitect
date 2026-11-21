@@ -18,7 +18,7 @@ import { barOf, beatAt, beatMap, beatPlace, divisionAt, secAt, snapSec, type Bea
 import { findRepeats, twinSec, type Repeats } from './repeats';
 import { noteName, syllableAt, type Syllable } from './voice';
 import { hasParts, leadLine } from './leadline';
-import { HOLDS_FREE, STRETCH_FLOOR, breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
+import { DROP_NEAR, HOLDS_FREE, PEAK, STRETCH_FLOOR, breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
 
 export { KEEP };
 // The runtime finds these beside its own module, which a bundler moves; so they're handed to it.
@@ -561,16 +561,20 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
   const beatSec = (sec: number) => (map ? secAt(map, beatAt(map, sec)) - secAt(map, beatAt(map, sec) - 1) : spb);
   // How many times each phrase's pattern has been played (repeats.ts: 1 the first time), for a
   // busy repeat to build on it (shape.ts growth).
-  const timeOf = new Map<number, number>();
+  const timeOf = new Map<number, number>(), lastOf = new Map<number, number>();
   if (repeats) {
     const seen = new Map<number, number>();
     for (const [ph, root] of [...repeats.of.entries()].sort((a, b) => a[0] - b[0])) {
       const n = (seen.get(root) ?? 1) + 1;
       seen.set(root, n);
       timeOf.set(ph, n);
+      lastOf.set(root, ph);
     }
   }
-  const intensity = (t: number) => { const p = phrase(t), sc = shape.scale(p); return sc * (1 + growth(sc, timeOf.get(p) ?? 1)); };
+  const isLast = (p: number) => { const root = repeats?.of.get(p); return root !== undefined && lastOf.get(root) === p; };
+  const intensity = (t: number) => { const p = phrase(t), sc = shape.scale(p); return sc * (1 + growth(sc, timeOf.get(p) ?? 1, isLast(p))); };
+  const dropT = shape.dropSecs.map((s) => s);
+  const onDrop = dropT.length ? (t: number) => dropT.some((s) => Math.abs(secOf(t) - s) <= DROP_NEAR) : undefined;
   const breath = (d: Difficulty) => {
     const b = breathsOf(shape, d, beatSec);
     // A sung syllable stays: the lyric runs into the drop.
@@ -588,7 +592,8 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
       ...(twin ? { twin } : {}),
       ...(d !== 'ultra' ? { kind, phrase, follow: FOLLOW } : {}),
       ...(voice ? { sung: (t: number) => syllable(t)?.strength ?? 0 } : {}),
-      ...(d !== 'ultra' ? { intensity, spacing: (t: number) => spacing(shape.scale(phrase(t))), minRate: STRETCH_FLOOR[d] } : {}),
+      ...(d !== 'ultra' ? { intensity, spacing: (t: number) => spacing(shape.scale(phrase(t))), minRate: STRETCH_FLOOR[d], maxRate: PEAK * k.rate * scale } : {}),
+      ...(onDrop ? { drop: onDrop } : {}),
       ...(d === 'medium' ? { holdsFree: (t: number) => shape.scale(phrase(t)) >= HOLDS_FREE } : {}),
       ...(br ? { breath: br.at } : {}),
     });

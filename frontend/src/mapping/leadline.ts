@@ -25,7 +25,7 @@ import { KEEP } from './thin';
 import { flowChart, soundFigure } from './lanes';
 import { barOf, beatAt, divisionAt, secAt, type BeatMap } from './beatmap';
 import type { Syllable } from './voice';
-import { STRETCH_FLOOR, breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
+import { DROP_NEAR, REST, STRETCH_FLOOR, breathsOf, holdWorth, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
 
 type Part = 'vocals' | 'drums' | 'bass' | 'other';
 interface Cand { sec: number; t: number; beat: number; part: Part; strength: number; midi: number | null; len: number; /** A drum's figure value (lanes.ts soundFigure). */ fig?: number; /** A chord's other note (voice.ts Syllable.also). */ extra?: boolean }
@@ -164,6 +164,23 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
   const slotOf = (c: Cand, p: number) => Math.round((c.beat - firstBeat.get(p)!) * 4);
   const keyOf = (c: Cand, p: number) => `${c.part}:${slotOf(c, p)}`;
 
+  // Which phrase each one's lead rhythm repeats (the first time it was played) and the last time
+  // each is played: the final chorus is a repeat's payoff (shape.ts growth). The same matching as
+  // a difficulty's own below (its first earlier phrase of the same part this alike).
+  const lastOf = new Map<number, number>();
+  {
+    const seen: { part: Part; slots: Set<number>; root: number }[] = [];
+    for (const p of ids) {
+      const one = lead.get(p);
+      if (!one) continue;
+      const slots = new Set(phrases.get(p)!.filter((c) => c.part === one).map((c) => slotOf(c, p)));
+      const tw = seen.find((q) => q.part === one && jaccard(q.slots, slots) >= ALIKE);
+      const root = tw ? tw.root : p;
+      lastOf.set(root, p);
+      seen.push({ part: one, slots, root });
+    }
+  }
+
   return (d, scale = 1) => {
     const k = KEEP[d], prof = PROFILE[d];
     const minGap = k.minGap;
@@ -223,8 +240,9 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       const time = (times.get(root) ?? 0) + 1;
       times.set(root, time);
       // A repeat in a busy part builds on its pattern: a few more of its own notes, the heaviest first.
-      if (twin && shaped && growth(sc, time) > 0) {
-        const more = Math.round(growth(sc, time) * chosen.length);
+      const grow = growth(sc, time, lastOf.get(root) === p);
+      if (twin && shaped && grow > 0) {
+        const more = Math.round(grow * chosen.length);
         let added = 0;
         for (const c of [...pool].sort((a, b) => weight(b) - weight(a) || a.sec - b.sec)) {
           if (added >= more) break;
@@ -244,6 +262,25 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
       // A sung syllable stays: the lyric runs into the drop.
       if (picked[i].c.part !== 'vocals' && inBreath(breaths, picked[i].c.sec)) picked.splice(i, 1);
     }
+    // Each drop lands: a tile on its first beat (the strongest sound there, whatever its part;
+    // tiles crowding it go), on Medium and up a chord of two where two parts strike together.
+    for (const at of shape.dropSecs) {
+      const near = cands.filter((c) => Math.abs(c.sec - at) <= DROP_NEAR && !c.extra).sort((a, b) => b.strength - a.strength || Math.abs(a.sec - at) - Math.abs(b.sec - at));
+      if (!near.length) continue;
+      let here = picked.find((x) => Math.abs(x.c.sec - at) <= DROP_NEAR);
+      if (!here) {
+        here = { c: near[0], chord: false };
+        for (let i = picked.length - 1; i >= 0; i--) if (Math.abs(picked[i].c.sec - here.c.sec) < minGap && picked[i].c.part !== 'vocals') picked.splice(i, 1);
+        if (picked.some((x) => Math.abs(x.c.sec - here!.c.sec) < minGap)) continue;
+        picked.push(here);
+      }
+      if (d !== 'easy' && !here.chord) {
+        const h = here;
+        const other = near.find((c) => c !== h.c && c.part !== h.c.part && Math.abs(c.sec - h.c.sec) < 0.002);
+        if (other && !picked.some((x) => x.c === other)) { h.chord = true; picked.push({ c: other, chord: true }); }
+      }
+    }
+    picked.sort((a, b) => a.c.sec - b.c.sec || a.c.part.localeCompare(b.c.part));
 
     // The tiles: holds where a note is held long (on the easier difficulties nothing starts under
     // one), a chord's two tiles on lanes apart, lanes with the lead's pitch.
@@ -295,8 +332,17 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
     }
     // Holds end where a breath starts.
     cutHolds(notes, breaths, (t) => o.offset + t * spb, (sec) => (sec - o.offset) / spb);
-    // Too many holds for the difficulty: the shortest are taps.
-    const holds = notes.filter((n) => n.hold).sort((a, b) => a.len - b.len);
+    // Too many holds for the difficulty: the ones worth least are taps (shape.ts holdWorth: a held
+    // word, a hold that ends a line; the song's last note keeps its hold).
+    const sungAt = new Set(notes.filter((_, i) => picked[i]?.c.part === 'vocals'));
+    const starts = notes.map((n) => n.t);
+    const lastT = Math.max(...starts);
+    const worth = (n: ChartNote) => {
+      if (n.t >= lastT - 1e-6) return Infinity;
+      const end = n.t + n.len, after = starts.filter((t) => t > end - 1e-6).reduce((a, b) => Math.min(a, b), Infinity);
+      return holdWorth(n.len, sungAt.has(n), after - end >= REST);
+    };
+    const holds = notes.filter((n) => n.hold).sort((a, b) => worth(a) - worth(b) || a.len - b.len);
     const room = Math.floor((k.maxHolds ?? 1) * notes.length);
     for (const n of holds.slice(0, Math.max(0, holds.length - room))) { delete n.hold; n.len = 0.25; }
     return { difficulty: d, lanes: 4, notes: flowChart(notes, d, spb, { pitch: (n) => pitchOf.get(n) ?? null, figure: (n) => figOf.get(n) ?? pitchOf.get(n) ?? null }) };

@@ -131,3 +131,27 @@ describe('a repeat in a quieter part', () => {
     expect(count(20, 28)).toBeLessThan(count(4, 12));
   });
 });
+
+describe('drops land, the last chorus pays off', () => {
+  // Quiet (a drum each beat) for 16 s, then busy (each 8th), with a bass note on the drop's beat.
+  const quiet = Array.from({ length: 32 }, (_, i) => drum(i * SPB));
+  const busy = Array.from({ length: 64 }, (_, i) => drum(16 + i * SPB / 2));
+  const bass: SoundEvent = { ...drum(16), part: 'bass', band: 'low', pitched: true, midi: 40, note: 'E2', strength: 0.5 };
+  const make = leadLine({ bpm: 120, offset: 0, events: [...quiet, ...busy, bass], voice: [], map: null });
+  it('every difficulty has a tile on the drop, Medium and up a chord', () => {
+    for (const d of ['easy', 'medium', 'hard', 'ultra'] as const) {
+      const at = make(d).notes.filter((n) => Math.abs(n.t * SPB - 16) < 1e-6).length;
+      expect(at).toBeGreaterThanOrEqual(d === 'easy' ? 1 : 2);
+    }
+  });
+
+  it('the last time a busy pattern comes back is its busiest', () => {
+    // The same 8th-note phrase every 4 s, loud all the way (busy, but all alike), 8 phrases.
+    const drums = Array.from({ length: 64 }, (_, i) => drum(i * SPB / 2));
+    // A louder second half makes those phrases busy (scale above 1).
+    const barEnergy = Array.from({ length: 16 }, (_, b) => (b >= 8 ? 1 : 0.4));
+    const easy = leadLine({ bpm: 120, offset: 0, events: drums, voice: [], map: null, barEnergy })('medium').notes.map((n) => n.t * SPB);
+    const count = (a: number) => easy.filter((s) => s >= a && s < a + 4).length;
+    expect(count(28)).toBeGreaterThanOrEqual(count(20));
+  });
+});
