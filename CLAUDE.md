@@ -364,6 +364,12 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     chords taken out 2.40 at 4.5 rows a second (ours 4.5 a second rate 2.0-2.15), only its tiles on
     sounds we heard 2.32-2.50: chords are about half of it. Lane patterns are not: Ultra moves 1.0-1.1
     lanes a step (the fan charts 1.15-1.31), quick repeats 17% (13-19%).
+    **Returns you can see** (round 3, Nov 21): on Easy and Medium (`RETURN_COPY`) every phrase of a
+    section's return is charted from the same phrase of its first time, alike or not
+    (`returnOf`: not only where `SECTION_ALIKE` holds), and takes its first time's lanes whatever
+    the notes; Hard and Ultra as before (lanes vary, as the human charts' do). Only the return's own
+    sounds can be kept, so where its music differs it keeps the slots both have. Not yet measured on
+    the saved listens (the cloud session had none): run `tools/replay-study.mjs` on them.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
@@ -598,10 +604,12 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   not find the rhythm or chorus"): the longest stretch with no tile while the song plays, two-bar
   holes, the share of downbeats with a tile, a section's returns against its first time (rhythm,
   lanes). map-pop prints it for ours and each human chart (human: 64-92% downbeats, no holes, returns
-  82-87% of their rhythm on Hotline Bling). The offline way, in seconds: replay the saved listens
-  (`.data/remap/*.study.json` with their song files' `levels`) through `placer(...).calibrated` in a
-  scratch `tests/unit/zz-*.test.ts` (moved out before committing: `tsc -b` fails on them), as the
-  Nov 21 study did. After each round, update
+  82-87% of their rhythm on Hotline Bling). The offline way, in seconds: `node tools/replay-study.mjs
+  .data/remap/*.study.json [--out=<dir>]` replays the saved listens through today's mapper (the
+  modules through Vite, the stars by the runtime; its lines, else the study's raw trained charts
+  spliced and thinned) and prints the sound-off report and criteria breaks per difficulty, now and
+  as the listen made it; `--out` writes song files for `map-pop.mjs --songs=`. (Before it, the Nov
+  21 study did the same in a scratch `tests/unit/zz-*.test.ts`, moved out before committing.) After each round, update
   `docs/mapper-bottlenecks.html` (plain: the measures against the human charts, the analysis, the
   ranked bottlenecks, a change log).
 - Where players miss: the game sends each scored run's tiles (`engine.ts` `tiles()`), the server
@@ -615,6 +623,9 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   kept, once; cleared when a chart changes); the dev tools and heat-report show them.
 - After changing `src/mapping/automap.ts` or `charts.ts`, run `npm run map`. The band benchmark (`tests/unit/automap-band.test.ts`) must keep finding the notes (legato ones too).
 - Before finishing (in `frontend/`): `npx tsc -b`, `npm test`, `npm run test:e2e`, `npm run build`.
+  In the cloud sandbox (Nov 21) "plays the test song on Easy perfectly" grades B: its autoplay's
+  presses land ~45 ms late there (on main too), so it's the sandbox, not the change; the intro test
+  can time out under the full run's load and passes alone. Judge both on the dev box.
   On this Windows box run vitest from a path that starts with an upper-case `C:` (a lower-case
   `c:` working directory makes it load twice and every suite fails with "reading 'config'").
 - Windows dev box: write multi-line scripts with the file tool, not shell heredocs (they break on

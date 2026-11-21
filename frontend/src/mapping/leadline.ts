@@ -167,6 +167,8 @@ const SILENT = 0.2;
  */
 const SKELETON: Record<Difficulty, number[]> = { easy: [0, 2], medium: [0], hard: [0], ultra: [] };
 const SKELETON_AHEAD = 0.5;
+/** The difficulties that chart a section's every return from its first time, rhythm and lanes (returnOf). */
+const RETURN_COPY = new Set<Difficulty>(['easy', 'medium']);
 /** Easy's breath before a drop (beats); the others play into it. */
 const DROP_BREATH = 0.5;
 /** How much each part counts when choosing the second part. */
@@ -445,12 +447,18 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
   // them; ours were 13-64% on Easy) and let its lanes vary (about half the same). It may grow: a
   // return that's more intense adds a few notes of its own (growsOn).
   const growsOn = new Set<number>();
+  // Easy and Medium chart every return from its first time, alike or not, lanes and all (RETURN_COPY:
+  // "a chorus you can see", Nov 21: with the sound off the user couldn't find the chorus; ours kept
+  // 43-58% of a return's rhythm, the fan charts 82-87%). Only its own sounds can be kept, so a return
+  // whose music differs keeps the slots it shares.
+  const returnOf = new Map<number, number>();
   for (const s of form.sections) {
     if (s.nth === 0) continue;
     const first = form.sections.find((x) => x.group === s.group && x.nth === 0);
     if (!first) continue;
     for (let k = 0; k < Math.min(s.to - s.from, first.to - first.from); k++) {
       const p = s.from + k, q = first.from + k;
+      if (follows.get(p) && follows.get(q)) returnOf.set(p, q);
       if (!follows.get(p) || follows.get(p) !== follows.get(q)) continue;
       if (jaccard(slotsOf(q).slots, slotsOf(p).slots) < SECTION_ALIKE) continue;
       twinOf.set(p, q);
@@ -527,6 +535,8 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
 
   const make = (d: Difficulty, scale = 1) => {
     const k = KEEP[d], prof = PROFILE[d];
+    const copyAll = RETURN_COPY.has(d);
+    const twinFor = (p: number) => (copyAll ? returnOf.get(p) ?? twinOf.get(p) : twinOf.get(p));
     const share = d === 'ultra' ? Math.min(1, scale) : Math.min(1, k.share * scale);
     const minGap = k.minGap;
     // Which tiles: per phrase, a share of its tiles by weight (Ultra all), the line before the fill,
@@ -557,7 +567,7 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       // their budget, held a chorus back.
       const gap = d === 'ultra' ? minGap : minGap * spacing(Math.min(SHAPE.hi, lean));
       const under = prof.under || (d === 'medium' && lean >= HOLDS_FREE);
-      const twin = twinOf.get(p);
+      const twin = twinFor(p);
       const pattern = twin != null ? chosenKeys.get(twin) : undefined;
       const byKeep = [...mine].sort((a, b) => b.keep - a.keep || a.s.beat - b.s.beat);
       // A repeat: its twin's pattern (all of it, the budget aside), and where it grows a few of its own.
@@ -656,12 +666,14 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     }
     for (const n of notes) {
       const { t, second } = info.get(n)!;
-      const twin = twinOf.get(t.phrase);
+      const twin = twinFor(t.phrase);
       if (twin == null) continue;
       const from = byPhraseSlot.get(`${twin}|${keyOf(t, t.phrase)}|${second ? 2 : 1}`)?.[0];
-      // Only the same sound in the same place: a phrase in the same rhythm on other notes keeps its own tune.
+      // Only the same sound in the same place: a phrase in the same rhythm on other notes keeps its
+      // own tune; but on Easy and Medium a section's return takes its first time's lanes whatever
+      // the notes (RETURN_COPY), so it looks the same.
       const was = from && info.get(from)!.t.s;
-      if (from && was && was.midi === t.s.midi && was.drum === t.s.drum) n.lane = from.lane;
+      if (from && was && ((copyAll && returnOf.get(t.phrase) === twin) || (was.midi === t.s.midi && was.drum === t.s.drum))) n.lane = from.lane;
     }
     fixClashes(notes, d);
     endOnChord(notes);
