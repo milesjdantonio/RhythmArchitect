@@ -231,8 +231,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     (thin.ts `intensity` per window, charts.ts each note's keep share; Ultra never). A phrase
     `DROP_JUMP` (1.45) times as busy as the two before it, or `DROP_LOUD` (1.3) times as loud, is a
     drop, landing on the bar whose loudness jumps most (`dropSecs`): the phrase before builds
-    (`BUILD`, at least 1.1), the easier charts leave a breath before it (`BREATH`: E 1, M ¾, H ½ a
-    beat; a sung syllable there stays; a hold ringing into it ends where it starts, `cutHolds`),
+    (`BUILD`, at least 1.1), Easy leaves a breath before it (`BREATH`: half a beat, Easy only
+    since Nov 21: E 1, M ¾, H ½ before read as pauses; a sung syllable there stays; a hold ringing into it ends where it starts, `cutHolds`),
     and its first beat keeps a tile (thin.ts `drop`, charts.ts `DROP_LIFT`; a chord on Medium and
     up where the row is one). A busy repeat builds on its pattern (`growth`: +10% from its second
     time, at most +25%, `GROW_MAX` its last time in the song), and isn't held to what its twin left
@@ -321,10 +321,31 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     so a return is charted from its first time phrase by phrase (`SECTION_ALIKE`) and may grow
     (`GROW`); one part a section (`STICKY_MIN`); every chart ends on a chord (15 of 26 Creative
     Commons charts do, ours never did); Easy at most 5 tiles in a row half a beat apart (osu!mania's
-    ranking criteria); the beat before a drop clear on Easy and Medium (human charts leave it empty
-    at a lift 28% of the time, 12% at any section). Not done, by the same measures: more holds at
+    ranking criteria); the half beat before a drop clear on Easy (`DROP_BREATH`; human charts leave
+    the beat empty at a lift 28% of the time, 12% at any section; the whole beat on Easy and Medium
+    read as pauses). Not done, by the same measures: more holds at
     sung line ends (the human charts held 0-1 of 21; ours already hold most on Hard), rests after
     long runs (ours rest far more often than theirs).
+  - **No pauses, Hard and Ultra back up, syllables on their attacks** (Nov 21, the user's playtest:
+    "significant pauses for parts that definitely should be played", "difficulty dropped
+    significantly in higher difficulties", ~45% of Beat Saber quality). The form's intensity went
+    as low as 0.13-0.4 where the music plays (Open Your Eyes' piano intro 0.30, One Dance's break
+    0.27), so the lead line's `lean` is at least `LEAN_MIN` 0.7 (Hard and Ultra `LEAN_HIGH` 0.85)
+    wherever the song plays (`plays`: a phrase at least `SILENT` 0.2 of the median's loudness; the
+    fade's "nothing" now only where it's that quiet), and a phrase with no part to follow follows
+    its strongest. Hard and Ultra take the other parts' big hits a 16th clear of the line (`ACCENT`:
+    Ultra ≥0.45, Hard ≥0.7): the well-timed fan charts chart 74-91% of the mix's strong onsets, more
+    than any other sound. Each syllable goes onto the mix's onset just before it (`onAttack`: up to
+    120 ms and under 0.85 of a 16th early, 30 ms late, the vocals' onsets first): Basic Pitch hears
+    a syllable 20-80 ms after its attack, not by one amount, so the voice's one `lateness` couldn't
+    follow it (fan charts put a tile on 17-37% of the raw syllables, at or below chance; on 38-62%
+    moved). On the saved listens of 8 songs: two-bar holes 1-2 on four songs → 0 everywhere; Ultra's
+    downbeats 61-88% → 64-92%; Hard 1.15-1.84★ → 1.15-1.94; Ultra 1.36-2.46 → 1.41-2.54; F1 against
+    the Hotline Bling fan charts (30 ms) Hard 47-49% → 48-50%, Ultra 56-59% → 56-60%. Ultra is still
+    ~2★ against 2.9-6.4★ for the fan charts and 2.2-3.35 for the Nov 20 lead line: it keeps 951 of
+    the 1,076 tiles open to it on Hotline Bling, so its pool (what the analysis hears) is the limit,
+    not ULTRA_FILL or ULTRA_RATE (both off: +0-0.4★). The ranked bottlenecks and what's next:
+    `docs/mapper-bottlenecks.html` (updated each round).
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
@@ -383,8 +404,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   a listen also hands back what the steps after the model work from (its raw charts, the sounds,
   the beats, the notes heard; never the audio) as `window.__rythmStudy`;
   `node tools/remap-bank.mjs --only=<id> --study` saves it to `.data/remap/<id>.study.json`, to
-  replay ideas offline against human charts. The user asked that real-listen tests remake only One
-  Dance until a change is judged good (Nov 20).
+  replay ideas offline against human charts. Real-listen tests remake only One Dance and Open Your
+  Eyes (the user, Nov 21; One Dance only before), never the whole bank.
 - Only if it's off or fails: with WebGPU the song is split with Demucs (`src/mapping/stems.ts`,
   ~172 MB, `stemModel.ts`; e2e: `rythm-architect:no-stems`), and the onset mapper's own charts
   (`charts.ts`) are used. All the models run on one ONNX Runtime (`src/mapping/ort.ts`); any of
@@ -555,6 +576,16 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   text only, cached in `.data/pop-charts/`). Charts timed at another tempo than the song's are left
   out (One Dance's at 141 and 92 BPM: mistimed and an edit). Nov 20: Hotline Bling F1 80% against
   a human Hard (2.92★), its humans' gaps 27-29% swung against our 9%.
+- What a player sees with the sound off (`src/mapping/soundoff.ts`, Nov 21: "with sound off, I could
+  not find the rhythm or chorus"): the longest stretch with no tile while the song plays, two-bar
+  holes, the share of downbeats with a tile, a section's returns against its first time (rhythm,
+  lanes). map-pop prints it for ours and each human chart (human: 64-92% downbeats, no holes, returns
+  82-87% of their rhythm on Hotline Bling). The offline way, in seconds: replay the saved listens
+  (`.data/remap/*.study.json` with their song files' `levels`) through `placer(...).calibrated` in a
+  scratch `tests/unit/zz-*.test.ts` (moved out before committing: `tsc -b` fails on them), as the
+  Nov 21 study did. After each round, update
+  `docs/mapper-bottlenecks.html` (plain: the measures against the human charts, the analysis, the
+  ranked bottlenecks, a change log).
 - Where players miss: the game sends each scored run's tiles (`engine.ts` `tiles()`), the server
   keeps per tile how often runs reached and missed it (`Song.heat`; backend `TileHeat`, mock
   `game/heat.ts`, cleared when a chart changes); the dev tools show a song's most missed tiles, and

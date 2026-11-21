@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapper bottlenecks</title>
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 980px; margin: 24px auto; padding: 0 16px; color: #111; background: #fff; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 20px; }
+  th, td { border: 1px solid #ccc; padding: 4px 8px; text-align: left; vertical-align: top; }
+  th { background: #f3f3f3; }
+  .bar { background: #eee; width: 160px; height: 12px; display: inline-block; vertical-align: middle; }
+  .bar > span { display: block; height: 12px; background: #555; }
+  .bar.ok > span { background: #4a8a4a; }
+  .bar.bad > span { background: #b04a3a; }
+  small { color: #555; }
+  code { background: #f3f3f3; padding: 0 3px; }
+</style>
+</head>
+<body>
+<h1>Mapper bottlenecks</h1>
+<p><small>Last updated: Nov 21, 2026, round 1 (branch <code>mapper-song-shape</code>). Updated after each
+measure → fix round. Numbers come from replaying the saved listens (<code>frontend/.data/remap/*.study.json</code>)
+through today's mapper and comparing with the fan-made osu!mania charts of the same songs. A fan chart counts only
+where it's timed to our audio: the two Hotline Bling charts and California Gurls <code>5296058</code>. Change's and
+California Gurls' other charts land at chance (mistimed or another edit).</small></p>
+
+<h2>How close each measure is to the human charts</h2>
+<p><small>Bar = ours ÷ human (100% = as good as the fan chart). Green ≥ 90%, red &lt; 60%.</small></p>
+<table>
+<tr><th>Measure</th><th>Human (fan charts)</th><th>Ours now</th><th>Ours ÷ human</th><th>Status</th></tr>
+<tr><td>No pauses while the music plays (two-bar holes)</td><td>0</td><td>0 on every song and difficulty (before: 1-2 on four songs)</td><td><span class="bar ok"><span style="width:100%"></span></span> 100%</td><td>Fixed this round</td></tr>
+<tr><td>Downbeats with a tile: Easy</td><td>82-92%</td><td>31-49%</td><td><span class="bar bad"><span style="width:45%"></span></span> ~45%</td><td>Open: rhythm skeleton (plan step 3)</td></tr>
+<tr><td>Downbeats with a tile: Hard</td><td>82-92%</td><td>49-80%</td><td><span class="bar"><span style="width:70%"></span></span> ~70%</td><td>Open (step 3)</td></tr>
+<tr><td>Downbeats with a tile: Ultra</td><td>82-92%</td><td>64-92% (before: 61-88%)</td><td><span class="bar ok"><span style="width:90%"></span></span> ~90%</td><td>Improved this round</td></tr>
+<tr><td>Ultra difficulty (★)</td><td>2.9-6.4</td><td>1.4-2.5 (Nov 20 lead line: 1.6-3.35)</td><td><span class="bar bad"><span style="width:55%"></span></span> ~55%</td><td>Partly: limited by what the analysis hears</td></tr>
+<tr><td>Ultra density (tiles a second, Hotline Bling)</td><td>5.6-5.9</td><td>4.5 (before 4.1)</td><td><span class="bar"><span style="width:78%"></span></span> ~78%</td><td>Partly</td></tr>
+<tr><td>Chords (share of moments, Hotline Bling)</td><td>29-36%</td><td>21%</td><td><span class="bar"><span style="width:65%"></span></span> ~65%</td><td>Open</td></tr>
+<tr><td>Timing match, Ultra vs fan chart (F1 within 30 ms, Hotline Bling)</td><td>(two human charts agree ~2/3)</td><td>56-60%</td><td><span class="bar"><span style="width:85%"></span></span> ~85%</td><td>Fair</td></tr>
+<tr><td>A section's return keeps its rhythm (Hotline Bling)</td><td>82-87%</td><td>43-58%</td><td><span class="bar bad"><span style="width:58%"></span></span> ~58%</td><td>Open: chorus you can see (step 4)</td></tr>
+<tr><td>Swung gaps (Hotline Bling)</td><td>27-29%</td><td>5%</td><td><span class="bar bad"><span style="width:18%"></span></span> ~18%</td><td>Open</td></tr>
+<tr><td>Hard ★ (pulled down by Ultra's: star targets)</td><td>-</td><td>1.15-1.94 (before 1.15-1.84)</td><td>-</td><td>Improved a little</td></tr>
+</table>
+
+<h2>The song analysis: how good is it?</h2>
+<p><small>Of each kind of sound we detect: how many the well-timed human charts put a tile on (within 30 ms),
+against what chance would give at that density.</small></p>
+<table>
+<tr><th>Sound</th><th>Per second</th><th>Charted by humans</th><th>× chance</th><th>Verdict</th></tr>
+<tr><td>Strong mix onsets (≥ 0.5)</td><td>1.6-1.8</td><td>73-91%</td><td>2.7-3.1</td><td>Good: what humans chart most</td></tr>
+<tr><td>Drums (snare, kick)</td><td>0.3-2.0 each</td><td>61-90%</td><td>2.1-3.2</td><td>Good timing</td></tr>
+<tr><td>Hi-hats</td><td>0.00-0.29</td><td>-</td><td>-</td><td>Bad: California Gurls 1 hat in 234 s, Change 14 in 300 s. The drum kit split by band is unreliable.</td></tr>
+<tr><td>Sung syllables (Basic Pitch on the vocal stem)</td><td>1.9-2.0</td><td>17-37%</td><td>0.7-1.3</td><td>Bad timing: 20-80 ms late, not one fixed amount</td></tr>
+<tr><td>Sung syllables moved onto their attack in the mix (this round)</td><td>1.9-2.0</td><td>38-62%</td><td>1.5-2.2</td><td>Fixed this round (<code>onAttack</code>)</td></tr>
+<tr><td>Instrument notes (Basic Pitch on "other")</td><td>1.4-1.6</td><td>42-57%</td><td>1.8-2.0</td><td>Fair</td></tr>
+<tr><td>Human tiles with any onset of ours within 30 ms</td><td>-</td><td>60-68%</td><td>2.3-2.6</td><td>A third of the human tiles are sounds we never detect (likely quiet hats and ghost notes)</td></tr>
+</table>
+
+<h2>Bottlenecks, ranked</h2>
+<p><small>The user's playtest put the mapping at ~45% of Beat Saber quality. Ranked by how much each holds that back.</small></p>
+<table>
+<tr><th>#</th><th>Bottleneck</th><th>Evidence</th><th>Fix</th><th>Needs</th></tr>
+<tr><td>1</td><td>No rhythm skeleton: with sound off you can't find the beat</td><td>Easy has a tile on 31-49% of downbeats, humans 82-92%</td><td>A tile on every bar's downbeat (Easy also beat 3) from the line, else the strongest sound there; one rhythm pattern per section</td><td>Offline replay</td></tr>
+<tr><td>2</td><td>The line follows the voice where humans follow the beat</td><td>Human charts put tiles on 73-91% of strong onsets and on syllables at or near chance; ours follow the voice wherever it's sung</td><td>Weight strong onsets in choosing the line; Easy and Medium only the followed line (plan step 2)</td><td>Offline replay, then a One Dance / Open Your Eyes listen</td></tr>
+<tr><td>3</td><td>Hard and Ultra too easy</td><td>Ultra ~2★ against 2.9-6.4★; Ultra already keeps 951 of the 1,076 tiles available to it on Hotline Bling</td><td>The pool is the limit: hats, ghost notes, more chords where two parts strike</td><td>Analysis work (below), real listens</td></tr>
+<tr><td>4</td><td>The analysis misses sounds</td><td>A third of the human tiles have no onset of ours; hats nearly absent</td><td>Onsets found on the drum stem as well as the mix; a real kick/snare/hat split</td><td>Browser pipeline change; One Dance / Open Your Eyes listens</td></tr>
+<tr><td>5</td><td>Choruses don't look alike</td><td>Returns keep 43-58% of their rhythm, humans 82-87%</td><td>Easy and Medium copy a return's rhythm from its first time (step 4)</td><td>Offline replay</td></tr>
+<tr><td>6</td><td>No swing</td><td>5% swung gaps against 27-29%</td><td>Triplet grid where the voice swings</td><td>Offline replay</td></tr>
+<tr><td>7</td><td>Measurement</td><td>No well-timed fan charts of One Dance or Open Your Eyes; "Beat Saber quality" is judged only by playtests</td><td>A playtest after each round; the sound-off report in map-pop</td><td>The user</td></tr>
+</table>
+
+<h2>Change log</h2>
+<table>
+<tr><th>Round</th><th>Changed</th><th>Result</th></tr>
+<tr><td>1 (Nov 21)</td><td>Lead line: lean at least 0.7 (Hard/Ultra 0.85) wherever the song plays; a phrase with no line follows its strongest part; the breath before a drop only on Easy, half a beat; Hard and Ultra take the other parts' big hits; syllables on their attacks. Sound-off report (<code>soundoff.ts</code>, map-pop).</td><td>Holes 0 everywhere; Ultra downbeats +3-13 points; Hard up to +0.23★; syllables charted ×0.7 → ×1.8 chance</td></tr>
+</table>
+</body>
+</html>

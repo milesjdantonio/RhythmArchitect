@@ -24,9 +24,10 @@ export const DROP_LOUD = 1.3;
 export const BUILD = 1.1;
 /**
  * The breath before a drop (beats): the easier charts leave this much empty before the drop's first
- * beat (Ultra none). Only tiles strictly inside it go; the drop's own downbeat stays.
+ * beat. Only tiles strictly inside it go; the drop's own downbeat stays. Easy only, half a beat,
+ * since Nov 21 (E 1, M ¾, H ½ before): the user heard pauses where the music plays.
  */
-export const BREATH: Record<'easy' | 'medium' | 'hard' | 'ultra', number> = { easy: 1, medium: 0.75, hard: 0.5, ultra: 0 };
+export const BREATH: Record<'easy' | 'medium' | 'hard' | 'ultra', number> = { easy: 0.5, medium: 0, hard: 0, ultra: 0 };
 
 /**
  * A busy phrase (scale above 1) lets the easier charts' tiles come closer: their minimum gap is
