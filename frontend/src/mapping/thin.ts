@@ -89,6 +89,8 @@ export interface ThinOptions {
   breath?: (t: number) => boolean;
   /** How much closer than `minGap` tiles may come at a moment (beats): 1 the difficulty's own (shape.ts spacing). */
   spacing?: (t: number) => number;
+  /** Where `holdsAlone` is waived (beats): a busy phrase (shape.ts HOLDS_FREE). */
+  holdsFree?: (t: number) => boolean;
 }
 
 /** A repeated phrase in a part this busy (intensity) isn't held to what its twin left out: it can build on it. */
@@ -245,7 +247,8 @@ export function thinChart(notes: ChartNote[], o: ThinOptions): ChartNote[] {
       if ((budget.get(k) ?? 0) <= 0) continue;
       if (o.breath?.(r.t)) continue;
       const g = gapBeats * (o.spacing ? o.spacing(r.t) : 1);
-      const clash = kept.some(({ r: q }) => Math.abs(q.t - r.t) < g || (o.holdsAlone && (
+      const alone = o.holdsAlone && !o.holdsFree?.(r.t);
+      const clash = kept.some(({ r: q }) => Math.abs(q.t - r.t) < g || (alone && !o.holdsFree?.(q.t) && (
         // nothing starts while a kept hold is held, and a hold doesn't run over a kept tile
         (q.end > q.t && r.t > q.t && r.t < q.end + gapBeats)
         || (r.end > r.t && q.t > r.t && q.t < r.end + gapBeats))));

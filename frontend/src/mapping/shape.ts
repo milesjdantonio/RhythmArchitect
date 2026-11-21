@@ -37,6 +37,14 @@ export const BREATH: Record<'easy' | 'medium' | 'hard' | 'ultra', number> = { ea
 export const spacing = (scale: number) => 1 / Math.max(1, scale);
 
 /**
+ * In a phrase at least this busy, Medium lets taps come under a hold (as Hard always does): a
+ * chorus on Medium was held back by its holds, not by its budget (on Open Your Eyes' saved chart
+ * its busy phrases kept 12.6 tiles with the shape and without it; 14.5 with this). Its scales there
+ * reach only 1.10, so the bar is the same as "busy" (GROW_FROM).
+ */
+export const HOLDS_FREE = 1.05;
+
+/**
  * A repeated phrase builds on what it repeats in a busy part of the song (scale at least
  * GROW_FROM): from its second time on it takes GROW more of its notes each time (at most GROW_MAX),
  * so the last chorus is the busiest, as people chart it. Ultra plays every note anyway.

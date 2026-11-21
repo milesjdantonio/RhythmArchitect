@@ -18,7 +18,7 @@ import { barOf, beatAt, beatMap, beatPlace, divisionAt, secAt, snapSec, type Bea
 import { findRepeats, twinSec, type Repeats } from './repeats';
 import { noteName, syllableAt, type Syllable } from './voice';
 import { hasParts, leadLine } from './leadline';
-import { breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
+import { HOLDS_FREE, breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
 
 export { KEEP };
 // The runtime finds these beside its own module, which a bundler moves; so they're handed to it.
@@ -417,7 +417,10 @@ export interface Placed { map: BeatMap | null; repeats: Repeats | null }
 export function placer(on: Placing) {
   const secs = [...on.events].map((e) => e.sec).sort((a, b) => a - b);
   const map = on.beats?.length ? beatMap({ beats: on.beats }, secs, { spb: 60 / on.bpm, offset: on.offset, meter: on.meter ?? 4 }) : null;
-  const placed: Placed = { map, repeats: map ? findRepeats(map, on.events) : null };
+  // Repeats are found on the beat map, or (without the beat tracker's beats) on the song's straight
+  // grid: only for telling phrases apart, never for placing a tile (where the beat drifts off the
+  // straight grid its phrases just don't match).
+  const placed: Placed = { map, repeats: on.events.length ? findRepeats(map ?? straightMap(on, secs), on.events) : null };
   const tiled = map ? map.division.filter((d) => d > 0).length / Math.max(1, map.division.length) : 0;
   const triplets = map ? map.division.filter((d) => d === 3 || d === 6).length / Math.max(1, map.division.length) : 0;
   return {
@@ -433,6 +436,13 @@ export function placer(on: Placing) {
     /** For the report: how much of the song has its own grid, and the repeats found. */
     note: map ? `; tiles on the beat map's 16ths or triplets where its sounds follow them (${Math.round(tiled * 100)}% of the song, triplets ${Math.round(triplets * 100)}%), ${placed.repeats?.of.size ?? 0} repeated phrases charted alike` : '',
   };
+}
+
+/** The song's straight grid as a beat map (every beat `spb` from `offset`, a downbeat on beat 0, no subdivision), over its sounds `secs`. */
+export function straightMap(g: { bpm: number; offset: number; meter?: number }, secs: number[]): BeatMap {
+  const spb = 60 / g.bpm, last = secs.length ? secs[secs.length - 1] : g.offset;
+  const n = Math.max(2, Math.ceil((last - g.offset) / spb) + 2);
+  return { secs: Array.from({ length: n }, (_, k) => g.offset + k * spb), meter: g.meter ?? 4, downbeat: 0, division: new Uint8Array(n) };
 }
 
 /**
@@ -537,15 +547,16 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
   // A sung row is of the voice's kind: a phrase that's sung follows the singing.
   // (Its part when the song was split: vocals, drums, bass, other; else its band in the mix.)
   const kind = (t: number) => { if (syllable(t)) return 'vocals'; const e = soundAt(secOf(t), 0.05); return e ? e.part ?? e.band : null; };
-  const phrase = (t: number) => (map ? Math.floor(barOf(map, beatAt(map, secOf(t))) / 2) : Math.floor(t / 8));
+  const meter = o.meter ?? 4;
+  const phrase = (t: number) => (map ? Math.floor(barOf(map, beatAt(map, secOf(t))) / 2) : Math.floor(t / (2 * meter)));
   const twin = repeats ? (t: number) => { const s = twinSec(repeats, secOf(t)); return s == null ? null : (s - o.offset) / spb; } : undefined;
   const pitch = (n: ChartNote) => syllable(n.t)?.midi ?? soundAt(secOf(n.t), 0.03)?.midi ?? null;
   // For figures (lanes.ts): an unpitched sound by its band and brightness (soundFigure), so a
   // kick-snare back and forth is a trill and a tom fill a run.
   const figure = (n: ChartNote) => { const p = pitch(n); if (p != null) return p; const e = soundAt(secOf(n.t), 0.03); return e ? soundFigure(e) : null; };
   // The song's shape (shape.ts): each phrase's scale for the easier charts, and the drops.
-  const phraseStartSec = (p: number) => (map ? secAt(map, map.downbeat + p * 2 * map.meter) : secOf(p * 8));
-  const loudOf = phraseLoudness(o.barEnergy, o.offset, (o.meter ?? 4) * spb);
+  const phraseStartSec = (p: number) => (map ? secAt(map, map.downbeat + p * 2 * map.meter) : secOf(p * 2 * meter));
+  const loudOf = phraseLoudness(o.barEnergy, o.offset, meter * spb);
   const shape = songShape(events.map((e) => e.sec), (sec) => phrase((sec - o.offset) / spb), phraseStartSec, loudOf);
   const beatSec = (sec: number) => (map ? secAt(map, beatAt(map, sec)) - secAt(map, beatAt(map, sec) - 1) : spb);
   // How many times each phrase's pattern has been played (repeats.ts: 1 the first time), for a
@@ -578,6 +589,7 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
       ...(d !== 'ultra' ? { kind, phrase, follow: FOLLOW } : {}),
       ...(voice ? { sung: (t: number) => syllable(t)?.strength ?? 0 } : {}),
       ...(d !== 'ultra' ? { intensity, spacing: (t: number) => spacing(shape.scale(phrase(t))) } : {}),
+      ...(d === 'medium' ? { holdsFree: (t: number) => shape.scale(phrase(t)) >= HOLDS_FREE } : {}),
       ...(br ? { breath: br.at } : {}),
     });
     // Holds end where a breath starts (on copies: thinning hands back the model's own tiles).

@@ -169,7 +169,7 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
     const minGap = k.minGap;
     const share = d === 'ultra' ? Math.min(1, scale) : Math.min(1, k.share * scale);
     const picked: { c: Cand; chord: boolean }[] = [];
-    const patterns: { part: Part; slots: Set<number>; chosen: Set<string>; root: number }[] = [];
+    const patterns: { part: Part; slots: Set<number>; chosen: Set<string>; root: number; sc: number }[] = [];
     // How many times each pattern (its first phrase) has been played.
     const times = new Map<number, number>();
     const shaped = d !== 'ultra';
@@ -211,6 +211,13 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
           && (prof.chords === 'always' || (prof.chords === 'strong' && c.strength >= 0.6 && x.c.strength >= 0.6));
         if (together) { x.chord = true; chosen.push({ c, chord: true }); chordsLeft--; }
       }
+      // A repeat in a quieter part than the phrase it copies (a chorus' riff come back in a verse)
+      // keeps the heaviest of the copied notes, as many as its own scale against the other's allows.
+      if (twin && shaped && sc < twin.sc * 0.9) {
+        const keep = Math.max(1, Math.round(chosen.length * (sc / twin.sc)));
+        const drop = new Set([...chosen].filter((x) => !x.chord).sort((a, b) => weight(a.c) - weight(b.c) || b.c.sec - a.c.sec).slice(0, Math.max(0, chosen.length - keep)));
+        for (let i = chosen.length - 1; i >= 0; i--) if (drop.has(chosen[i])) chosen.splice(i, 1);
+      }
       const root = twin ? twin.root : p;
       const time = (times.get(root) ?? 0) + 1;
       times.set(root, time);
@@ -225,7 +232,8 @@ export function leadLine(o: LeadInput): (d: Difficulty, scale?: number) => Chart
           added++;
         }
       }
-      patterns.push({ part: one, slots, chosen: new Set(chosen.map((x) => keyOf(x.c, p))), root });
+      // Only a phrase's own pattern is copied later: the first time it was played, at its own scale.
+      patterns.push({ part: one, slots, chosen: new Set(chosen.map((x) => keyOf(x.c, p))), root, sc: twin ? twin.sc : sc });
       picked.push(...chosen);
     }
     picked.sort((a, b) => a.c.sec - b.c.sec);

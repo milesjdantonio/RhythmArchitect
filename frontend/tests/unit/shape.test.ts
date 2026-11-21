@@ -106,3 +106,17 @@ describe('looser figures', () => {
     expect(figuresOf(rows).filter((f) => f?.kind === 'run' && f.dir === -1)).toHaveLength(fill.length - 1);
   });
 });
+
+describe('repeats without the beat tracker', () => {
+  it('are found on the straight grid', async () => {
+    const { straightMap } = await import('../../src/mapping/ensomi');
+    const { findRepeats } = await import('../../src/mapping/repeats');
+    // 120 BPM; the same 2-bar rhythm (8 s... 4 s a phrase) four times.
+    const rhythm = [0, 0.5, 0.75, 1.5, 2, 2.25, 3, 3.5];
+    const events = [0, 1, 2, 3].flatMap((p) => rhythm.map((r) => ({ sec: p * 4 + r, band: 'low' as const, strength: 0.6, midi: null })));
+    const map = straightMap({ bpm: 120, offset: 0 }, events.map((e) => e.sec));
+    const r = findRepeats(map, events);
+    expect(r.of.get(2)).toBe(0);
+    expect(r.of.get(3)).toBe(0);
+  });
+});

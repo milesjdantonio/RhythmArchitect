@@ -237,7 +237,12 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     Easy's spacing, not its budget, held a chorus back. A repeat in a busy part builds on its
     pattern (shape.ts `growth`: +10% of its notes from its second time, at most +25%; the lead
     line adds its heaviest notes, thin.ts raises the window's share by as much and doesn't hold it
-    to what its twin left out). **Figures**
+    to what its twin left out); a repeat in a quieter part than the phrase it copies keeps the
+    heaviest of the copied notes, as many as its scale against the other's (leadline.ts). In a busy
+    phrase (`HOLDS_FREE`, 1.05) Medium lets taps come under a hold, as Hard always does: its
+    choruses were held back by holds, not by their budget. Repeats are found on the straight grid
+    when there's no beat map (`straightMap`, ensomi.ts: for telling phrases apart only, never for
+    placing a tile). **Figures**
     (`lanes.ts` `figuresOf`): four or more evenly spaced single tiles under 0.3 s apart whose pitch
     climbs or falls every step are a run, charted as a staircase the tune's way
     (`FIGURE_AGAINST`); two pitches back and forth are a trill on two lanes (`FIGURE_TRILL`);
@@ -246,7 +251,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     brightness for figures (`soundFigure`, `FlowHints.figure`), so a kick-snare back and forth is a
     trill and a tom fill a run. A rough replay (Nov 21: Open Your Eyes' saved Ultra thinned again,
     its tiles as the sounds, its 48-point energy as the loudness, before calibration): Easy busy
-    phrases 7.5 → 10.8 tiles, quiet 5.8 → 5.7 (312 → 352 in all); Medium quiet 9.8 → 8.5; Hard
+    phrases 7.5 → 10.8 tiles, quiet 5.8 → 5.7 (312 → 352 in all); Medium busy 12.6 → 14.5, quiet
+    9.8 → 8.5; Hard
     busy 20.9 → 22.3, quiet 13.2 → 12.0. Not yet measured with map-bench or against the human
     charts: do that before tuning.
   - Chords were left as the model makes them (Nov 20): ours match the human charts' share and how

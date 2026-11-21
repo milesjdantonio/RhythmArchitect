@@ -119,3 +119,15 @@ describe('the breath before a drop keeps the lyric', () => {
     expect(medium.some((s) => Math.abs(s - 15.75) < 1e-6)).toBe(true);
   });
 });
+
+describe('a repeat in a quieter part', () => {
+  // The same drum phrase all song (8th notes), loud for 16 s, then quiet for 16 s, then loud again.
+  const drums = Array.from({ length: 96 }, (_, i) => drum(i * SPB / 2));
+  const barEnergy = Array.from({ length: 24 }, (_, b) => (b >= 8 && b < 16 ? 0.25 : 1));
+  const make = leadLine({ bpm: 120, offset: 0, events: drums, voice: [], map: null, barEnergy });
+  it('keeps fewer of the copied notes than the loud phrase it repeats', () => {
+    const easy = make('easy').notes.map((n) => n.t * SPB);
+    const count = (a: number, b: number) => easy.filter((s) => s >= a && s < b).length;
+    expect(count(20, 28)).toBeLessThan(count(4, 12));
+  });
+});
