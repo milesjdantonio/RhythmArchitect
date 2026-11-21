@@ -435,7 +435,7 @@ Before that, two models run in the browser on what was heard (the mapping worker
     phrase rather than hopping between the kick and the melody (Easy hopped 30% of the time; the
     humans' Easy charts 19%; ours now 24%, without catching fewer of the strong notes).
   Every chart is then rated with osu!mania's star rating (the runtime's `starRating`), shown on the
-  start card. Easy is thinned to the same rating on every song (0.95 stars), Medium and Hard to even
+  start card. Easy is thinned to the same rating on every song (1.05 stars), Medium and Hard to even
   steps between it and the song's Ultra, so each difficulty plays about as hard from song to song
   (by share alone, Medium ranged 1.14-1.50 stars; now 1.19-1.39) and every step stays even.
   What players miss is kept per tile from their checked runs (the server's `TileHeat`), and after
