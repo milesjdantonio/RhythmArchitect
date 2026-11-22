@@ -3,6 +3,8 @@
 // the download while a song is listened to (prefetchStemModel), and the mapping worker reads it
 // from the cache (stems.ts). Light on purpose: the page imports this, never ONNX Runtime.
 
+import { hasWebGpu } from './webgpu';
+
 export const STEM_MODEL_URL = 'https://huggingface.co/timcsy/demucs-web-onnx/resolve/main/htdemucs_embedded.onnx';
 const CACHE = 'rythm-architect-models-v1';
 
@@ -14,12 +16,7 @@ export async function canSplit(): Promise<boolean> {
   try {
     if (typeof localStorage !== 'undefined' && localStorage.getItem(NO_STEMS_KEY)) return false;
   } catch { /* storage blocked: carry on */ }
-  try {
-    const gpu = (navigator as unknown as { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
-    return !!gpu && !!(await gpu.requestAdapter());
-  } catch {
-    return false;
-  }
+  return hasWebGpu();
 }
 
 /** Starts the download into the cache if it isn't there yet (resolves when it's there). */

@@ -29,7 +29,7 @@ import type { Chart, ChartNote, Difficulty, MapReport, SoundEvent } from '../api
 import { KEEP } from './thin';
 import { barOf, beatAt, divisionAt, secAt, type BeatMap } from './beatmap';
 import type { Syllable } from './voice';
-import type { DecodedLevels } from './levels';
+import { louderThan, type DecodedLevels } from './levels';
 import { phraseFeatures, reportSections, songForm, type SongForm } from './sections';
 import { SHAPE, STRETCH_FLOOR, spacing } from './shape';
 
@@ -353,22 +353,12 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
   // A note heard with no attack in the mix within BARE_NEAR (a syllable gliding on, an instrument's
   // note under the rest) is kept only on a beat or an 8th (bareOff).
   const onsets = o.events.map((e) => e.sec).sort((a, b) => a - b);
-  const struckAt = (sec: number) => { let lo = 0, hi = onsets.length; while (lo < hi) { const m = (lo + hi) >> 1; if (onsets[m] < sec - BARE_NEAR) lo = m + 1; else hi = m; } return lo < onsets.length && onsets[lo] <= sec + BARE_NEAR; };
+  /** Whether the mix has an attack within `w` seconds of `sec`. */
+  const attackWithin = (w: number) => (sec: number) => { let lo = 0, hi = onsets.length; while (lo < hi) { const m = (lo + hi) >> 1; if (onsets[m] < sec - w) lo = m + 1; else hi = m; } return lo < onsets.length && onsets[lo] <= sec + w; };
+  const struckAt = attackWithin(BARE_NEAR);
   // Where the mix is near silent with no attack near: nothing a player hears (AUDIBLE).
-  const loudAt = (() => {
-    const L = o.levels;
-    if (!L) return () => true;
-    const sum = Array.from(L.bass, (x, i) => x + L.mid[i] + L.high[i]);
-    const med = [...sum].filter((x) => x > 0).sort((a, b) => a - b)[sum.filter((x) => x > 0).length >> 1] ?? 0;
-    const half = Math.max(1, Math.round(L.rate * 0.25));
-    return (sec: number) => {
-      const i = Math.round(sec * L.rate);
-      let s = 0, k = 0;
-      for (let x = Math.max(0, i - half); x <= Math.min(sum.length - 1, i + half); x++) { s += sum[x]; k++; }
-      return k > 0 && s / k >= AUDIBLE * med;
-    };
-  })();
-  const nearAttack = (sec: number) => { let lo = 0, hi = onsets.length; while (lo < hi) { const m = (lo + hi) >> 1; if (onsets[m] < sec - UNHEARD_NEAR) lo = m + 1; else hi = m; } return lo < onsets.length && onsets[lo] <= sec + UNHEARD_NEAR; };
+  const loudAt = o.levels ? louderThan(o.levels, AUDIBLE) : () => true;
+  const nearAttack = attackWithin(UNHEARD_NEAR);
   const unheard = (sec: number) => !loudAt(sec) && !nearAttack(sec);
   const bareOff = (sec: number) => { if (unheard(sec)) return true; if (struckAt(sec)) return false; const f = ((snap(sec) % 0.5) + 0.5) % 0.5; return Math.min(f, 0.5 - f) > 0.02; };
   for (const s of held(o.voice)) {

@@ -19,7 +19,6 @@ import { alignOffset, hitDrift, onsetEnvelope, tileTimes, type Alignment } from 
 interface Check { key: string; offset: number; alignment: Alignment }
 const checks = new Map<string, Check>();
 const learned = new Map<string, number>();
-let version = 0;
 
 const keyFor = (song: Song) => `${song.source.url ?? ''}:${song.source.offset ?? 0}:${song.charts.ultra.notes.length}`;
 
@@ -39,7 +38,6 @@ export function checkTrack(song: Song, audio: TrackAudio): Check {
   const alignment = alignOffset(tileTimes(song.charts, song.bpm), env, saved);
   const check = { key, offset: alignment.trusted ? alignment.offset : saved, alignment };
   checks.set(song.id, check);
-  version++;
   if (import.meta.env?.DEV) console.info(`[sync] ${song.title}: ${alignment.trusted ? `tiles moved ${Math.round(alignment.shift * 1000)} ms to sit on the track` : 'in sync'} (gain ${alignment.gain.toFixed(2)}, ${Math.round(performance.now() - t0)} ms)`);
   return check;
 }
@@ -62,7 +60,6 @@ export async function learnFromRun(song: Song, deltas: number[]): Promise<number
   if (drift === null) return null;
   const next = Math.round(((song.source.offset ?? 0) + drift) * 1000) / 1000;
   learned.set(song.id, (learned.get(song.id) ?? 0) + drift);
-  version++;
   await updateSong(song.id, { offset: next });
   return next;
 }
@@ -71,11 +68,8 @@ export async function learnFromRun(song: Song, deltas: number[]): Promise<number
 export function forgetSync() {
   checks.clear();
   learned.clear();
-  version++;
 }
 
-/** Changes whenever the syncer learns something (for screens that show its status). */
-export const syncVersion = () => version;
 
 /** One line on how this song is kept in sync (the dev tools show it). */
 export function syncStatus(song: Song): string {

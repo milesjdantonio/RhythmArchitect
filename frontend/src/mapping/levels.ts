@@ -48,6 +48,27 @@ export function computeLevels(pcm: Float32Array, sr: number): SongLevels {
 
 export interface DecodedLevels { rate: number; bass: Uint8Array; mid: Uint8Array; high: Uint8Array }
 
+/**
+ * Whether the song is at least `share` of its usual loudness at a time: the three bands summed,
+ * averaged over half a second, against the median of the moments with any sound
+ * (soundoff.ts playingFrom, leadline.ts AUDIBLE). Out of the song: false.
+ */
+export function louderThan(l: { rate: number; bass: ArrayLike<number>; mid: ArrayLike<number>; high: ArrayLike<number> }, share: number): (sec: number) => boolean {
+  const n = l.bass.length;
+  const sum = new Float32Array(n);
+  for (let i = 0; i < n; i++) sum[i] = l.bass[i] + l.mid[i] + l.high[i];
+  const sorted = [...sum].filter((x) => x > 0).sort((a, b) => a - b);
+  const floor = (sorted[sorted.length >> 1] ?? 0) * share;
+  const half = Math.max(1, Math.round(l.rate * 0.25));
+  return (sec: number) => {
+    const i = Math.round(sec * l.rate);
+    if (i < 0 || i >= n) return false;
+    let s = 0, k = 0;
+    for (let x = Math.max(0, i - half); x <= Math.min(n - 1, i + half); x++) { s += sum[x]; k++; }
+    return s / k >= floor;
+  };
+}
+
 export function decodeLevels(l: SongLevels): DecodedLevels {
   return { rate: l.rate, bass: fromB64(l.bass), mid: fromB64(l.mid), high: fromB64(l.high) };
 }

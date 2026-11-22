@@ -53,9 +53,6 @@ export function unpackNote(n: StageNote, b: number) {
   n.holdResult = b & 16 ? 'done' : b & 32 ? 'broken' : undefined;
 }
 
-/** Wall-clock milliseconds both threads agree on. */
-export const wallMs = () => performance.timeOrigin + performance.now();
-
 /** The calls whose effect lasts (replayed on a fresh stage after the GPU was lost). */
 const STICKY = new Set(['setTiming', 'setHues', 'setGhostChart', 'setFever', 'setOverdrive', 'setOverdriveReady', 'setOverdriveLow']);
 /** Fresh stages at most this many times a minute (then it stops: something is badly wrong). */

@@ -10,14 +10,6 @@ export const SCALES: Record<string, number[]> = {
   mixolydian: [0, 2, 4, 5, 7, 9, 10],
 };
 
-export const SCALE_LABEL: Record<string, string> = {
-  major: 'Major',
-  minor: 'Minor',
-  dorian: 'Dorian',
-  harmonicMinor: 'Harmonic minor',
-  mixolydian: 'Mixolydian',
-};
-
 export function midiToName(midi: number): string {
   const n = Math.round(midi);
   return `${NAMES[((n % 12) + 12) % 12]}${Math.floor(n / 12) - 1}`;

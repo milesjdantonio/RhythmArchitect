@@ -22,6 +22,7 @@
 
 import * as THREE from 'three';
 import { CHARGE_MS } from '../lib/entrance';
+import { disposeScene } from '../stage/dispose';
 
 const PLANET = 12000;
 const STARS = 2200;
@@ -751,12 +752,7 @@ export class WorldIntro {
   destroy() {
     cancelAnimationFrame(this.raf);
     this.renderer.dispose();
-    this.scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      m.geometry?.dispose();
-      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose();
-    });
+    disposeScene(this.scene);
     this.canvas.remove();
   }
 }

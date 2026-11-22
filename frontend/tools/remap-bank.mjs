@@ -160,7 +160,9 @@ async function mapOne(context, s) {
     await page.goto(`${base}/#/`);
     await page.locator('#song-title').fill(s.match.songTitle);
     await page.locator('#song-artist').fill(s.match.songArtist);
-    await page.getByRole('button', { name: /^Generate beatmap from / }).first().click({ timeout: 30_000 });
+    // Two minutes: the first page of a run waits for the dev server to compile the app (30 s lost
+    // California Gurls, first in the bank, twice on Nov 22), and the results come after the search.
+    await page.getByRole('button', { name: /^Generate beatmap from / }).first().click({ timeout: 120_000 });
     await page.getByRole('button', { name: 'Listen and map' }).click({ timeout: 30_000 });
     const posted = page.waitForRequest((r) => r.method() === 'POST' && new URL(r.url()).pathname === '/api/songs', { timeout: ((s.match.seconds ?? 300) * 2.5 + 600) * 1000 });
     // A listen that went wrong comes back to the dialog with the problem and Try again.

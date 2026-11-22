@@ -11,6 +11,8 @@
 //             first time had, and of those the share in the same lane
 //   rate      tiles a second while the song plays
 
+import { louderThan } from './levels';
+
 export interface SoundOffTile {
   sec: number;
   lane: number;
@@ -176,18 +178,4 @@ function same(a: Set<number>, b: Set<number>) {
  * whisper and the silence after the end don't count; a quiet verse does.
  */
 export const QUIET = 0.2;
-export function playingFrom(l: { rate: number; bass: ArrayLike<number>; mid: ArrayLike<number>; high: ArrayLike<number> }): (sec: number) => boolean {
-  const n = l.bass.length;
-  const sum = new Float32Array(n);
-  for (let i = 0; i < n; i++) sum[i] = l.bass[i] + l.mid[i] + l.high[i];
-  const sorted = [...sum].filter((x) => x > 0).sort((a, b) => a - b);
-  const floor = (sorted[sorted.length >> 1] ?? 0) * QUIET;
-  const half = Math.max(1, Math.round(l.rate * 0.25));
-  return (sec: number) => {
-    const i = Math.round(sec * l.rate);
-    if (i < 0 || i >= n) return false;
-    let s = 0, k = 0;
-    for (let x = Math.max(0, i - half); x <= Math.min(n - 1, i + half); x++) { s += sum[x]; k++; }
-    return s / k >= floor;
-  };
-}
+export const playingFrom = (l: Parameters<typeof louderThan>[0]) => louderThan(l, QUIET);

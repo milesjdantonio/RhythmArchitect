@@ -23,12 +23,14 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { Bursts, type BurstKind } from './bursts';
 import { HalfFx } from './halfFx';
 import { SkyGL } from './sky';
-import { FORMS, seeded, formPoints } from './forms';
+import { FORMS, formPoints } from './forms';
 import { MAX_CLIMB, HIGHWAY_VERT, HIGHWAY_FRAG, WALL_FRAG, PAD_FRAG, UV_VERT, TILE_VERT, TILE_FRAG, SPARK_VERT, SPARK_FRAG, WORLD_VERT, RIBBON_VERT, RIBBON_FRAG, WORLD_FRAG } from './shaders';
 import { glowTexture, beamTexture, columnTexture, starTexture } from './textures';
 import { watchLost } from './lost';
 import type { SceneEvent } from '../background/scene';
 import { OVERDRIVE_LOOKS, overdriveHue } from '../game/overdrive';
+import { disposeScene } from './dispose';
+import { seeded } from '../lib/random';
 /** The WebGPU materials (gpu.ts), passed in by the stage worker for perf profile B. */
 export type GpuKit = typeof import('./gpu');
 
@@ -787,12 +789,7 @@ export class Stage3D {
     this.halfFx?.dispose();
     this.sky?.dispose();
     this.renderer.dispose();
-    this.scene.traverse((o) => {
-      const m = o as THREE.Mesh;
-      m.geometry?.dispose();
-      const mat = m.material as THREE.Material | THREE.Material[] | undefined;
-      if (Array.isArray(mat)) mat.forEach((x) => x.dispose()); else mat?.dispose();
-    });
+    disposeScene(this.scene);
     if (isCanvasEl(this.canvas)) this.canvas.remove();
   }
 

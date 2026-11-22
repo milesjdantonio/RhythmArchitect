@@ -31,6 +31,7 @@
 import type { Levels } from '../audio/playback';
 import { frameGate } from '../lib/perf';
 import { OVERDRIVE_LOOKS } from '../game/overdrive';
+import { seeded } from '../lib/random';
 
 /** A 2D context on the page or on a worker's OffscreenCanvas (the drawing is the same). */
 export type Ctx2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -102,16 +103,6 @@ const MODES: [number, number, number][] = [
   [4, 5, 1], [2, 7, -1], [3, 7, 1], [5, 6, -1], [4, 7, 1], [1, 5, -1], [2, 4, 1],
 ];
 
-function seeded(seed: number) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /** How far the 2D canvases' colours are drained (Overdrive's Eclipse): set by the scene each frame. */
 let drained = 0;
