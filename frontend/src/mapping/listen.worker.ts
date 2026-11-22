@@ -132,10 +132,11 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
         try {
           const t0 = performance.now();
           const { hearNotes } = await import('./notes');
-          const sung = await hearNotes(ort!, stems.vocals, sr, { providers: ['webgpu', 'wasm'], onProgress: (p) => post({ stage: 'voice', p }) });
+          // The singing, then the instruments: about as long each (the step's two halves).
+          const sung = await hearNotes(ort!, stems.vocals, sr, { providers: ['webgpu', 'wasm'], onProgress: (p) => post({ stage: 'voice', p: p / 2 }) });
           const { syllables } = await import('./voice');
           voice = syllables(sung, { vocal: stems.vocals, mix: pcm, sr });
-          const notesOther = await hearNotes(ort!, stems.other, sr, { providers: ['webgpu', 'wasm'] });
+          const notesOther = await hearNotes(ort!, stems.other, sr, { providers: ['webgpu', 'wasm'], onProgress: (p) => post({ stage: 'voice', p: 0.5 + p / 2 }) });
           played = syllables(notesOther, { vocal: stems.other, mix: pcm, sr });
           voiceNote = `; the song split into its parts, the voice heard in ${Math.round((performance.now() - t0) / 1000)} s`;
         } catch (err) {
@@ -150,6 +151,7 @@ self.onmessage = async (e: MessageEvent<ToMapper>) => {
       // replace it: regrid below): every difficulty is the song's own lines, so the trained mapper
       // (its ~120 MB and its charting) isn't needed. Otherwise it charts, and its grid may be used.
       const lines = !!(result.gridUsed && result.onBeatGrid && beats?.length && canLead(on));
+      if (lines) post({ stage: 'chart', p: 0 });
       const out = lines ? await linesCharts(on, (p) => post({ chart: p })) : await trainedCharts(ort!, pcm, sr, {
         ...(trained!.study ? { onRaw: (star: number, objects: { lane: number; start_ms: number; end_ms?: number }[], shift: number) => raws.push({ star, objects: objects.map((x) => ({ lane: x.lane, start_ms: x.start_ms, end_ms: x.end_ms })), shift }) } : {}),
         base: trained!.base, title: trained!.title, artist: trained!.artist,

@@ -20,7 +20,7 @@ import { SongRow } from '../SongRow';
 import { ServerNote } from '../ServerNote';
 import { isWaking, useServer } from '../../lib/server';
 import type { ScopeHandle } from '../generate/ListenScope';
-import { GenerateDialog, type Flow, buildProgress, titleCase } from '../generate/GenerateDialog';
+import { GenerateDialog, type BuildWay, type Flow, buildProgress, titleCase } from '../generate/GenerateDialog';
 import { VideoResults } from './VideoResults';
 import { edits } from '../../library/near';
 
@@ -150,8 +150,10 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
     }
     setFlow({ step: 'listen', video, progress: buildProgress('listen'), label: 'Listening to the Song' });
     // The build's progress only moves forward; each step says what it's doing in title case.
+    // Which way the build goes (BUILDS): split where the browser can split songs (known early).
+    let way: BuildWay = 'split';
     const step = (label: string, part: Parameters<typeof buildProgress>[0], p = 0) =>
-      setFlow((f) => (f && f.step !== 'done' ? { ...f, label: titleCase(label), progress: Math.max(f.progress, buildProgress(part, p)) } : f));
+      setFlow((f) => (f && f.step !== 'done' ? { ...f, label: titleCase(label), progress: Math.max(f.progress, buildProgress(part, p, way)) } : f));
     // The trained mapper charts the song (ensomi.ts): its model (about 120 MB, cached after the
     // first time) downloads while the song is listened to. With WebGPU the song is split into its
     // parts after the listen (stems.ts; the splitter's model, about 172 MB, likewise): its lines
@@ -160,14 +162,14 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
     const split = canSplit();
     let fetched = 0;
     const fetching = base ? prefetchEnsomi(base, (p) => { fetched = p; }).catch(() => {}) : null;
-    void split.then((yes) => { if (yes) prefetchStemModel().catch(() => {}); });
+    void split.then((yes) => { way = yes ? 'split' : 'whole'; if (yes) prefetchStemModel().catch(() => {}); });
     try {
       const heard = await listenTo(stream, {
         videoId: video.videoId, seconds: video.seconds, signal,
         onProgress: (p) => setFlow((f) => (f && f.step === 'listen' && Math.abs(f.progress - buildProgress('listen', p)) > 0.002 ? { ...f, progress: buildProgress('listen', p) } : f)),
         onHear: (pos, rms, low, mid, high) => scope.current?.hear(pos, rms, low, mid, high),
       });
-      setFlow((f) => ({ step: 'map', video, progress: Math.max(f?.progress ?? 0, buildProgress('beat')), label: 'Finding the Beat' }));
+      setFlow((f) => ({ step: 'map', video, progress: Math.max(f?.progress ?? 0, buildProgress('beat', 0, way)), label: 'Finding the Beat' }));
       // The model's download usually finishes during the song; if not, it finishes first (once).
       if (fetching) {
         const shown = setInterval(() => { scope.current?.mapping('getting the trained mapper', fetched); step('getting the AI mapper', 'beat', fetched); }, 250);
@@ -203,7 +205,7 @@ export function NameSong({ onStage, difficulty, enterDelay = 0 }: { onStage?: st
         scope.current?.sounds(r.events.map((e) => ({ sec: e.sec, band: e.band === 'low' ? 0 : e.band === 'mid' ? 1 : 2, strength: e.strength })), bars);
       }
       // The trained mapper charts it from the audio; if it can't, the onset mapper's own charts.
-      setFlow((f) => ({ step: 'chart', video, progress: Math.max(f?.progress ?? 0, buildProgress('voice')), label: f?.label ?? 'Charting the Song' }));
+      setFlow((f) => ({ step: 'chart', video, progress: Math.max(f?.progress ?? 0, buildProgress('voice', 0, way)), label: f?.label ?? 'Charting the Song' }));
       const trained = mapped.trained ? await mapped.trained : null;
       // (Dev: what the steps after the model worked from, for tools/remap-bank.mjs --study.)
       if (trained && 'study' in trained && trained.study) (window as unknown as { __rythmStudy?: unknown }).__rythmStudy = trained.study;

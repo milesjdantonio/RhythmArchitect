@@ -45,14 +45,33 @@ export function titleCase(s: string): string {
 
 /**
  * Where a build has got, 0..1, from the step and the progress inside it: each step takes its share
- * (listening most of the first half, the song split, the AI's listening and charting the rest).
+ * of the time. Two ways a build goes (the listen the same share in both):
+ *
+ *   split: WebGPU splits the song, its parts' notes are heard and the charts come from its lines.
+ *          Measured on the bank's 8 songs remapped Nov 22 (88-298 s): listening 42-56% of the
+ *          build, the split 38-42%, the notes (the singing and the instruments) 5-16%, the charts
+ *          under a second. (Before, the trained mapper's steps took 74-95% of the bar, and they
+ *          don't run on these: it waited at 74% while the instruments were heard, then jumped to
+ *          100%. The user, Nov 22.)
+ *   whole: no split: the trained mapper charts the song after the listen.
  */
-export const BUILD = {
-  find: [0, 0.03], listen: [0.03, 0.45], beat: [0.45, 0.48], split: [0.48, 0.66], notes: [0.66, 0.68],
-  voice: [0.68, 0.74], load: [0.74, 0.76], ai: [0.76, 0.8], chart: [0.8, 0.95], save: [0.95, 1],
-  fan: [0.03, 0.9],
+const BUILDS = {
+  split: {
+    find: [0, 0.02], listen: [0.02, 0.5], beat: [0.5, 0.51], split: [0.51, 0.87], notes: [0.87, 0.88],
+    voice: [0.88, 0.97], load: [0.97, 0.972], ai: [0.972, 0.976], chart: [0.976, 0.99], save: [0.99, 1],
+    fan: [0.02, 0.9],
+  },
+  whole: {
+    find: [0, 0.02], listen: [0.02, 0.5], beat: [0.5, 0.53], split: [0.53, 0.53], notes: [0.53, 0.55],
+    voice: [0.55, 0.55], load: [0.55, 0.62], ai: [0.62, 0.75], chart: [0.75, 0.97], save: [0.97, 1],
+    fan: [0.02, 0.9],
+  },
 } as const;
-export const buildProgress = (part: keyof typeof BUILD, p = 0) => BUILD[part][0] + (BUILD[part][1] - BUILD[part][0]) * Math.max(0, Math.min(1, p));
+export type BuildWay = keyof typeof BUILDS;
+/** The listen's share (the same both ways: the dialog counts the song's time from it). */
+export const BUILD = BUILDS.split;
+export const buildProgress = (part: keyof typeof BUILD, p = 0, way: BuildWay = 'split') =>
+  BUILDS[way][part][0] + (BUILDS[way][part][1] - BUILDS[way][part][0]) * Math.max(0, Math.min(1, p));
 
 
 /**

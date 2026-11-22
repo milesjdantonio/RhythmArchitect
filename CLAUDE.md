@@ -775,6 +775,10 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 - Listening and mapping show `src/components/generate/ListenScope.tsx` (the song as a field of
   light) and `src/components/generate/ListenAura.tsx` (the full-screen light behind the dialog; the
   dialog's text sits on its own panel). Loading uses `src/components/Loader.tsx`.
+  The dialog's percentage is each step's measured share of a build (`GenerateDialog.tsx` `BUILDS`:
+  `split` where the browser splits songs, `whole` where the trained mapper charts it): re-measure
+  them when the steps change (Nov 22: it waited at 74% and jumped to 100%, the weights still the
+  trained mapper's, which split songs no longer run).
 
 ## Music
 
