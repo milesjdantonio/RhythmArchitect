@@ -534,6 +534,26 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     Easy 76% → 92%, Medium 81% → 93%), returns' rhythm up (Hotline Bling Easy 68% → 74%, Medium 67%
     → 74%; change Medium 37% → 63%), returns' lanes -0 to -4 points; no holes, no criteria breaks;
     F1 against the fan charts 61% as before.
+    **An even run leads its phrase** (round 14, Nov 22; the user: round 13's charts "honestly feel
+    the same"). Open Your Eyes' piano runs 16ths into the drop (bars 38-39, 77-81 s, every 16th
+    heard) under one sung syllable; the sung phrases either side bridged it to the voice
+    (`SUNG_GAP_MIN`), so the run was fill thinned by the quiet break: Ultra kept 6-7 of 16 a bar
+    after following the piano note for note in bar 37. A phrase whose instrument runs evenly
+    (`RUN_EVEN` 0.5 of its steps like the last) with `RUN_OVER_VOICE` (4) times the sung notes
+    follows the instrument, and the section's part doesn't take it back (`runLed`). Only that run is
+    that even on the 8 listens (0.57-0.59; change's guitar under a few sung notes 0-0.43, and
+    following it put tiles where its fan charts have none: 0-33%, chance 46-71%). Open Your Eyes
+    +10-20 tiles a difficulty, stars ±0.02, nothing else moved. Measured and left out: (1) the round
+    11 bare rule (`BARE_NEAR`) for played notes: keeping all of them added Hotline Bling tiles its
+    fan charts have 2-20% of the time (chance 30%); only the ones in even runs added ~0. (2) Our
+    rhythm is less steady than the humans' (gaps equal to the one before: Hard and Ultra 35-69%,
+    human charts at 2.2-3★ 43-92%, mean 68%; at Easy's stars humans are as unsteady as ours,
+    23-28%, the CC set); swapping fill for steadier real sounds at the same count gained 0-8
+    points (California Gurls' Medium -4) and costs too much in the browser: the line itself (the
+    syllables) is what's uneven, and steadying it would take streams (filler). (3) A part's pattern
+    dropped while it plays on: ours 0-3% of bars (Medium, Hard, Ultra), 2-5% of phrases, the fan
+    charts 0-41%; tile timing against the sounds: whole bars 15-30 ms off in a few places, the
+    human charts 13-30 ms on most songs.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,

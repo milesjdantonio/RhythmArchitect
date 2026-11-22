@@ -102,6 +102,23 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     expect(rows('easy').every((r) => r.length === 1)).toBe(true);
   });
 
+  it('an instrument running evenly under a syllable or two leads its phrase, not the voice', () => {
+    // Sung phrases either side (8 syllables each), and between them one syllable over a piano
+    // running 8ths: the run is the line there, kept whole on Ultra (round 14).
+    // The run's phrase is the song's quietest (no drums under it), as a break before a drop is.
+    const voice2 = [...sung(0), syl(4.27), ...sung(8), ...sung(12), ...sung(16)];
+    const loud = Array.from({ length: 40 }, (_, i) => drum(i * SPB)).filter((e) => e.sec < 4 || e.sec >= 8);
+    const run = Array.from({ length: 16 }, (_, i) => ({ sec: 4 + i * 0.25, len: 0.2, midi: 60 + (i % 4) * 3, strength: 0.3 }));
+    const line = leadLine({ bpm: 120, offset: 0, events: loud, voice: voice2, played: run, map: null });
+    const ultra = line('ultra').notes.map((n) => n.t * SPB).filter((s) => s >= 4 && s < 8 - 1e-6);
+    for (const r of run) expect(ultra.some((s) => Math.abs(s - r.sec) < 0.01)).toBe(true);
+    // Medium keeps the run's beats and 8ths evenly: every 8th of the phrase's run has a tile or
+    // every beat does, nothing in between.
+    const medium = line('medium').notes.map((n) => n.t * SPB).filter((s) => s >= 4 && s < 8 - 1e-6);
+    expect(medium.every((s) => Math.abs(s * 4 - Math.round(s * 4)) < 1e-6)).toBe(true);
+    expect(medium.length).toBeGreaterThanOrEqual(8);
+  });
+
   it('every chart ends on a chord: its last hit, on both hands', () => {
     for (const d of ['easy', 'medium', 'hard', 'ultra'] as const) {
       const notes = make(d).notes;

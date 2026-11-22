@@ -94,6 +94,18 @@ const FOLLOW_MIN = 3;
 const STICKY_MIN = 2;
 /** A sung phrase with this few syllables still follows the voice when its neighbours are sung. */
 const SUNG_GAP_MIN = 1;
+/**
+ * Round 14 (Nov 22; the user: "it's got it, then it drops it, like the pianos in Open Your Eyes").
+ * A phrase where the instrument's notes run evenly (RUN_EVEN of its steps the same as the one
+ * before) with at least RUN_OVER_VOICE times the sung notes follows the instrument: Open Your Eyes'
+ * piano runs 16ths into the drop under one syllable, and the phrase followed that syllable (the
+ * sung neighbours bridged it), so the run was fill thinned by the quiet section: Ultra kept 6-7 of
+ * its 16 notes a bar after following the piano note for note the bar before. On the 8 listens only
+ * that run is that even (0.57-0.59); change's guitar under a few sung notes is 0-0.43, and following
+ * it put tiles where its fan charts have none (0-33% on theirs, chance 46-71%).
+ */
+const RUN_OVER_VOICE = 4;
+const RUN_EVEN = 0.5;
 /** Lateness measured within ±this (s), and only from at least LATE_MIN notes. */
 const LATE_MAX = 0.045;
 const LATE_MIN = 24;
@@ -337,16 +349,31 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
   const driveLow = drives[Math.floor(drives.length * 0.35)] ?? Infinity;
   const intense = new Set(ids.filter((p) => (drive.get(p) ?? 0) >= Math.max(DRIVE_MIN, driveLow)));
   const follows = new Map<number, Layer>();
+  const runLed = new Set<number>();
+  /** Whether a phrase's instrument runs evenly (RUN_EVEN of its steps the same as the last) with RUN_OVER_VOICE times the sung notes. */
+  const runsUnderVoice = (p: number, v: number) => {
+    if (!v) return false;
+    const beats = [...new Set((phrases.get(p) ?? []).filter((s) => s.layer === 'other').map((s) => Math.round(s.beat * 12)))].sort((a, b) => a - b);
+    if (beats.length < Math.max(FOLLOW_MIN * 2, v * RUN_OVER_VOICE)) return false;
+    let even = 0;
+    for (let i = 2; i < beats.length; i++) if (beats[i] - beats[i - 1] === beats[i - 1] - beats[i - 2]) even++;
+    return even / (beats.length - 2) >= RUN_EVEN;
+  };
   for (const p of ids) {
     const v = count(p, 'vocals');
     const sungAround = count(p - 1, 'vocals') >= FOLLOW_MIN && count(p + 1, 'vocals') >= FOLLOW_MIN;
     // Unsung: the instrument's notes where it's calm (a piano intro), the drums where they drive it
     // (an instrumental break: "the main notes on the loudest sound").
     const drumsLead = intense.has(p) && count(p, 'drums') >= count(p, 'other');
-    const pick: Layer | null = v >= FOLLOW_MIN || (v >= SUNG_GAP_MIN && sungAround) ? 'vocals'
-      : count(p, 'other') >= FOLLOW_MIN && !drumsLead ? 'other'
-        : count(p, 'drums') >= FOLLOW_MIN ? 'drums'
-          : count(p, 'bass') >= FOLLOW_MIN ? 'bass' : null;
+    // An instrument running evenly with far more notes than the few sung over it (Open Your Eyes'
+    // piano run into the drop under one syllable) leads there, not the voice.
+    const run = runsUnderVoice(p, v);
+    if (run) runLed.add(p);
+    const pick: Layer | null = run ? 'other'
+      : v >= FOLLOW_MIN || (v >= SUNG_GAP_MIN && sungAround) ? 'vocals'
+        : count(p, 'other') >= FOLLOW_MIN && !drumsLead ? 'other'
+          : count(p, 'drums') >= FOLLOW_MIN ? 'drums'
+            : count(p, 'bass') >= FOLLOW_MIN ? 'bass' : null;
     if (pick) follows.set(p, pick);
   }
 
@@ -406,7 +433,7 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     sectionLead.set(i, lead);
     for (let p = s.from; p < s.to; p++) {
       const own = follows.get(p);
-      if (!own || own === lead || (own === 'vocals' && count(p, 'vocals') >= FOLLOW_MIN)) continue;
+      if (!own || own === lead || runLed.has(p) || (own === 'vocals' && count(p, 'vocals') >= FOLLOW_MIN)) continue;
       if (count(p, lead) >= STICKY_MIN) follows.set(p, lead);
     }
   });
