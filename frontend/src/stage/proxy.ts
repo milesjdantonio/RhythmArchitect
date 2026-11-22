@@ -54,7 +54,7 @@ export function unpackNote(n: StageNote, b: number) {
 }
 
 /** The calls whose effect lasts (replayed on a fresh stage after the GPU was lost). */
-const STICKY = new Set(['setTiming', 'setHues', 'setGhostChart', 'setFever', 'setOverdrive', 'setOverdriveReady', 'setOverdriveLow']);
+const STICKY = new Set(['setTiming', 'setHues', 'setGhostChart', 'setFever', 'setOverdrive', 'setOverdriveReady', 'setOverdriveLow', 'setDrop']);
 /** Fresh stages at most this many times a minute (then it stops: something is badly wrong). */
 const MAX_RESTARTS = 3;
 /**
@@ -262,6 +262,7 @@ export class StageProxy {
   setOverdrive(level: number, again = false, broken = false) { this.call('setOverdrive', level, again, broken); }
   setOverdriveReady(on: boolean) { this.call('setOverdriveReady', on); }
   setOverdriveLow(on: boolean) { this.call('setOverdriveLow', on); }
+  setDrop(strength: number) { this.call('setDrop', strength); }
   setPressed(lane: number, down: boolean) { this.call('setPressed', lane, down); }
   onBeat(downbeat: boolean) { this.call('onBeat', downbeat); }
   clear(full: boolean) { this.call('clear', full); }

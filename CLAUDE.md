@@ -810,6 +810,18 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   earlier version laggy.
 - The background follows the song (drops, sections, impacts, loudness), not the combo: milestones
   and fever have their callouts and the gold track, no storms.
+- **Drop mode** (Nov 22, the user: "constant animations for the duration of a beat drop"): a drop
+  is a stretch, not a moment. `dropZones` (`src/mapping/cues.ts`) runs each drop cue to the next
+  break/build cue or the next section 4+ bars on (at most 16 bars); "Chorus (drop)" sections and the
+  mapper's own drop cues are `big`, a plain chorus lighter (`CHORUS_DROP`). Play follows it on the
+  song's clock (`followDrop`): `Stage3D.setDrop` (lasers fanning up behind the far end in three
+  figures that change every two bars, flashing on the beat; walls lit; warp streaks; each beat a
+  climb, each bar a shockwave and a sky burst; the camera rocks; under Overdrive only the lasers
+  and walls), the sky's `drop` event (a warp floor, a wash each beat), and
+  `components/play/DropFx.tsx` (edges glowing with light climbing them a band a beat; for a big
+  drop the Rive badge `drop.riv`, `tools/rive/art/drop.mjs`: DROP over an equalizer that ripples
+  and jumps on each `beat`, with a hairline running down as the drop does). The 2D fallback fans
+  beams beside the field. Dev tools: "drop mode" toggles it; the Map section lists the drops.
 - Styles: `src/styles/` has one sheet per area (workspace, intro, dialogs, video, game, feedback,
   bank, background). Panels that stay on screen have solid backing, not `backdrop-filter` (it
   re-blurs every frame).

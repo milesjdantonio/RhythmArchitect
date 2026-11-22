@@ -92,6 +92,8 @@ const MAX_SHELLS = 16;
 const MAX_BARS = 6;
 /** Overdrive's warp streaks: light rushing past outside the track, toward the camera. */
 const MAX_STREAKS = 72;
+/** The drop's lasers: beams fanning up from behind the far end while a drop plays (in pairs). */
+const LASERS = 10;
 /** Ease out with an overshoot (0..1 → 0..1, peaking a little past 1). */
 const backOut = (t: number) => { const c = 1.9; const u = t - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
 const WORLD_POINTS = 4200;
@@ -249,6 +251,17 @@ export class Stage3D {
     len: new Float32Array(MAX_STREAKS), wid: new Float32Array(MAX_STREAKS), tilt: new Float32Array(MAX_STREAKS),
     col: new Float32Array(MAX_STREAKS * 3), live: new Uint8Array(MAX_STREAKS), next: 0, tick: 0,
   };
+  /**
+   * Drop mode, while the song's drop plays through (Play: dropZones): how hard it shows now (0..1,
+   * eased toward dropTarget, the zone's strength), the bars since it started (the lasers change
+   * figure every two), the lasers' flash on each beat, and the light streaming past outside.
+   */
+  private drop = 0;
+  private dropTarget = 0;
+  private dropBars = 0;
+  private laserHit = 0;
+  private dropStream = 0;
+  private lasers!: THREE.InstancedMesh;
   /** Eclipse (white and black): how far the world and the horizon have gone grey (0..1). */
   private grey = new THREE.Color(0.5, 0.5, 0.52);
   private basePillars: THREE.Color[] = [];
@@ -614,6 +627,18 @@ export class Stage3D {
     this.streaks.renderOrder = 4;
     this.world.add(this.streaks);
 
+    // The drop's lasers: soft beams standing up from behind the far end of the track, leaning over
+    // it toward the camera, fanning and sweeping with the music (stepLasers). Hidden (no
+    // instances) the rest of the song.
+    this.lasers = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0),
+      basicMat({ map: beam, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }), LASERS);
+    this.lasers.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.lasers.setColorAt(0, new THREE.Color());
+    this.lasers.count = 0;
+    this.lasers.frustumCulled = false;
+    this.lasers.renderOrder = -1;
+    this.world.add(this.lasers);
+
     this.setHues(opts.hues ?? this.hues);
     this.layoutForMode();
     this.resize();
@@ -634,7 +659,7 @@ export class Stage3D {
       const ribbons: THREE.Object3D[] = [];
       this.scene.traverse((o) => { if ((o as THREE.Mesh).material === this.ribbonMat) ribbons.push(o); });
       HalfFx.assign(
-        [this.form, ...ribbons, ...this.skyRings.map((r) => r.mesh), ...this.comets.map((c) => c.mesh), ...this.pillars],
+        [this.form, ...ribbons, ...this.skyRings.map((r) => r.mesh), ...this.comets.map((c) => c.mesh), ...this.pillars, this.lasers],
         [...this.beams, this.sparks, this.dust, ...this.glints.map((g) => g.sprite), ...this.flares.map((f) => f.sprite), ...this.shells.map((x) => x.mesh), ...this.bars.map((b) => b.mesh), ...this.rings.map((r) => r.mesh), this.headGlow, this.streaks],
         [this.heads, this.bodies],
         this.camera,
@@ -1036,6 +1061,117 @@ export class Stage3D {
     }
   }
 
+  /**
+   * The song's drop is playing through (`strength` 0..1, the zone's: a real drop 1, a plain chorus
+   * less; 0: it ended). While it lasts lasers fan up from behind the far end and sweep with the
+   * music, the walls stay lit, light rushes past outside the track, and every beat sends light up
+   * the walls and every bar a shockwave across the glass (dropBeat). Under Overdrive, which
+   * already streams and pulses on every beat, the drop keeps its lasers and its lit walls only.
+   * Back to back drops (a new strength with no 0 between) carry straight on.
+   */
+  setDrop(strength: number) {
+    const s = Math.max(0, Math.min(1, strength));
+    if (this.failK >= 0) { this.dropTarget = 0; return; }
+    if (s === this.dropTarget) return;
+    if (s > 0 && this.dropTarget === 0) {
+      // In: the lasers flare as they rise, a wall of light rushes past.
+      this.dropBars = 0;
+      this.laserHit = 1.4;
+      if (!this.odLevel) for (let k = 0; k < 6 + Math.round(s * 8); k++) this.streak(0.6 * s, false, this.laneColors, true);
+    } else if (s === 0 && this.mode === 'play') {
+      // Out: the light settles, embers fall down the track's sides, the sky breathes out.
+      this.ring(0, 0, this.laneColor(1), 9, 0.9);
+      for (const side of [-1, 1]) {
+        this.emit(side * (EDGE + 0.3), 1.4, -1.5, 10, this.laneColor(side < 0 ? 0 : 3), { speed: 1, up: 0.6, size: 0.9, life: 1.2, grav: 4, drag: 1.4, white: 0.2 });
+      }
+      this.skyPulse(this.laneColor(2), 0.35 * this.dropTarget + 0.1, 40, 1.8);
+    }
+    this.dropTarget = s;
+  }
+
+  /** A beat while a drop plays: the lasers flash, light climbs the walls; each bar a shockwave and the sky answers. */
+  private dropBeat(downbeat: boolean) {
+    const d = this.dropTarget;
+    if (downbeat) this.dropBars++;
+    this.laserHit = Math.max(this.laserHit, downbeat ? 1 : 0.65);
+    this.odLine = Math.max(this.odLine, (downbeat ? 0.5 : 0.3) * d);
+    this.wallLit = Math.max(this.wallLit, 0.3 + 0.3 * d);
+    this.wallHold = Math.max(this.wallHold, this.spb * 0.6);
+    if (this.odLevel) return;
+    this.climb(0, 0.4 + 0.4 * d, { gold: 0, width: downbeat ? 1.2 : 0.9 });
+    this.kick = Math.max(this.kick, (downbeat ? 0.55 : 0.3) * d);
+    if (!downbeat) return;
+    const c = this.laneColor(this.dropBars % 4);
+    this.ring(0, 0, c, 7 + 4 * d, 0.8);
+    for (let l = 0; l < LANES; l++) this.flash[l] = Math.max(this.flash[l], 0.16 * d);
+    this.skyPulse(c, 0.25 + 0.25 * d, 36, 1.6);
+    if (d >= 0.8) {
+      // A real drop: the sky bursts on one side, then the other, bar after bar.
+      const side = this.dropBars % 2 ? 1 : -1;
+      this.skyBurst(side * (16 + Math.random() * 26), 12 + Math.random() * 10, -66, this.laneColor(side < 0 ? 0 : 3), 34);
+    }
+    if (this.dropBars % 2 === 0) this.comet(0.6 * d);
+  }
+
+  /** Every frame: drop mode eases in and out; while it's on, the walls stay lit, light streams past, the lasers move. */
+  private stepDrop(dt: number) {
+    if (this.failK >= 0) this.dropTarget = 0;
+    const up = this.dropTarget > this.drop;
+    this.drop += (this.dropTarget - this.drop) * Math.min(1, dt * (up ? 6 : 1.6));
+    this.laserHit *= Math.exp(-dt * 4);
+    if (this.dropTarget === 0 && this.drop < 0.004) {
+      this.drop = 0;
+      if (this.lasers.count) this.lasers.count = 0;
+      return;
+    }
+    const d = this.drop;
+    this.wallLit = Math.max(this.wallLit, 0.22 * d);
+    this.odLine = Math.max(this.odLine, 0.1 * d);
+    // Light rushing past outside the track (Overdrive's warp brings its own).
+    if (!this.odLevel && this.dropTarget > 0) {
+      this.dropStream -= dt;
+      while (this.dropStream <= 0) {
+        this.dropStream += 1 / (3 + 9 * this.dropTarget);
+        this.streak(0.5 * this.dropTarget, false, this.laneColors);
+      }
+    }
+    this.stepLasers();
+  }
+
+  /**
+   * The lasers, in pairs mirrored across the track, change figure every two bars: a fan that
+   * breathes, a sweep from side to side together, beams crossing over the far end. They flash on
+   * each beat (laserHit), each flickers a little on its own.
+   */
+  private stepLasers() {
+    const m = this.tmp, col = this.tmpColor, t = this.clock, d = this.drop;
+    const figure = Math.floor(this.dropBars / 2) % 3;
+    const bright = d * (0.5 + 0.6 * Math.min(1.4, this.laserHit)) * (this.odLevel ? 0.7 : 1);
+    const pairs = LASERS / 2;
+    for (let i = 0; i < LASERS; i++) {
+      const side = i % 2 ? 1 : -1;
+      const k = i >> 1;
+      const spread = (k + 0.5) / pairs;
+      let a: number;
+      if (figure === 0) a = 0.12 + spread * 0.85 + Math.sin(t * 1.3 + k) * 0.14;
+      else if (figure === 1) a = 0.45 + Math.sin(t * 2.1 + k * 0.5) * 0.55 * side;
+      else a = Math.sin(t * 1.6 + k * 0.9) * (0.35 + spread * 0.6) - 0.15;
+      m.position.set(side * (EDGE + 1.2 + k * 2.3), -1.5, -L - 7 - k * 1.6);
+      m.rotation.set(0.5, 0, -side * a);
+      m.scale.set(0.5 + 0.35 * Math.min(1, this.laserHit) + d * 0.15, 46 + k * 3, 1);
+      m.updateMatrix();
+      this.lasers.setMatrixAt(i, m.matrix);
+      const c = this.laneColor(side < 0 ? k % 2 : 3 - (k % 2));
+      const f = bright * (0.75 + 0.25 * Math.sin(t * 9 + i * 1.7));
+      const w = 0.25 * Math.min(1, this.laserHit);
+      col.setRGB((c.r + (1 - c.r) * w) * f, (c.g + (1 - c.g) * w) * f, (c.b + (1 - c.b) * w) * f);
+      this.lasers.setColorAt(i, col);
+    }
+    this.lasers.count = LASERS;
+    this.lasers.instanceMatrix.needsUpdate = true;
+    if (this.lasers.instanceColor) this.lasers.instanceColor.needsUpdate = true;
+  }
+
   /** Every frame: the colours move toward the level's (or back), and light streams up the sides while it runs. */
   private stepOverdrive(dt: number) {
     this.odPunch *= Math.exp(-dt * (this.odPunch > 0 ? 2.4 : 3.5));
@@ -1412,6 +1548,10 @@ export class Stage3D {
     this.odLine = 0;
     this.st.live.fill(0);
     this.streaks.count = 0;
+    this.drop = 0;
+    this.dropTarget = 0;
+    this.laserHit = 0;
+    this.lasers.count = 0;
     for (let l = 0; l < this.baseColors.length; l++) this.laneColors[l].copy(this.baseColors[l]);
     this.applyLaneColors(0);
     this.odApplied = false;
@@ -1576,6 +1716,7 @@ export class Stage3D {
     if (downbeat && Math.random() < 0.2) this.comet(0.6);
     if (downbeat) this.skyPulse(this.fever > 0.5 ? this.gold : this.laneColor(Math.floor(this.clock * 2) % 4), 0.22 + this.levels.bass * 0.35 + this.fever * 0.15, 30, 1.6);
     if (downbeat) this.kick = Math.max(this.kick, 0.3);
+    if (this.dropTarget > 0 && this.failK < 0) this.dropBeat(downbeat);
     // Overdrive: every bar rings out in the level's colours; from level 4 the sky bursts too.
     if (this.odLevel && this.failK < 0) {
       const lv = this.pw, prism = OVERDRIVE_LOOKS[this.odLevel].prism;
@@ -1746,6 +1887,7 @@ export class Stage3D {
     this.missFx *= k(5);
     this.fever += (this.feverTarget - this.fever) * Math.min(1, dt * 2);
     this.stepOverdrive(dt);
+    this.stepDrop(dt);
     if (this.sweep > 0) this.sweep = this.sweep >= 1 ? 0 : Math.min(1, this.sweep + dt * 0.9);
     if (this.morph < 1) this.morph = Math.min(1, this.morph + dt / 3.2);
 
@@ -2087,9 +2229,11 @@ export class Stage3D {
         this.camera.lookAt(sway * 0.4, 0, -10);
         // Overdrive: the camera leans gently with the music, a little more each level.
         if (this.od > 0.01) this.camera.rotateZ(Math.sin(this.clock * 0.7) * 0.004 * this.pw * this.od);
+        // A drop: the camera rocks gently with it (half a turn of the sway each beat's worth).
+        else if (this.drop > 0.01) this.camera.rotateZ(Math.sin(this.clock * Math.PI / Math.max(0.25, this.spb * 2)) * 0.005 * this.drop);
       }
       // Overdrive: wider (the warp's speed), with a lunge on each level up.
-      this.camera.fov = 52 - this.kick * 1.6 + bass * 0.6 + this.fever * 2 + this.od * this.pw * 0.9 + this.odPunch * (5 + this.pw);
+      this.camera.fov = 52 - this.kick * 1.6 + bass * 0.6 + this.fever * 2 + this.od * this.pw * 0.9 + this.odPunch * (5 + this.pw) + this.drop * 1.2;
     } else {
       // A broadcast angle: a little to the side and above, drifting slowly so it never sits still.
       const driftX = Math.sin(this.clock * 0.13) * 1.4;
