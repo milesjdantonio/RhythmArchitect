@@ -461,6 +461,18 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     drum hits still left out on Hotline Bling, 14 of 26 are in its quiet outro (`ULTRA_FILL` and
     `ULTRA_RATE` hold the part under the line back there, for the form's contrast) and 8 are 30-65
     ms from a tile of ours (two sounds too close for one moment).
+    **The drum stem, tried and left out** (round 10, a fresh listen of Hotline Bling: the user
+    allowed its dry-run remake, `yt-zt6arkpf9t4-mwpxnifz`). The onset mapper run on the drum stem
+    (Demucs) found only 38 hits in 268 s that no sound of the mix was within 30 ms of: 28 hats the
+    fan charts put a tile on 0-18% of the time (chance 26%), 9 snares 60-100%; under 1-2% of the
+    human tiles our Ultra lacks. The mix's onsets already catch the drums the split can tell
+    apart. The human tiles we hear nothing under (184 of 1,214 on this listen) are mostly the
+    charters' own streams: 59% in an even run of half a beat or less, 74% a 16th from a
+    neighbour, 52% over a note still ringing, 62% with a sound of ours 30-80 ms away. Charting
+    those would be filler (a held note cut into a stream), against the first rule; it's the
+    user's call. Today's mapper on this listen: Ultra 2.54★ (5.9 tiles a second), F1 71-72%
+    against both fan Hards (2.92★), chords 34% (theirs 29-36%), jacks 17% (13-19%), lane moves
+    1.04 (1.15-1.31), downbeats E 81% / M 80% / H 83% / U 84%, no holes, no criteria breaks.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
