@@ -134,6 +134,27 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     expect(bare.filter((n) => padUltra.some((s) => Math.abs(s - n.sec) < 0.01)).length).toBe(0);
   });
 
+  it('Medium plays 8ths or slower, even where the line runs in 16ths', () => {
+    // A sung line in 16ths for 8 s over drums on the beats.
+    const fast = Array.from({ length: 64 }, (_, i) => syl(i * 0.125 + 0.004, 60 + ((i * 5) % 9)));
+    const attacks = fast.map((s): SoundEvent => ({ ...drum(s.sec), band: 'mid', pitched: true, midi: s.midi, part: 'vocals', strength: 0.5 }));
+    const line = leadLine({ bpm: 120, offset: 0, events: [...drums.filter((e) => e.sec < 8), ...attacks], voice: fast, map: null });
+    for (const scale of [1, 2]) {
+      const t = [...new Set(line('medium', scale).notes.map((n) => n.t))].sort((a, b) => a - b);
+      for (let i = 1; i < t.length; i++) expect(t[i] - t[i - 1]).toBeGreaterThan(0.4);
+    }
+    // Hard still plays the 16ths.
+    const hard = [...new Set(line('hard').notes.map((n) => n.t))].sort((a, b) => a - b);
+    expect(hard.some((x, i) => i > 0 && x - hard[i - 1] < 0.3)).toBe(true);
+  });
+
+  it('a lifted Ultra doubles more of its kicks and snares (ensomi.ts ULTRA_PLUS)', () => {
+    const kit = Array.from({ length: 32 }, (_, i) => ({ ...drum(i * 0.5), strength: 0.32 + (i % 4) * 0.05 }));
+    const line = leadLine({ bpm: 120, offset: 0, events: kit, voice: [...sung(0), ...sung(4), ...sung(8), ...sung(12)], map: null });
+    const chords = (k: number) => { const rows = new Map<number, number>(); for (const n of line('ultra', k).notes) rows.set(n.t, (rows.get(n.t) ?? 0) + 1); return [...rows.values()].filter((c) => c > 1).length; };
+    expect(chords(1.6)).toBeGreaterThan(chords(1));
+  });
+
   it('notes heard in the silence after the song are not charted', () => {
     // A piano and drums for 8 s, then the mix silent; Basic Pitch still "hears" notes at 10-14 s.
     const rate = 30, len = 16 * rate;

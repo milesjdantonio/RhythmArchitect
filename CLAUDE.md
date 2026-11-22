@@ -241,7 +241,7 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     (`maxRate`). **Shared with the lead line** (its section intensity as the scale, the lean taken
     at most `SHAPE.hi`): in a busy part the easier charts' tiles may come closer (`spacing`:
     `minGap` divided by the scale; the user, Nov 21: "Easy can be made harder"; else Easy's spacing,
-    not its budget, held a chorus back), Medium plays taps under a hold there (`HOLDS_FREE`, 1.05),
+    not its budget, held a chorus back), Medium plays taps under a hold there (`HOLDS_FREE`, 1.05; the lead line's Medium everywhere since round 18),
     and every stretch keeps at least `STRETCH_FLOOR` tiles a second where it plays (E 0.5, M 0.8,
     H 1.1: thin.ts per 4 s window, the lead line per phrase), so a calm verse and the star
     calibration together can't empty it; the lead line's own breath before a drop cuts a hold
@@ -298,8 +298,8 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     part 99% and 96%. **The testing ground** (`#/testingGround`, `src/screens/TestingGround.tsx`):
     songs mapped two ways to play side by side (each card names its song and the difficulty the
     two differ on, `focus`, which its main button plays), each a song file in `public/testing/` (id
-    `test-…`, read by `fetchSong`; never in the bank; runs not saved). Since round 17: Open Your
-    Eyes and Hotline Bling, Medium as it is against Medium in 8ths.
+    `test-…`, read by `fetchSong`; never in the bank; runs not saved). Since round 18: Open Your
+    Eyes and Hotline Bling, before (round 16) and now.
   - **The song's form** (`src/mapping/sections.ts`, Nov 21: "a human mapper maps what the song is
     trying to do"). Sections come from what the song repeats, not loudness alone (before: 8-bar
     blocks labelled by level, so a loud verse was a "Chorus"): each 2-bar phrase's fingerprint (its
@@ -615,6 +615,29 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     1.26 → 1.04, beside its Easy's 0.94: the Medium → Hard step wider), downbeats the same. Not put in
     the mapper: both versions of Open Your Eyes and Hotline Bling are in the testing ground for the
     user to play.
+    **Medium in 8ths; Ultra a smidge harder** (round 18, Nov 22; the user: "make these changes", "make
+    ultra just a smidge harder"). Medium: no two tiles closer than half a beat, or than `MEDIUM_GAP`
+    (0.2 s) on a slow song; to hold its rating it also takes taps under a hold (`PROFILE.medium.under`)
+    and the other parts' big hits (`ACCENT.medium` 0.6). Medium 1.26-1.70★ → 1.27-1.69 (Open Your
+    Eyes, Hotline Bling, Coffin, Ice Ice Baby, change -0.04 to +0.03; where the sung line runs in
+    16ths MEANT TO BE 1.56 → 1.37, One Dance 1.41 → 1.30, California Gurls 1.59 → 1.53: no 8ths there
+    to take their place). Gaps equal to the one before 37-76% → 50-81% (humans at Hard's stars mean
+    68%); chords and jacks about the same; downbeats within 2 points (Open Your Eyes -4); returns'
+    rhythm the same or up. More chords (`DOUBLE.medium` 0.6-0.7) put Medium's above Hard's (California
+    Gurls 31-45% against 31%); a higher calibration ceiling moved nothing. One Dance's Medium now
+    skips a slot in its 8th runs 7.3 times per 100 tiles (was 1.0; the others 0.1-0.9): slots with
+    nothing struck (17 a note ringing, 11 nothing), 19 of 31 in runs that are new, 12 where a
+    syncopated 16th stood beside it; the fan charts leave such slots empty. Ultra: calibrated to about
+    `ULTRA_PLUS` (0.15★) over its own rating by a lift (`ULTRA_LIFT`: its doubled kicks and snares from
+    0.5 down to 0.3, its two-part chords from 0.3 down to 0.18, its rate ceiling up), never past
+    `ULTRA_CHORDS` (half of its moments chords, or its own share if higher; the fan charts 47%): Ultra
+    1.83-3.17★ → 1.86-3.33 (change +0.16, MEANT TO BE +0.13, Open Your Eyes and Hotline Bling +0.10,
+    Ice Ice Baby +0.07, California Gurls and Coffin +0.03-0.04, One Dance 0: already 53% chords);
+    chords 38% → 43% against the fan charts (47%), jacks the same; F1 62% as before. A fixed chord
+    threshold lifted songs unevenly (0.4: MEANT TO BE +0.21, most +0.01-0.04); more of the part under
+    the line in calm sections (`ULTRA_FILL`) +0.0-0.12★. Easy was left: at most 2 tiles in a row half
+    a beat apart (Guitar Hero's Easy) took its 8th gaps only from ~38% to ~30%, made 26-48% of its
+    gaps uneven (a beat and a half and such) and cost 0.05-0.12★.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,

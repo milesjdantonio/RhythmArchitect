@@ -31,7 +31,7 @@ import { barOf, beatAt, divisionAt, secAt, type BeatMap } from './beatmap';
 import type { Syllable } from './voice';
 import type { DecodedLevels } from './levels';
 import { phraseFeatures, reportSections, songForm, type SongForm } from './sections';
-import { HOLDS_FREE, SHAPE, STRETCH_FLOOR, spacing } from './shape';
+import { SHAPE, STRETCH_FLOOR, spacing } from './shape';
 
 type Layer = 'vocals' | 'other' | 'drums' | 'bass';
 type Drum = 'kick' | 'snare' | 'hat';
@@ -57,6 +57,8 @@ interface Tile {
   ref: boolean;
   /** Hold to this beat (the beat map's), or none. */
   until?: number;
+  /** Another part struck with it under CHORD_MIN (from CHORD_MIN / ULTRA_LIFT): a chord only on a lifted Ultra. */
+  weak?: Sound;
   /** A second tile with it (emphasis): its sound. */
   chord?: Sound;
   /** Weight for keeping on easier charts. */
@@ -84,7 +86,7 @@ interface Tile {
  * 74-91% of the mix's strong onsets (soundoff study), more than any other kind of sound. With
  * these: Ultra 4.1 → 4.6 a second on Hotline Bling, its downbeats 65% → 74%, Hard 1.50 → 1.66 stars.
  */
-const ACCENT: Record<Difficulty, number> = { easy: Infinity, medium: Infinity, hard: 0.7, ultra: 0.3 };
+const ACCENT: Record<Difficulty, number> = { easy: Infinity, medium: 0.6, hard: 0.7, ultra: 0.3 };
 /** A sung syllable joins as an accent only from this (the vocal stem's onsets are charted by the fan charts at or below chance). */
 const ACCENT_SUNG = 0.45;
 const ACCENT_CLEAR = 0.25;
@@ -128,6 +130,29 @@ const HARD_CHORD = 0.6;
  * 0.5 made 36-66% / 25-52% of moments chords (the fan charts 29-36%).
  */
 const DOUBLE: Record<'medium' | 'hard' | 'ultra', number> = { medium: 0.9, hard: 0.7, ultra: 0.5 };
+/**
+ * Ultra a little harder (the user, Nov 22: "make ultra just a smidge harder"): its calibration
+ * (ensomi.ts ULTRA_PLUS) may lift it, a lift of k lowering its doubled hits to DOUBLE.ultra / k
+ * (more chords on its kicks and snares, as the fan charts have: 47% of their moments, ours 38%), its
+ * chords of two parts struck together to CHORD_MIN / k, and ULTRA_RATE k times; at most ULTRA_LIFT
+ * (0.5 → 0.3, 0.3 → 0.18).
+ */
+export const ULTRA_LIFT = 5 / 3;
+/**
+ * Medium plays 8ths or slower (Guitar Hero's reduction rule: "everything should be eighth notes or
+ * slower"; the user, Nov 22: Medium "less difficult but still feel like you're playing music"): no
+ * two tiles closer than half a beat, or than MEDIUM_GAP seconds on a slow song (Coffin's 69 BPM
+ * half beat, 0.43 s, took its Medium to 1.04 stars, beside its Easy's 0.94). It had 3-16% of its
+ * gaps under an 8th. To hold its rating it also takes the other parts' big hits (ACCENT.medium) and
+ * taps under a hold (PROFILE.medium.under; HOLDS_FREE before), as Hard does: on the 8 listens
+ * Medium 1.26-1.70 stars → 1.27-1.69 (Open Your Eyes, Hotline Bling, Coffin, Ice Ice Baby, change
+ * -0.04 to +0.03; where the sung line runs in 16ths: MEANT TO BE 1.56 → 1.37, One Dance 1.41 → 1.30,
+ * California Gurls 1.59 → 1.53), its gaps equal to the one before 37-76% → 50-81%, its chords and
+ * jacks as before. More chords
+ * (DOUBLE.medium 0.6-0.7) put Medium's above Hard's on California Gurls (31-45% against 31%); a
+ * higher calibration ceiling (ensomi.ts) moved nothing, the rest of its rules being what holds it.
+ */
+const MEDIUM_GAP = 0.2;
 /** A phrase this much more intense than the one before (0..1 of the song's range) opens a part. */
 const LIFT = 0.3;
 /** A drum hit this weak doesn't fill in. */
@@ -179,7 +204,7 @@ const LEAD_GAP: Partial<Record<Difficulty, number>> = { easy: 0.7, medium: 0.7 }
  */
 const PROFILE: Record<Difficulty, { clear: number; on: number; chords: 'never' | 'few' | 'big' | 'always'; under: boolean; beat: number }> = {
   easy: { clear: 0.5, on: METRIC.eighth, chords: 'never', under: false, beat: 0 },
-  medium: { clear: 0, on: METRIC.eighth, chords: 'few', under: false, beat: 0 },
+  medium: { clear: 0, on: METRIC.eighth, chords: 'few', under: true, beat: 0 },
   hard: { clear: 0, on: 0, chords: 'big', under: true, beat: 0.5 },
   ultra: { clear: 0, on: 0, chords: 'always', under: true, beat: 0.25 },
 };
@@ -534,8 +559,9 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     // chords 3-18% → 10-28% of its moments, the fan charts 29-36%, Ultra +0.1-0.3 stars).
     const weight = (h: Sound) => h.strength + (h.layer === 'drums' ? 1 : 0);
     for (const h of all) {
-      if (h.layer === layer || h.strength < CHORD_MIN || h.drum === 'hat') continue;
+      if (h.layer === layer || h.strength < CHORD_MIN / ULTRA_LIFT || h.drum === 'hat') continue;
       const same = tiles.find((t) => t.phrase === p && t.ref && Math.abs(t.s.beat - h.beat) < 0.01);
+      if (h.strength < CHORD_MIN) { if (same && (!same.weak || weight(h) > weight(same.weak))) same.weak = h; continue; }
       if (same && (!same.chord || weight(h) > weight(same.chord))) { if (!same.chord && (h.strength >= BIG || h.accent)) same.keep += KEEP_BIG; same.chord = h; }
     }
     // A part opens (the line changes, a section starts, or the song lifts) on a big hit on its
@@ -571,16 +597,16 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     // line never doubled (Hard's chords 2-37% before 11ab68c, 3-16% after it, on the same listens).
     for (const t of tiles) {
       if (t.phrase !== p || t.ref || t.chord) continue;
-      const h = all.filter((x) => x !== t.s && x.layer !== t.s.layer && x.layer !== layer && x.drum !== 'hat' && x.strength >= CHORD_MIN && Math.abs(x.beat - t.s.beat) < 0.01)
+      const with_ = all.filter((x) => x !== t.s && x.layer !== t.s.layer && x.layer !== layer && x.drum !== 'hat' && x.strength >= CHORD_MIN / ULTRA_LIFT && Math.abs(x.beat - t.s.beat) < 0.01)
         .sort((a, b) => weight(b) - weight(a))[0];
-      if (h) t.chord = h;
+      if (with_ && with_.strength >= CHORD_MIN) t.chord = with_; else if (with_) t.weak = with_;
     }
     // A tile on a kick or snare, with no other part to pair it, can double it (`doubled`: Ultra from
     // DOUBLE.ultra, Hard from DOUBLE.hard): the emphasis human charters give a drum hit.
     for (const t of tiles) {
       if (t.phrase !== p || t.chord) continue;
       const hit = all.filter((x) => x.layer === 'drums' && x.drum !== 'hat' && Math.abs(x.beat - t.s.beat) < 0.01).sort((a, b) => b.strength - a.strength)[0];
-      if (hit && hit.strength >= Math.min(DOUBLE.medium, DOUBLE.hard, DOUBLE.ultra)) { t.chord = hit; t.doubled = true; }
+      if (hit && hit.strength >= Math.min(DOUBLE.medium, DOUBLE.hard, DOUBLE.ultra / ULTRA_LIFT)) { t.chord = hit; t.doubled = true; }
     }
   }
   tiles.sort((a, b) => a.s.beat - b.s.beat || Number(b.ref) - Number(a.ref));
@@ -712,6 +738,8 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     const twinFor = (p: number) => (copyAll ? returnOf.get(p) ?? twinOf.get(p) : twinOf.get(p));
     const share = d === 'ultra' ? Math.min(1, scale) : Math.min(1, k.share * scale);
     const minGap = k.minGap * (LEAD_GAP[d] ?? 1);
+    // Ultra lifted (ULTRA_LIFT): its doubled hits from a lower strength, its rate higher.
+    const lift = d === 'ultra' ? Math.min(ULTRA_LIFT, Math.max(1, scale)) : 1;
     // Which tiles: per phrase, a share of its tiles by weight (Ultra all), the line before the fill,
     // nothing closer than the difficulty's gap, nothing under a hold where the difficulty has none.
     const kept: Tile[] = [];
@@ -736,11 +764,10 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       // Ultra's lines are whole: the ceiling and the section hold back only the part under them.
       const budget = Math.max(1, d === 'ultra' ? Math.round(lines * share) : Math.round(STRETCH_FLOOR[d] * span), Math.round(Math.min(want, ceiling)));
       // An intense section lets the easier charts' tiles come closer (shape.ts spacing, the lean
-      // taken at most SHAPE.hi; the user, Nov 21: "Easy can be made harder"), and Medium play taps
-      // under a hold there (HOLDS_FREE), as Hard always does: else their spacing and holds, not
-      // their budget, held a chorus back.
-      const gap = d === 'ultra' ? minGap : minGap * spacing(Math.min(SHAPE.hi, lean));
-      const under = prof.under || (d === 'medium' && lean >= HOLDS_FREE);
+      // taken at most SHAPE.hi; the user, Nov 21: "Easy can be made harder"; Medium never under an
+      // 8th: MEDIUM_GAP): else their spacing, not their budget, held a chorus back.
+      const gap = d === 'ultra' ? minGap : d === 'medium' ? Math.max(minGap * spacing(Math.min(SHAPE.hi, lean)), Math.min(spb * 0.5 * 0.9, MEDIUM_GAP)) : minGap * spacing(Math.min(SHAPE.hi, lean));
+      const under = prof.under;
       // Where nothing is played under a hold, a hold ends half a beat before another part's pulse
       // (two beats in a row it sounds on): Open Your Eyes' three-second "aaah" held Easy and Medium
       // while the piano played every 8th under it (the user: "it's got it, then it drops it").
@@ -873,8 +900,9 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       // A struck chord's other note only on the line itself, and not under a hold (three fingers).
       // And only for emphasis: on a beat, or struck hard (the intro's piano was a chord every note).
       const struck = t.s.also != null && t.ref && (metric(t.s.beat) >= METRIC.beat || t.s.strength >= 0.85);
-      const chordSound = t.chord ?? (struck ? { ...t.s, midi: t.s.also! } : undefined);
-      const chordOk = t.doubled && !t.opens ? d !== 'easy' && t.chord!.strength >= DOUBLE[d] - 1e-9 && (d !== 'medium' || metric(t.s.beat) >= METRIC.beat)
+      const weakChord = d === 'ultra' && !t.chord && !struck && t.weak && t.weak.strength >= CHORD_MIN / lift - 1e-9 ? t.weak : undefined;
+      const chordSound = t.chord ?? (struck ? { ...t.s, midi: t.s.also! } : weakChord);
+      const chordOk = t.doubled && !t.opens ? d !== 'easy' && t.chord!.strength >= DOUBLE[d] / lift - 1e-9 && (d !== 'medium' || metric(t.s.beat) >= METRIC.beat)
         : !!t.opens || prof.chords === 'always'
         || (prof.chords === 'big' && ((!!t.chord && (t.chord.strength >= BIG || !!t.chord.accent || Math.min(t.chord.strength, t.s.strength) >= HARD_CHORD)) || (struck && t.s.strength >= 0.85)))
         || (prof.chords === 'few' && !!t.chord && (t.chord.strength >= BIG || !!t.chord.accent) && metric(t.s.beat) >= METRIC.beat);
@@ -922,8 +950,7 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     function runSlot(beat: number): Tile | null {
       const p = phraseOf(beat), sec = secOf(beat);
       if (!plays(p) || !struckAt(sec)) return null;
-      const lean = Math.max(d === 'hard' || d === 'ultra' ? LEAN_HIGH : LEAN_MIN, form.intensity[p] ?? 1);
-      const under = prof.under || (d === 'medium' && lean >= HOLDS_FREE);
+      const under = prof.under;
       if (!under && kept.some((x) => x.until != null && sec > x.s.sec - 1e-6 && sec < secOf(x.until) + minGap)) return null;
       const pool = tiles.filter((t) => Math.abs(t.s.beat - beat) < 0.01).sort((a, b) => Number(b.ref) - Number(a.ref) || b.s.strength - a.s.strength)[0];
       if (pool) { const { until: _u, chord: _c, doubled: _d, opens: _o, ...tap } = pool; return { ...tap, phrase: p }; }

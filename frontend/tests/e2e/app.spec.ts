@@ -517,12 +517,12 @@ test.describe('Rythm Architect', () => {
     await fakeYouTube(page);
     await page.goto('/#/testingGround');
     await expect(page.getByRole('heading', { name: 'Testing ground' })).toBeVisible();
-    for (const song of ['Open Your Eyes', 'Hotline Bling']) for (const way of ['Medium as it is', 'Medium in 8ths']) {
+    for (const song of ['Open Your Eyes', 'Hotline Bling']) for (const way of ['Before', 'Now']) {
       const card = page.getByRole('region', { name: `${song}: ${way}` });
       await expect(card).toContainText(/Medium\s*\d+ tiles/);
     }
-    await page.getByRole('button', { name: 'Play Medium: Open Your Eyes: Medium in 8ths' }).click();
-    await expect(page).toHaveURL(/#\/play\/test-oye-medium-8ths\/medium$/);
+    await page.getByRole('button', { name: 'Play Medium: Open Your Eyes: Now' }).click();
+    await expect(page).toHaveURL(/#\/play\/test-oye-now\/medium$/);
   });
 
   test('favourites a song and finds it in the favourites drop-down', async ({ page }) => {

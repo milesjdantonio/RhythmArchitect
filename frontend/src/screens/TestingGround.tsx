@@ -12,13 +12,13 @@ import { fetchSong } from '../library/songs';
  * from there, library/songs.ts), so they never touch the bank; runs on them aren't saved. `focus` is
  * the difficulty the two ways differ on (the main button plays it).
  */
-const NOW = 'The main line simplified: every beat, then the 8ths, then a few 16ths where the line has them.';
-const EIGHTHS = 'The same, never two tiles closer than an 8th (Guitar Hero’s rule for Medium): steadier, a little easier.';
+const BEFORE = 'Round 16: Medium with a few 16ths where the line has them; Ultra as it rated.';
+const NOW = 'Round 18: Medium in 8ths or slower, with taps under held notes and the other parts’ big hits; Ultra a little harder (more chords on its drum hits).';
 const TESTS: { id: string; song: string; label: string; detail: string; focus: Difficulty }[] = [
-  { id: 'test-oye-medium-now', song: 'Open Your Eyes', label: 'Medium as it is', detail: NOW, focus: 'medium' },
-  { id: 'test-oye-medium-8ths', song: 'Open Your Eyes', label: 'Medium in 8ths', detail: EIGHTHS, focus: 'medium' },
-  { id: 'test-hb-medium-now', song: 'Hotline Bling', label: 'Medium as it is', detail: NOW, focus: 'medium' },
-  { id: 'test-hb-medium-8ths', song: 'Hotline Bling', label: 'Medium in 8ths', detail: EIGHTHS, focus: 'medium' },
+  { id: 'test-oye-before', song: 'Open Your Eyes', label: 'Before', detail: BEFORE, focus: 'medium' },
+  { id: 'test-oye-now', song: 'Open Your Eyes', label: 'Now', detail: NOW, focus: 'medium' },
+  { id: 'test-hb-before', song: 'Hotline Bling', label: 'Before', detail: BEFORE, focus: 'medium' },
+  { id: 'test-hb-now', song: 'Hotline Bling', label: 'Now', detail: NOW, focus: 'medium' },
 ];
 const cap = (d: Difficulty) => d[0].toUpperCase() + d.slice(1);
 

@@ -18,7 +18,7 @@ import { flowChart, soundFigure } from './lanes';
 import { barOf, beatAt, beatMap, beatPlace, divisionAt, secAt, snapSec, type BeatMap } from './beatmap';
 import { findRepeats, twinSec, type Repeats } from './repeats';
 import { noteName, syllableAt, type Syllable } from './voice';
-import { hasParts, leadLine } from './leadline';
+import { ULTRA_LIFT, hasParts, leadLine } from './leadline';
 import { DROP_NEAR, HOLDS_FREE, PEAK, STRETCH_FLOOR, breathsOf, cutHolds, growth, inBreath, phraseLoudness, songShape, spacing } from './shape';
 
 export { KEEP };
@@ -675,6 +675,22 @@ export async function chartStars(notes: ChartNote[], g: { bpm: number; offset: n
  */
 const ULTRA_KEEP = 0.5;
 const ULTRA_CEILING = 4;
+/**
+ * Then a smidge harder (the user, Nov 22): lifted (leadline.ts ULTRA_LIFT: more chords on its kicks
+ * and snares, a higher rate) to about ULTRA_PLUS stars over its own rating, never with more than
+ * ULTRA_CHORDS of its moments chords (or its own share, if higher: the fan charts' 47%) nor over the
+ * ceiling. A fixed chord threshold lifted the songs unevenly (0.4: MEANT TO BE +0.21, most +0.01-0.04;
+ * 0.3: One Dance's chords 65% of its moments); more of the part under the line in calm sections
+ * (ULTRA_FILL) moved the stars +0.0-0.12 and follows the song's shape less well.
+ */
+const ULTRA_PLUS = 0.15;
+const ULTRA_CHORDS = 0.5;
+/** The share of a chart's moments that are chords. */
+function chordShare(notes: ChartNote[]): number {
+  const rows = new Map<number, number>();
+  for (const n of notes) { const k = Math.round(n.t * 1000); rows.set(k, (rows.get(k) ?? 0) + 1); }
+  return rows.size ? [...rows.values()].filter((c) => c > 1).length / rows.size : 0;
+}
 
 export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'offset' | 'events' | 'onGrid' | 'voice' | 'played' | 'meter' | 'levels' | 'barEnergy'>, placed: Placed | undefined, rate: RateChart): Promise<Record<Difficulty, Chart>> {
   const thin = thinner(model, o, placed);
@@ -694,6 +710,17 @@ export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOption
         chart = lead('ultra', k); stars = await chartStars(chart.notes, o, rate);
         if (Math.abs(stars - cap) < Math.abs(best.stars - cap)) best = { chart, stars };
         if (stars > cap) hi = k; else lo = k;
+      }
+      ({ chart, stars } = best);
+    } else {
+      const want = stars + ULTRA_PLUS, most = Math.max(ULTRA_CHORDS, chordShare(chart.notes));
+      let lo = 1, hi = ULTRA_LIFT, best = { chart, stars };
+      for (let i = 0; i < CALIBRATE && Math.abs(best.stars - want) > STAR_SPREAD / 2; i++) {
+        const k = (lo + hi) / 2;
+        const c = lead('ultra', k), s = await chartStars(c.notes, o, rate);
+        const ok = s <= cap + STAR_SPREAD && chordShare(c.notes) <= most + 1e-9;
+        if (ok && Math.abs(s - want) < Math.abs(best.stars - want)) best = { chart: c, stars: s };
+        if (s > want || !ok) hi = k; else lo = k;
       }
       ({ chart, stars } = best);
     }
