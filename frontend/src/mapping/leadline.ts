@@ -232,6 +232,18 @@ const LINE_WHOLE = new Set<Difficulty>(['hard', 'ultra']);
 const LINE_BEATS = new Set<Difficulty>(['medium']);
 /** The difficulties that chart a section's every return from its first time, rhythm and lanes (returnOf). */
 const RETURN_COPY = new Set<Difficulty>(['easy', 'medium']);
+/**
+ * The gaps (beats, least and most) at which a difficulty's even runs keep going (make's run pass,
+ * runSlot; Easy from 8ths, a run filled staying within EASY_RUN): a run of tiles that skips
+ * one or two slots and goes on at the same gap gets a skipped slot back where the mix has an attack
+ * on it. Nov 22 (the user: "random breaks in a rhythm"): ours had 2-8 such
+ * skips per 100 tiles (Medium, Hard, Ultra), Hotline Bling's two fan Hards 0 and 0.2, One Dance's
+ * 0.6, the Creative Commons charts mostly 0-2. Of Hotline Bling's, 104 of 115 slots had an onset of
+ * the mix on them, and both fan charts put a tile on 83-100% of those (chance 30%); on the slots with
+ * only a note ringing over them, 0%: the breaks are sounds thinned out, not missing streams. Easy
+ * skipped a beat of a run of beats 2.5-6.5 times per 100 tiles, the human Easy and Normal charts 0-1.5.
+ */
+const RUN_KEEP: Record<Difficulty, [number, number]> = { easy: [0.5, 1], medium: [0, 1], hard: [0, 1], ultra: [0, 1] };
 /** Easy's breath before a drop (beats); the others play into it. */
 const DROP_BREATH = 0.5;
 /** How much each part counts when choosing the second part. */
@@ -317,7 +329,23 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
   // note under the rest) is kept only on a beat or an 8th (bareOff).
   const onsets = o.events.map((e) => e.sec).sort((a, b) => a - b);
   const struckAt = (sec: number) => { let lo = 0, hi = onsets.length; while (lo < hi) { const m = (lo + hi) >> 1; if (onsets[m] < sec - BARE_NEAR) lo = m + 1; else hi = m; } return lo < onsets.length && onsets[lo] <= sec + BARE_NEAR; };
-  const bareOff = (sec: number) => { if (struckAt(sec)) return false; const f = ((snap(sec) % 0.5) + 0.5) % 0.5; return Math.min(f, 0.5 - f) > 0.02; };
+  // Where the mix is near silent with no attack near: nothing a player hears (AUDIBLE).
+  const loudAt = (() => {
+    const L = o.levels;
+    if (!L) return () => true;
+    const sum = Array.from(L.bass, (x, i) => x + L.mid[i] + L.high[i]);
+    const med = [...sum].filter((x) => x > 0).sort((a, b) => a - b)[sum.filter((x) => x > 0).length >> 1] ?? 0;
+    const half = Math.max(1, Math.round(L.rate * 0.25));
+    return (sec: number) => {
+      const i = Math.round(sec * L.rate);
+      let s = 0, k = 0;
+      for (let x = Math.max(0, i - half); x <= Math.min(sum.length - 1, i + half); x++) { s += sum[x]; k++; }
+      return k > 0 && s / k >= AUDIBLE * med;
+    };
+  })();
+  const nearAttack = (sec: number) => { let lo = 0, hi = onsets.length; while (lo < hi) { const m = (lo + hi) >> 1; if (onsets[m] < sec - UNHEARD_NEAR) lo = m + 1; else hi = m; } return lo < onsets.length && onsets[lo] <= sec + UNHEARD_NEAR; };
+  const unheard = (sec: number) => !loudAt(sec) && !nearAttack(sec);
+  const bareOff = (sec: number) => { if (unheard(sec)) return true; if (struckAt(sec)) return false; const f = ((snap(sec) % 0.5) + 0.5) % 0.5; return Math.min(f, 0.5 - f) > 0.02; };
   for (const s of held(o.voice)) {
     const sec = attack(s.sec) ?? s.sec - voiceLate;
     if (!bareOff(sec)) put(sec, 'vocals', 0.4 + s.strength * 0.6, s.midi, s.len);
@@ -775,6 +803,39 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       }
     }
 
+    // An even run keeps going (RUN_KEEP): where the tiles run evenly (two equal gaps, a beat or
+    // closer; Easy 8ths or beats) and skip one or two of their slots before going on at the same gap,
+    // a slot with a sound heard on it gets its tile back (the line's, the part under it, or any
+    // onset there).
+    {
+      for (let pass = 0; pass < 3; pass++) {
+        kept.sort((a, b) => a.s.beat - b.s.beat);
+        const bs = [...new Set(kept.map((t) => Math.round(t.s.beat * 1e4) / 1e4))];
+        const add: Tile[] = [];
+        const near = (a: number, b: number) => Math.abs(a - b) < 0.01;
+        for (let i = 2; i + 2 < bs.length; i++) {
+          const G = bs[i] - bs[i - 1];
+          if (G > RUN_KEEP[d][1] + 1e-6 || G < RUN_KEEP[d][0] - 1e-6 || !near(bs[i - 1] - bs[i - 2], G)) continue;
+          const g = bs[i + 1] - bs[i], k = Math.round(g / G);
+          if ((k !== 2 && k !== 3) || !near(g, k * G) || !near(bs[i + 2] - bs[i + 1], G)) continue;
+          // Easy's runs of 8ths stay within EASY_RUN, filled.
+          if (d === 'easy' && G <= 0.5 + 1e-6) {
+            let n = k - 1 + 2;
+            for (let j = i; j > 0 && bs[j] - bs[j - 1] <= 0.5 + 1e-6; j--) n++;
+            for (let j = i + 2; j < bs.length && bs[j] - bs[j - 1] <= 0.5 + 1e-6; j++) n++;
+            if (n > EASY_RUN) continue;
+          }
+          for (let j = 1; j < k; j++) {
+            const t = runSlot(bs[i] + j * G);
+            if (t && !add.some((x) => near(x.s.beat, t.s.beat))) add.push(t);
+          }
+        }
+        if (!add.length) break;
+        kept.push(...add);
+      }
+      kept.sort((a, b) => a.s.beat - b.s.beat);
+    }
+
     // The tiles: holds where the difficulty allows them, chords where it has them.
     const notes: ChartNote[] = [];
     const info = new Map<ChartNote, { t: Tile; second?: boolean }>();
@@ -832,6 +893,25 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     notes.sort((a, b) => a.t - b.t || a.lane - b.lane);
     return { difficulty: d, lanes: 4, notes };
 
+    /**
+     * A tile for a run's skipped slot (RUN_KEEP): only where the mix has an attack on it, from the
+     * phrase's own tiles there (the line's first), else that attack; where the phrase plays, and not
+     * under a hold on a difficulty that plays no taps under one.
+     */
+    function runSlot(beat: number): Tile | null {
+      const p = phraseOf(beat), sec = secOf(beat);
+      if (!plays(p) || !struckAt(sec)) return null;
+      const lean = Math.max(d === 'hard' || d === 'ultra' ? LEAN_HIGH : LEAN_MIN, form.intensity[p] ?? 1);
+      const under = prof.under || (d === 'medium' && lean >= HOLDS_FREE);
+      if (!under && kept.some((x) => x.until != null && sec > x.s.sec - 1e-6 && sec < secOf(x.until) + minGap)) return null;
+      const pool = tiles.filter((t) => Math.abs(t.s.beat - beat) < 0.01).sort((a, b) => Number(b.ref) - Number(a.ref) || b.s.strength - a.s.strength)[0];
+      if (pool) { const { until: _u, chord: _c, doubled: _d, opens: _o, ...tap } = pool; return { ...tap, phrase: p }; }
+      const e = o.events.filter((x) => Math.abs(x.sec - sec) <= BARE_NEAR).sort((a, b) => b.strength - a.strength)[0];
+      if (!e) return null;
+      const layer: Layer = (e.part as Layer | undefined) ?? 'drums';
+      const drum: Drum | undefined = layer === 'drums' ? (e.band === 'low' ? 'kick' : e.band === 'high' ? 'hat' : 'snare') : undefined;
+      return { s: { beat, sec, layer, strength: e.strength, midi: e.midi, len: 0, ...(drum ? { drum } : {}) }, ref: false, keep: 0, phrase: p, gap: 0 };
+    }
     function fillOk(t: Tile) {
       if (t.ref || t.opens) return true;
       // A ghost note (a kick or snare under FILL_MIN) only on Ultra.
@@ -1041,6 +1121,15 @@ const ATTACK_AFTER = 0.03;
  * where the mix has no new attack). Their sung tiles on beats and 8ths they chart.
  */
 const BARE_NEAR = 0.03;
+/**
+ * A sung or played note where the mix is near silent (its loudness over half a second under AUDIBLE
+ * of the song's median) and has no attack within UNHEARD_NEAR (s) isn't charted: Basic Pitch hears
+ * notes in the silence after a song (Nov 22, Hotline Bling: 35 notes in its last 10 s, the mix at
+ * 0-2% of its median with no attack; the user: "what is it mapping at the end? there's nothing
+ * playing"). Its fading drums (3-10%, every 8th) stay: one fan chart plays them to their end.
+ */
+const AUDIBLE = 0.05;
+const UNHEARD_NEAR = 1;
 
 const HELD_LONG = 0.6;
 const HELD_JOIN = 0.03;

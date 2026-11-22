@@ -554,6 +554,28 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     dropped while it plays on: ours 0-3% of bars (Medium, Hard, Ultra), 2-5% of phrases, the fan
     charts 0-41%; tile timing against the sounds: whole bars 15-30 ms off in a few places, the
     human charts 13-30 ms on most songs.
+    **Runs that keep going; nothing in the silence** (round 15, Nov 22; the user: "it still feels
+    like there's random breaks in a rhythm", "try the streams on Hard and Ultra", and "what is it
+    mapping at the end of Hotline Bling? there's nothing playing"). (1) An even run (two equal gaps,
+    a beat or closer) that skips one or two slots and goes on at the same gap: ours 2-8 per 100
+    tiles on Medium, Hard and Ultra, Easy 2.5-6.5; Hotline Bling's fan Hards 0 and 0.2, One Dance's
+    0.6, the Creative Commons charts mostly 0-2. On Hotline Bling 104 of the 115 skipped slots had an
+    onset of the mix on them, and both fan charts tile 83-100% of those (chance 30%); slots with only
+    a note ringing, 0%. So the breaks were sounds thinned out, not missing streams, and the skipped
+    slot gets its tile back where the mix strikes (`RUN_KEEP`, `runSlot`; Easy from 8ths, within
+    `EASY_RUN`). Skips per 100 tiles: Medium 1.3-8.4 → 0.2-1.9, Hard 1.5-5.6 → 0-2.9, Ultra
+    2.3-5.8 → 0.4-3.6, Easy 2.5-6.5 → 2.0-4.4. Same-as-last gaps Medium 34-71% → 37-77% (Hotline
+    Bling 52 → 72%), Hard 28-58% → 35-67%, Ultra 38-69% → 39-74% (humans at 2.2-3★ mean 68%); stars
+    +0-0.15; downbeats the same or up; F1 against the fan charts 61% → 62% (Hotline Bling's Hards
+    83/80% → 84/82%, the same precision); no holes, no criteria breaks. What's left is slots with
+    nothing struck, where the fan charts don't tile either (One Dance 8-11%, chance 37%): streams
+    there would be filler, so none were added. Easy's runs of 8ths stopping at `EASY_RUN` and
+    starting again are most of its rest; playing a long run on its beats only took Easy's skips to
+    0.7-3.6 and its stars down up to 0.06 (the Easy → Medium step wider): left out. (2) Basic Pitch
+    hears notes in the silence after a song: Hotline Bling's last 10 s (the mix at 0-2% of its
+    median, no attack) had 35, charted on every difficulty. A sung or played note where the mix is
+    under `AUDIBLE` (5%) of its median with no attack within `UNHEARD_NEAR` (1 s) isn't charted:
+    the chart now ends a second after the last drum (4:13; the fan charts 4:02 and 4:16).
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,

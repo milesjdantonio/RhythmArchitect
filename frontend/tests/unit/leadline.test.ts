@@ -119,6 +119,40 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     expect(medium.length).toBeGreaterThanOrEqual(8);
   });
 
+  it('notes heard in the silence after the song are not charted', () => {
+    // A piano and drums for 8 s, then the mix silent; Basic Pitch still "hears" notes at 10-14 s.
+    const rate = 30, len = 16 * rate;
+    const level = (sec: number) => (sec < 8 ? 120 : 0);
+    const band = () => Uint8Array.from({ length: len }, (_, i) => level(i / rate));
+    const levels = { rate, bass: band(), mid: band(), high: band() };
+    const piano = Array.from({ length: 16 }, (_, i) => ({ sec: i * 0.5, len: 0.3, midi: 60 + (i % 5), strength: 0.7 }));
+    const ghost = Array.from({ length: 8 }, (_, i) => ({ sec: 10 + i * 0.5, len: 0.3, midi: 64, strength: 0.7 }));
+    const line = leadLine({ bpm: 120, offset: 0, events: drums.filter((e) => e.sec < 8), voice: [], played: [...piano, ...ghost], map: null, levels });
+    for (const d of ['easy', 'medium', 'hard', 'ultra'] as const) {
+      const secs = line(d).notes.map((n) => n.t * SPB);
+      expect(Math.max(...secs)).toBeLessThan(9);
+    }
+  });
+
+  it("an even run doesn't skip a slot the mix strikes on (Medium, Hard, Ultra)", () => {
+    // Sung 8ths for 16 s over drums on every 8th, some weak: thinning may leave a weak one out of a
+    // run, and the run keeps going over it.
+    const voice3 = Array.from({ length: 32 }, (_, i) => syl(i * 0.5 + 0.004, 60 + ((i * 5) % 9)));
+    const kit = Array.from({ length: 64 }, (_, i) => ({ ...drum(i * 0.25), strength: i % 2 ? 0.2 + ((i * 7) % 5) * 0.05 : 0.6 }));
+    const line = leadLine({ bpm: 120, offset: 0, events: kit, voice: voice3, map: null });
+    const struck = (sec: number) => kit.some((e) => Math.abs(e.sec - sec) < 0.03);
+    for (const d of ['medium', 'hard', 'ultra'] as const) {
+      const b = [...new Set(line(d).notes.map((n) => Math.round(n.t * 1e4) / 1e4))].sort((x, y) => x - y);
+      for (let i = 2; i + 2 < b.length; i++) {
+        const G = b[i] - b[i - 1];
+        if (G > 1 + 1e-6 || Math.abs(b[i - 1] - b[i - 2] - G) > 0.01 || Math.abs(b[i + 2] - b[i + 1] - G) > 0.01) continue;
+        const k = Math.round((b[i + 1] - b[i]) / G);
+        if (k < 2 || k > 3 || Math.abs(b[i + 1] - b[i] - k * G) > 0.01) continue;
+        for (let j = 1; j < k; j++) expect(struck((b[i] + j * G) * SPB), `${d}: a run skips ${((b[i] + j * G) * SPB).toFixed(2)} s`).toBe(false);
+      }
+    }
+  });
+
   it('every chart ends on a chord: its last hit, on both hands', () => {
     for (const d of ['easy', 'medium', 'hard', 'ultra'] as const) {
       const notes = make(d).notes;
