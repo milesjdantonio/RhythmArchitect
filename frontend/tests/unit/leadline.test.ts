@@ -119,6 +119,21 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
     expect(medium.length).toBeGreaterThanOrEqual(8);
   });
 
+  it("a piano playing alone keeps its notes the mix shows no attack for; a pad under the drums doesn't", () => {
+    // 8 s of a piano on 16ths (two bars a phrase at 120 BPM), nothing sung. The mix has an attack for
+    // every note but one a bar, on a 16th (soft, under the last one ringing): bare notes.
+    const piano = Array.from({ length: 64 }, (_, i) => ({ sec: i * 0.125, len: 0.2, midi: 60 + ((i * 7) % 12), strength: 0.6 }));
+    const bare = piano.filter((_, i) => i % 8 === 3);
+    const other = (sec: number): SoundEvent => ({ ...drum(sec), band: 'mid', pitched: true, midi: 60, part: 'other', strength: 0.5 });
+    const solo = leadLine({ bpm: 120, offset: 0, events: piano.filter((n) => !bare.includes(n)).map((n) => other(n.sec)), voice: [], played: piano, map: null });
+    const ultra = solo('ultra').notes.map((n) => n.t * SPB);
+    for (const n of bare) expect(ultra.some((s) => Math.abs(s - n.sec) < 0.01), `the piano's ${n.sec.toFixed(3)} s`).toBe(true);
+    // The same notes as a pad under the drums: the mix strikes the drums, not the pad.
+    const pad = leadLine({ bpm: 120, offset: 0, events: drums.filter((e) => e.sec < 12), voice: [], played: piano, map: null });
+    const padUltra = pad('ultra').notes.map((n) => n.t * SPB);
+    expect(bare.filter((n) => padUltra.some((s) => Math.abs(s - n.sec) < 0.01)).length).toBe(0);
+  });
+
   it('notes heard in the silence after the song are not charted', () => {
     // A piano and drums for 8 s, then the mix silent; Basic Pitch still "hears" notes at 10-14 s.
     const rate = 30, len = 16 * rate;

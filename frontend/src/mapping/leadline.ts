@@ -352,6 +352,8 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
   }
   const played = o.played ?? [];
   const playedLate = lateness(played.map((s) => s.sec));
+  // Bare notes of the instrument are kept aside: they come back where it plays alone (soloBare).
+  const barePlayed = played.filter((s) => bareOff(s.sec - playedLate) && !unheard(s.sec - playedLate));
   for (const s of played) if (!bareOff(s.sec - playedLate)) put(s.sec - playedLate, 'other', 0.4 + s.strength * 0.6, s.midi, s.len, s.also != null ? { also: s.also } : {});
   const bassEvents = o.events.filter((e) => e.part === 'bass');
   const bassLate = lateness(bassEvents.map((e) => e.sec));
@@ -465,6 +467,25 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       if (count(p, lead) >= STICKY_MIN) follows.set(p, lead);
     }
   });
+  // Where the instrument plays alone (it leads the phrase, nothing sung, the mix struck about once a
+  // note of it: SOLO_STRUCK) or runs evenly (runLed), its bare notes are kept too.
+  if (barePlayed.length) {
+    const struck = (p: number) => {
+      const a = secOf(firstBeatOfPhrase(p)), b = secOf(firstBeatOfPhrase(p + 1));
+      return o.events.filter((e) => e.part === 'other' && e.sec >= a && e.sec < b).length / Math.max(1, count(p, 'other'));
+    };
+    const solo = new Map<number, boolean>();
+    for (const s of barePlayed) {
+      const sec = s.sec - playedLate, p = phraseOf(snap(sec));
+      if (!solo.has(p)) solo.set(p, follows.get(p) === 'other' && (runLed.has(p) || (count(p, 'vocals') === 0 && struck(p) >= SOLO_STRUCK)));
+      if (!solo.get(p)) continue;
+      const n = sounds.length;
+      put(sec, 'other', 0.4 + s.strength * 0.6, s.midi, s.len, s.also != null ? { also: s.also } : {});
+      if (sounds.length > n) phrases.get(p)?.push(sounds[n]);
+    }
+    sounds.sort((a, b) => a.beat - b.beat);
+    for (const list of phrases.values()) list.sort((a, b) => a.beat - b.beat);
+  }
   const sectionStarts = new Set(form.sections.slice(1).map((x) => x.from));
   const drops = new Set(form.sections.filter((x) => x.drop).map((x) => x.from));
   const ranked = [...energy.values()].sort((a, b) => a - b);
@@ -1129,6 +1150,18 @@ const BARE_NEAR = 0.03;
  * playing"). Its fading drums (3-10%, every 8th) stay: one fan chart plays them to their end.
  */
 const AUDIBLE = 0.05;
+/**
+ * An instrument's bare notes (BARE_NEAR) are kept in a phrase it leads with nothing sung where the
+ * mix has at least this many of its attacks a note of it (it plays alone, struck), or where it runs
+ * evenly (runLed). Nov 22, the user: Open Your Eyes' piano intro "just skips parts of the piano"
+ * (on Nov 20: "the piano solo at the start should be mapped, every note"): the bare rule took 9 of
+ * its 61 notes off Hard and Ultra, and 7 of the 36 of its run into the drop. Its intro phrases have
+ * 0.85-1.08 attacks a note; Hotline Bling's outro pad, which both fan charts leave out, 0.07-0.3.
+ * Ultra keeps 58 of the intro's 61 (was 50), Hard 56 (49), the run all 36. Elsewhere on the 8
+ * listens: California Gurls +9 tiles on Ultra, a fan chart has all of them (chance 38%); change
+ * +15, its fan charts 18-25% of them (chance 46-71%, charts lined up on ours only 37%); the rest 0-2.
+ */
+const SOLO_STRUCK = 0.8;
 const UNHEARD_NEAR = 1;
 
 const HELD_LONG = 0.6;

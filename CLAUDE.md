@@ -576,6 +576,24 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     median, no attack) had 35, charted on every difficulty. A sung or played note where the mix is
     under `AUDIBLE` (5%) of its median with no attack within `UNHEARD_NEAR` (1 s) isn't charted:
     the chart now ends a second after the last drum (4:13; the fan charts 4:02 and 4:16).
+    **The piano alone keeps every note** (round 16, Nov 22; the user: "it's very obvious at the
+    beginning of CYE, it just skips parts of the piano", "this happens in every song", "if something
+    is limiting it, fix that too"). Traced note by note: of the intro's 61 piano notes, Ultra lost 9
+    and Hard 9 to round 11's bare rule (`BARE_NEAR`: a note on a 16th with no attack in the mix within
+    30 ms), 2 more sharing a 16th with another; Medium and Easy lose 18-28 more to their budgets (by
+    design: Easy at its calibration ceiling, scale 2, still under its 1.25★ on most songs; raising the
+    ceiling to 3.5 gave Easy 15-25% more tiles for +0.02-0.06★ and broke Ice Ice Baby's Easy: left
+    out). The bare rule is the biggest remover of instrument notes on Ultra in every song (13-29% of
+    those heard), but the fan charts skip those notes too, even in struck intros (change 5 of 22,
+    California Gurls 0 of 5; Hotline Bling's outro pad 0 of 51). What sets Open Your Eyes' intro apart
+    is the mix: 0.85-1.08 attacks of the instrument a note of it (Hotline Bling's pad 0.07-0.3). So in
+    a phrase the instrument leads, nothing sung, with `SOLO_STRUCK` (0.8) of its attacks a note, or
+    where it runs evenly (`runLed`), its bare notes are kept. Moving instrument notes onto an attack
+    within 45-60 ms (as syllables are) gave back 1-2 of the 9 and added 120 tiles to change at chance:
+    left out. Intro kept: Ultra 82% → 95% (58 of 61), Hard 80% → 92%, Medium 52% → 57%, Easy 33% →
+    38%; the run into the drop 81% → 97% on Hard and Ultra. Elsewhere California Gurls +9 tiles on
+    Ultra (a fan chart has all of them, chance 38%), change +15 (its fan charts 18-25%, chance
+    46-71%), the rest 0-2; stars +0-0.08; F1 62% as before; no holes, no criteria breaks.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
