@@ -28,13 +28,14 @@ describe("every difficulty as the song's own lines (leadline.ts)", () => {
   it('a sung phrase follows the singing, on the grid; an instrumental one, the drums', () => {
     // Every tile on a 16th.
     for (const n of easy) expect(Math.abs(n.t * 4 - Math.round(n.t * 4))).toBeLessThan(1e-6);
-    // Sung phrases: tiles on the syllables' 16ths (between the beats); on a drum's beat only where
-    // a bar's skeleton needs it and the singing is silent there (Easy: beats 1 and 3; the syllables
-    // come half a beat after them, so a syllable just before stands in except at a phrase's start).
+    // Sung phrases: on a drum's beat only where a bar's skeleton needs it (Easy: beats 1 and 3,
+    // the drum there, not the syllable half a beat ahead of it: round 13, a beat with a sound on it
+    // keeps its tile), the singing between them.
     const offBeat = secs(0, 8).filter((s) => Math.abs(s / SPB - Math.round(s / SPB)) > 0.1);
     const onBeat = secs(0, 8).filter((s) => Math.abs(s / SPB - Math.round(s / SPB)) <= 0.1);
-    expect(offBeat.length).toBeGreaterThan(onBeat.length);
+    expect(offBeat.length).toBeGreaterThan(0);
     for (const s of onBeat) expect(Math.round(s / SPB) % 2).toBe(0);
+    for (let b = 0; b < 16; b += 2) expect(onBeat.some((s) => Math.abs(s / SPB - b) < 0.1)).toBe(true);
     expect(secs(0, 4).length).toBeGreaterThan(2);
     // The instrumental phrase: on the beats.
     const inst = secs(8, 12);

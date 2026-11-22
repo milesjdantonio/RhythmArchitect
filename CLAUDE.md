@@ -518,6 +518,22 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     4-7% of the time: 93-96% of such tiles would be on nothing they chart); "two sounds, one moment"
     was one human tile between our tile and the drum, 40-50 ms apart (57 of 62), already a match;
     83 of the 103 human tiles 30-80 ms from ours are their 1/6-1/8 runs where we hear one sound.
+    **The beat kept once it's followed** (round 13; the user, after playing: "sometimes it's on the
+    beat, it's got it, then it drops it, like the pianos in Open Your Eyes; every song does this in
+    some part"). Of the beats with a sound on them right after two that had a tile, Easy left out
+    4.4%, Medium 7.0%, Hard 4.3% (Hotline Bling's fan charts 0-0.2%); 91% of those had a line note
+    up to half a beat before the beat standing in for it (`SKELETON_AHEAD`). Now a bar's skeleton
+    takes the beat's own sound first (the line's note on it, else any part's), the note pushing
+    ahead only where nothing sounds on the beat, and Medium and Hard keep every beat of the bar
+    (`SKELETON`, Easy still beats 1 and 3): dropped beats 1.2% / 0.7% / 0.4%. And where a difficulty
+    plays nothing under a hold, a hold ends half a beat before another part's pulse (two beats in a
+    row it sounds on: `pulseEnd`): Open Your Eyes' three-second "aaah" held Easy and Medium through
+    the break while the piano played every 8th (bar 37 `----` against the piano's `BBsB`; now
+    Medium `BB-B`); beats with a sound under a hold Easy 23 → 3, Medium 60 → 47 (its busy sections
+    play taps under holds). On the 8 listens: stars within ±0.09; downbeats up (California Gurls
+    Easy 76% → 92%, Medium 81% → 93%), returns' rhythm up (Hotline Bling Easy 68% → 74%, Medium 67%
+    → 74%; change Medium 37% → 63%), returns' lanes -0 to -4 points; no holes, no criteria breaks;
+    F1 against the fan charts 61% as before.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,

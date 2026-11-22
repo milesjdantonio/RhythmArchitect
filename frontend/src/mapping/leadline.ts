@@ -199,10 +199,15 @@ const SILENT = 0.2;
  * the rhythm or chorus"): the beats of every bar (0 the downbeat) each difficulty keeps a tile on
  * wherever a sound is there (skeletonOf). osu!mania's ranking criteria: an Easy is "mostly 1/1",
  * a Normal "mostly 1/1 and 1/2"; the well-timed fan charts put a tile on 82-92% of the downbeats,
- * ours 31-49% on Easy, 49-80% on Hard. A note pushing up to SKELETON_AHEAD beats ahead of an empty
- * beat stands for it (a syncopated line).
+ * ours 31-49% on Easy, 49-80% on Hard. A note pushing up to SKELETON_AHEAD beats ahead of a beat
+ * stands for it only where nothing sounds on the beat (a syncopated line over silence).
+ * Round 13 (the user, Nov 21: "sometimes it's on the beat, it's got it, then it drops it, like the
+ * pianos in Open Your Eyes; every song does this in some part"): of the beats with a sound on them
+ * right after two that had a tile, Easy left out 4.4%, Medium 7.0%, Hard 4.3% (Hotline Bling's fan
+ * charts 0-0.2%); 91% of those had a line note up to half a beat before them standing in for the
+ * beat. With the beat's own sound first and every beat on Medium and Hard: 1.2% / 0.7% / 0.4%.
  */
-const SKELETON: Record<Difficulty, number[]> = { easy: [0, 2], medium: [0], hard: [0], ultra: [] };
+const SKELETON: Record<Difficulty, number[]> = { easy: [0, 2], medium: [0, 1, 2, 3], hard: [0, 1, 2, 3], ultra: [] };
 const SKELETON_AHEAD = 0.5;
 /**
  * The difficulties that keep every note of the line (the star calibration trims only the part under
@@ -563,16 +568,15 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
         if (k >= meter) continue;
         const b = firstBeatOfPhrase(p) + bar * meter + k;
         const at = (t: Tile) => Math.abs(t.s.beat - b) < 0.01;
-        // The line's note on the beat, or pushing ahead of it (a syncopated line keeps its own
-        // rhythm); else anything on the beat.
-        let t = mine.find((x) => at(x) && x.ref)
-          ?? mine.filter((x) => x.ref && x.s.beat < b - 0.01 && x.s.beat >= b - SKELETON_AHEAD - 1e-6).sort((x, y) => y.s.beat - x.s.beat)[0]
-          ?? mine.find(at);
-        if (!t) {
+        // The line's note on the beat; else anything on the beat; only where nothing sounds there,
+        // the line's note pushing ahead of it (a syncopated line over silence keeps its rhythm).
+        const onBeat = () => {
           const s = all.filter((x) => Math.abs(x.beat - b) < 0.01 && x.strength >= FILL_MIN && (x.layer !== 'drums' || x.drum !== 'hat' || x.strength >= 0.5))
             .sort((x, y) => Number(y.layer === layer) - Number(x.layer === layer) || y.strength - x.strength)[0];
-          if (s) t = { s, ref: s.layer === layer, keep: METRIC.downbeat + s.strength * 0.5, phrase: p, gap: 0 };
-        }
+          return s ? mine.find((x) => x.s === s) ?? { s, ref: s.layer === layer, keep: METRIC.downbeat + s.strength * 0.5, phrase: p, gap: 0 } : undefined;
+        };
+        const ahead = () => mine.filter((x) => x.ref && x.s.beat < b - 0.01 && x.s.beat >= b - SKELETON_AHEAD - 1e-6).sort((x, y) => y.s.beat - x.s.beat)[0];
+        let t = mine.find((x) => at(x) && x.ref) ?? mine.find(at) ?? onBeat() ?? ahead();
         if (t && !out.includes(t)) out.push(t);
       }
       // A bar with sounds but none on its beats (a chord ringing, a syncopated riff): its strongest.
@@ -610,6 +614,22 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     return map ? downbeat + p * 2 * meter : p * meter * 2;
   }
 
+  // Each part's beats (a sound right on the beat, firm enough to fill in), for pulseEnd.
+  const pulseBeats = new Map<Layer, Set<number>>();
+  for (const s of sounds) {
+    if (s.strength < FILL_MIN || (s.layer === 'drums' && s.drum === 'hat' && s.strength < 0.5)) continue;
+    const r = Math.round(s.beat);
+    if (Math.abs(s.beat - r) > 0.01) continue;
+    if (!pulseBeats.has(s.layer)) pulseBeats.set(s.layer, new Set());
+    pulseBeats.get(s.layer)!.add(r);
+  }
+  /** Where a hold should end to let another part's pulse under it through: half a beat before its first two beats in a row. */
+  const pulseEnd = (t: Tile) => {
+    const others = [...pulseBeats].filter(([l]) => l !== t.s.layer).map(([, set]) => set);
+    for (let b = Math.floor(t.s.beat + 1e-6) + 1; b + 1 <= t.until! + 1e-6; b++) if (others.some((set) => set.has(b) && set.has(b + 1))) return b - 0.5;
+    return t.until!;
+  };
+
   const make = (d: Difficulty, scale = 1) => {
     const k = KEEP[d], prof = PROFILE[d];
     const copyAll = RETURN_COPY.has(d);
@@ -645,6 +665,19 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       // their budget, held a chorus back.
       const gap = d === 'ultra' ? minGap : minGap * spacing(Math.min(SHAPE.hi, lean));
       const under = prof.under || (d === 'medium' && lean >= HOLDS_FREE);
+      // Where nothing is played under a hold, a hold ends half a beat before another part's pulse
+      // (two beats in a row it sounds on): Open Your Eyes' three-second "aaah" held Easy and Medium
+      // while the piano played every 8th under it (the user: "it's got it, then it drops it").
+      if (!under) {
+        for (let i = 0; i < mine.length; i++) {
+          const t = mine[i];
+          if (t.until == null) continue;
+          const end = pulseEnd(t);
+          if (end >= t.until - 1e-6) continue;
+          if (end - t.s.beat >= 0.5) mine[i] = { ...t, until: end };
+          else { const { until: _u, ...tap } = t; mine[i] = tap; }
+        }
+      }
       const twin = twinFor(p);
       const pattern = twin != null ? chosenKeys.get(twin) : undefined;
       const byKeep = [...mine].sort((a, b) => b.keep - a.keep || a.s.beat - b.s.beat);
