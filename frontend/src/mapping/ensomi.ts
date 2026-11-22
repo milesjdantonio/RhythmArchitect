@@ -632,16 +632,25 @@ export function thinner(model: ChartNote[], o: Pick<TrainedOptions, 'bpm' | 'off
 // a harder Easy for it ("Easy can be made harder for this change"); at 0.95 the calibration would
 // thin that back out of the whole chart.
 export const EASY_STARS = 1.05;
+/**
+ * The song's own lines (leadline.ts) start the ladder higher, and calibrate further: the user, Nov
+ * 21 night: "you can raise hard but also raise medium and easy to make the jump lighter". On the 8
+ * listens Easy 0.85-1.01★ → 0.94-1.22, Medium 1.07-1.39 → 1.18-1.69, Hard 1.47-2.21 → 1.53-2.34
+ * (Ultra as it is); the biggest step on a song ×1.35-1.59 → ×1.30-1.43. The trained mapper's
+ * charts (thin.ts, measured by map-bench) keep EASY_STARS and SCALE.
+ */
+export const LEAD_EASY_STARS = 1.25;
 const STAR_SPREAD = 0.06;
-/** Calibration only nudges KEEP: its share and rate scaled within these. */
+/** Calibration only nudges KEEP: its share and rate scaled within these (the lead line's up to LEAD_SCALE). */
 const SCALE: [number, number] = [0.7, 1.4];
+const LEAD_SCALE: [number, number] = [0.7, 2];
 /** Each difficulty keeps at least this many times the tiles of the one below it (else it stays as KEEP made it). */
 const MIN_STEP = 1.15;
 
-/** The star targets of a song whose Ultra is rated `ultra`. */
-export function starTargets(ultra: number): Record<Exclude<Difficulty, 'ultra'>, number> {
-  const r = Math.max(1.1, Math.cbrt(ultra / EASY_STARS));
-  return { easy: EASY_STARS, medium: EASY_STARS * r, hard: EASY_STARS * r * r };
+/** The star targets of a song whose Ultra is rated `ultra`: Easy at `easy`, even steps from it to Ultra. */
+export function starTargets(ultra: number, easy = EASY_STARS): Record<Exclude<Difficulty, 'ultra'>, number> {
+  const r = Math.max(1.1, Math.cbrt(ultra / easy));
+  return { easy, medium: easy * r, hard: easy * r * r };
 }
 
 /** A chart's star rating (beats from `offset`, `bpm`), by the runtime's `starRating`. */
@@ -693,7 +702,9 @@ export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOption
     const ultra = make('ultra');
     out.ultra = { ...ultra, stars: await chartStars(ultra.notes, o, rate) };
   }
-  const targets = starTargets(out.ultra.stars ?? EASY_STARS * 2.6);
+  const easy = lead ? LEAD_EASY_STARS : EASY_STARS;
+  const range = lead ? LEAD_SCALE : SCALE;
+  const targets = starTargets(out.ultra.stars ?? easy * 2.6, easy);
   // Hard first: each easier one is kept under the one above it.
   for (const d of ['hard', 'medium', 'easy'] as const) {
     const want = targets[d];
@@ -701,7 +712,7 @@ export async function calibratedCharts(model: ChartNote[], o: Pick<TrainedOption
     let chart = plain, stars = await chartStars(chart.notes, o, rate);
     const plainStars = stars;
     let best = { chart, stars };
-    let lo = stars > want ? SCALE[0] : 1, hi = stars > want ? 1 : SCALE[1];
+    let lo = stars > want ? range[0] : 1, hi = stars > want ? 1 : range[1];
     for (let i = 0; i < CALIBRATE && Math.abs(stars - want) > STAR_SPREAD; i++) {
       const scale = (lo + hi) / 2;
       chart = make(d, scale);

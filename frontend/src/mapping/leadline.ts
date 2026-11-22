@@ -149,6 +149,15 @@ const KEEP_BIG = 0.25;
 const LINE_REST = 0.6;
 
 /**
+ * The easier charts' spacing (KEEP's minGap) times this on the lead line, and (PROFILE) Easy's second
+ * part from half a beat clear of the line on 8ths, Medium's wherever it plays: the higher ladder
+ * (ensomi.ts LEAD_EASY_STARS, Nov 21 night). Easy went no higher than 0.92-1.17★ with KEEP's
+ * spacing and its second part only two beats clear on beats; still no criteria breaks, no holes.
+ * Letting every return grow too (not only a busy repeat) moved Medium +0.1★ on Hotline Bling only
+ * and cost its returns 4-8 points of rhythm: left out.
+ */
+const LEAD_GAP: Partial<Record<Difficulty, number>> = { easy: 0.7, medium: 0.7 };
+/**
  * What each difficulty plays beyond the line: the second part where the line rests at least `clear`
  * beats either side (and only on points at least `on` in the bar), under the line's holds or not,
  * and chords: Medium a few (a big hit on a beat, as thin.ts gives the trained mapper's Medium), Hard
@@ -157,8 +166,8 @@ const LINE_REST = 0.6;
  * 10-25% sparser than the lead line before 11ab68c on the same listens).
  */
 const PROFILE: Record<Difficulty, { clear: number; on: number; chords: 'never' | 'few' | 'big' | 'always'; under: boolean; beat: number }> = {
-  easy: { clear: 2, on: METRIC.beat, chords: 'never', under: false, beat: 0 },
-  medium: { clear: 1, on: METRIC.eighth, chords: 'few', under: false, beat: 0 },
+  easy: { clear: 0.5, on: METRIC.eighth, chords: 'never', under: false, beat: 0 },
+  medium: { clear: 0, on: METRIC.eighth, chords: 'few', under: false, beat: 0 },
   hard: { clear: 0, on: 0, chords: 'big', under: true, beat: 0.5 },
   ultra: { clear: 0, on: 0, chords: 'always', under: true, beat: 0.25 },
 };
@@ -606,7 +615,7 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     const copyAll = RETURN_COPY.has(d);
     const twinFor = (p: number) => (copyAll ? returnOf.get(p) ?? twinOf.get(p) : twinOf.get(p));
     const share = d === 'ultra' ? Math.min(1, scale) : Math.min(1, k.share * scale);
-    const minGap = k.minGap;
+    const minGap = k.minGap * (LEAD_GAP[d] ?? 1);
     // Which tiles: per phrase, a share of its tiles by weight (Ultra all), the line before the fill,
     // nothing closer than the difficulty's gap, nothing under a hold where the difficulty has none.
     const kept: Tile[] = [];

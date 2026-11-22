@@ -502,6 +502,22 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     tile of ours that matches another of theirs (their streams), 72-76 on sounds we heard (61 of
     80 weak bass and drum hits within a fifth of a beat of a tile of ours: two sounds, one moment,
     they chose the drum), 78-91 on no sound of ours; only 20 are ours mistimed 30-80 ms.
+    **A higher ladder, lighter steps** (round 12; the user: "you can raise hard but also raise medium
+    and easy to make the jump lighter"). The lead line's ladder starts at `LEAD_EASY_STARS` 1.25
+    (ensomi.ts; the trained mapper's charts keep `EASY_STARS` 1.05) with even steps to Ultra, and
+    calibrates up to ×2 (`LEAD_SCALE`; ×1.4 before). Easy couldn't go past 0.92-1.17★ with KEEP's
+    spacing and its second part only two beats clear on beats, so on the lead line Easy and Medium
+    space at 0.7 of KEEP's `minGap` (`LEAD_GAP`), Easy takes the second part from half a beat clear
+    on 8ths, Medium wherever it plays (`PROFILE`). On the 8 listens: Easy 0.85-1.01★ → 0.94-1.22,
+    Medium 1.07-1.39 → 1.18-1.69, Hard 1.47-2.21 → 1.53-2.34, Ultra as it was; the biggest step on a
+    song ×1.35-1.59 → ×1.30-1.43 (Hotline Bling M → H ×1.56 → ×1.38, change ×1.59 → ×1.38); no
+    holes, no criteria breaks, downbeats the same or up; F1 against the fan charts 61% as before.
+    Letting every return grow (not only a busy repeat) moved only Hotline Bling's Medium (+0.1★) and
+    cost the returns 4-8 points of rhythm: left out. Also measured for "the remaining gap", and not
+    charted: a stream into our half-beat gaps over a ringing note (both fan charts fill that 16th
+    4-7% of the time: 93-96% of such tiles would be on nothing they chart); "two sounds, one moment"
+    was one human tile between our tile and the drum, 40-50 ms apart (57 of 62), already a match;
+    83 of the 103 human tiles 30-80 ms from ours are their 1/6-1/8 runs where we hear one sound.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
@@ -517,7 +533,7 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     Easy charts put 26-50% of their tiles on the beat, ours already ~40%, and more made them less alike.
 - **Star ratings** (`calibratedCharts`, `starTargets`): every chart is rated with the runtime's
   `starRating` (osu!mania's star rating) and saved as `Chart.stars` (the start card and the dev
-  tools show it). Easy is thinned to `EASY_STARS` (1.05 since Nov 21, for the song's shape; 0.95 before) on every song, Medium and Hard to even
+  tools show it). Easy is thinned to `EASY_STARS` (1.05 since Nov 21, for the song's shape; 0.95 before; the song's own lines start at `LEAD_EASY_STARS` 1.25 since round 12, below) on every song, Medium and Hard to even
   steps of stars between it and the song's Ultra (KEEP's share and rate scaled only 0.7-1.4; one
   that would crowd the difficulty above it stays as KEEP made it). By share alone the same
   difficulty ranged 0.85-1.11 / 1.14-1.50 / 1.57-2.14 stars from song to song; now 0.86-1.02 /
