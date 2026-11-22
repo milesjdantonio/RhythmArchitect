@@ -124,9 +124,12 @@ const FILL_MIN = 0.3;
  * Ultra's ghost notes: a kick or snare from this strength fills in too (round 7). Of Hotline
  * Bling's kicks and snares at 0.15-0.3 that our Ultra left out, its fan charts put a tile on
  * 51-64% (chance at their density ~33%); bass and instrument onsets that weak 39-50%, the vocal
- * stem's 13-15%: those stay out.
+ * stem's 13-15%: those stay out. Round 11 (the line's glides off the 16ths gone, BARE_NEAR): of the
+ * mix's sounds Ultra left out, both fan charts put a tile on bass at 0.15-0.3 79-85%, under 0.15
+ * 45-89%, hats at 0.15-0.3 87%, kicks under 0.15 82% (chance for both 7%); the vocal stem's 0-2%.
+ * So every drum and the bass from 0.1 (0.15 gave F1 80%, 0.1 82%).
  */
-const GHOST_MIN = 0.15;
+const GHOST_MIN = 0.1;
 /** A phrase whose line's rhythm is this alike an earlier one's (16ths in common) is charted like it. */
 const ALIKE = 0.75;
 /** A phrase of a section's return whose line is this alike its first time's (16ths in common) is charted like it. */
@@ -192,6 +195,15 @@ const SILENT = 0.2;
  */
 const SKELETON: Record<Difficulty, number[]> = { easy: [0, 2], medium: [0], hard: [0], ultra: [] };
 const SKELETON_AHEAD = 0.5;
+/**
+ * The difficulties that keep every note of the line (the star calibration trims only the part under
+ * it), and those that keep every line note on a beat. Nov 21, the user: "it sometimes skips certain
+ * notes in what it's trying to match", "the difficulty of Hard dropped a lot": calibrated to its even
+ * step, Hard was cut to 0.77-0.85 of its share and the cut fell on the line (it kept 68-81% of it,
+ * Hotline Bling 72 holes on 8ths or stronger), Medium 52-59% of it (88% of its beats on One Dance).
+ */
+const LINE_WHOLE = new Set<Difficulty>(['hard', 'ultra']);
+const LINE_BEATS = new Set<Difficulty>(['medium']);
 /** The difficulties that chart a section's every return from its first time, rhythm and lanes (returnOf). */
 const RETURN_COPY = new Set<Difficulty>(['easy', 'medium']);
 /** Easy's breath before a drop (beats); the others play into it. */
@@ -202,6 +214,8 @@ const SECOND_WEIGHT: Record<Layer, number> = { vocals: 1.4, other: 1.2, drums: 1
 const JACK: Record<Difficulty, number> = { easy: 0.5, medium: 0.36, hard: 0.24, ultra: 0.16 };
 /** The same drum again within this many beats alternates between its hand's two lanes. */
 const DRUM_TURN = 1.5;
+/** A chord's partner and the part under the line take a lane not played this long (s) where they can (patterns.ts JACK). */
+const JACK_SOFT = 0.3;
 /** The same note again in its lane no sooner than this (s). */
 const SAME_JACK: Record<Difficulty, number> = { easy: 0.45, medium: 0.3, hard: 0.2, ultra: 0.14 };
 
@@ -273,10 +287,18 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
   // voice's lateness.
   const voiceLate = lateness(o.voice.map((s) => s.sec));
   const attack = onAttack(o.events, spb);
-  for (const s of held(o.voice)) put(attack(s.sec) ?? s.sec - voiceLate, 'vocals', 0.4 + s.strength * 0.6, s.midi, s.len);
+  // A note heard with no attack in the mix within BARE_NEAR (a syllable gliding on, an instrument's
+  // note under the rest) is kept only on a beat or an 8th (bareOff).
+  const onsets = o.events.map((e) => e.sec).sort((a, b) => a - b);
+  const struckAt = (sec: number) => { let lo = 0, hi = onsets.length; while (lo < hi) { const m = (lo + hi) >> 1; if (onsets[m] < sec - BARE_NEAR) lo = m + 1; else hi = m; } return lo < onsets.length && onsets[lo] <= sec + BARE_NEAR; };
+  const bareOff = (sec: number) => { if (struckAt(sec)) return false; const f = ((snap(sec) % 0.5) + 0.5) % 0.5; return Math.min(f, 0.5 - f) > 0.02; };
+  for (const s of held(o.voice)) {
+    const sec = attack(s.sec) ?? s.sec - voiceLate;
+    if (!bareOff(sec)) put(sec, 'vocals', 0.4 + s.strength * 0.6, s.midi, s.len);
+  }
   const played = o.played ?? [];
   const playedLate = lateness(played.map((s) => s.sec));
-  for (const s of played) put(s.sec - playedLate, 'other', 0.4 + s.strength * 0.6, s.midi, s.len, s.also != null ? { also: s.also } : {});
+  for (const s of played) if (!bareOff(s.sec - playedLate)) put(s.sec - playedLate, 'other', 0.4 + s.strength * 0.6, s.midi, s.len, s.also != null ? { also: s.also } : {});
   const bassEvents = o.events.filter((e) => e.part === 'bass');
   const bassLate = lateness(bassEvents.map((e) => e.sec));
   for (const e of o.events) {
@@ -446,7 +468,7 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
     for (const h of all) {
       const asSecond = h.layer === two && !(h.layer === 'drums' && h.drum === 'hat' && h.strength < 0.6);
       const asBeat = backbone && h.layer === 'drums' && h.drum !== 'hat';
-      const ghost = h.layer === 'drums' && h.drum !== 'hat';
+      const ghost = h.layer === 'drums' || h.layer === 'bass';
       const asAccent = !asSecond && !asBeat && h.layer !== layer && h.strength >= (ghost ? GHOST_MIN : Math.min(...Object.values(ACCENT)));
       if ((!asSecond && !asBeat && !asAccent) || h.strength < (ghost ? GHOST_MIN : FILL_MIN)) continue;
       if (lineBeats.some((b) => Math.abs(b - h.beat) < 0.01) || tiles.some((t) => t.phrase === p && t.s === h)) continue;
@@ -625,10 +647,19 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       const inSkel = new Set(skel);
       const rest = pattern ? [...same, ...byKeep.filter((t) => !pattern.has(keyOf(t, p)))] : byKeep;
       const ordered = [...skel, ...rest.filter((t) => !inSkel.has(t))];
-      // Ultra: every note of the line before any of the part under it, and a repeat keeps its own
-      // line whole too (it was held to its twin's pattern: 23 of Hotline Bling's line notes lost).
-      const order = d === 'ultra' ? [...ordered.filter((t) => t.ref), ...ordered.filter((t) => !t.ref)] : ordered;
-      const cap = pattern && d !== 'ultra' ? new Set([...same, ...skel]).size + extra : Math.max(budget, skel.length);
+      // Hard and Ultra (LINE_WHOLE): the bar's skeleton, then every note of the line before any of
+      // the part under it, and a repeat keeps its own line whole too (it was held to its twin's
+      // pattern: 23 of Hotline Bling's line notes lost). Medium (LINE_BEATS): every line note on a
+      // beat, after a return's own slots. The star calibration then trims only what's left.
+      const whole = LINE_WHOLE.has(d);
+      const onBeat = (t: Tile) => LINE_BEATS.has(d) && t.ref && metric(t.s.beat) >= METRIC.beat - 1e-6;
+      const inPattern = (t: Tile) => inSkel.has(t) || (!!pattern && pattern.has(keyOf(t, p)));
+      const order = whole ? [...skel, ...ordered.filter((t) => t.ref && !inSkel.has(t)), ...ordered.filter((t) => !t.ref && !inSkel.has(t))]
+        : LINE_BEATS.has(d) ? [...ordered.filter(inPattern), ...ordered.filter((t) => !inPattern(t) && onBeat(t)), ...ordered.filter((t) => !inPattern(t) && !onBeat(t))]
+        : ordered;
+      const beats = mine.filter(onBeat);
+      const cap = pattern && !whole ? new Set([...same, ...skel, ...beats]).size + extra
+        : Math.max(budget, skel.length, beats.length, whole ? lines + skel.filter((t) => !t.ref).length : 0);
       const chosen: Tile[] = [];
       for (const t of order) {
         if (chosen.length >= cap) break;
@@ -782,6 +813,10 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
       const { t, second } = info.get(n)!;
       const free = (l: number) => heldUntil[l] <= n.t + 1e-6;
       const ok = (l: number, same: boolean) => free(l) && (same || n.t - lastAt[l] >= jack - 1e-6);
+      // A chord's partner and the part under the line: a lane not played in the last JACK_SOFT
+      // seconds where there is one (the line's notes go by the tune instead).
+      const rested = (l: number) => ok(l, false) && (n.t - lastAt[l]) * spb >= JACK_SOFT - 1e-6;
+      const soft = (list: number[]) => list.find((l) => l >= 0 && l <= 3 && rested(l)) ?? pick(list, (l) => ok(l, false));
       let want: number;
       if (second) {
         // The chord's partner: the lane played least lately, either hand (round 6). A fixed lane on
@@ -792,7 +827,7 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
         const first = order.slice(0, i).reverse().find((x) => Math.abs(x.t - n.t) < 0.002 && !info.get(x)!.second);
         const from = first?.lane ?? lineLane;
         const hand = [0, 1, 2, 3].filter((l) => l !== from).sort((a, b) => lastAt[a] - lastAt[b]);
-        want = pick([...hand, 0, 1, 2, 3].filter((l) => l !== from), (l) => ok(l, false));
+        want = soft([...hand, 0, 1, 2, 3].filter((l) => l !== from));
       } else if (t.ref && t.s.layer !== 'drums') {
         const ranked = t.s.midi != null ? rankLane(t.phrase, t.s.midi) : null;
         let pref = ranked ?? lineLane;
@@ -819,7 +854,7 @@ export function leadLine(o: LeadInput): ((d: Difficulty, scale?: number) => Char
         const kind = t.s.drum ?? 'snare';
         const prev = lastDrum.get(kind);
         if (prev && n.t - prev.t <= DRUM_TURN && pref.includes(prev.lane)) pref = [pref.find((l) => l !== prev.lane)!, prev.lane];
-        want = pick([...pref, 0, 1, 2, 3], (l) => ok(l, false));
+        want = t.ref ? pick([...pref, 0, 1, 2, 3], (l) => ok(l, false)) : soft([...pref, 0, 1, 2, 3]);
         lastDrum.set(kind, { lane: want, t: n.t });
         if (t.ref) { lineLane = want; lineT = n.t; }
       }
@@ -929,6 +964,14 @@ export function onAttack(events: Pick<SoundEvent, 'sec' | 'part'>[], spb: number
 }
 const ATTACK_BEFORE = 0.12;
 const ATTACK_AFTER = 0.03;
+/**
+ * A sung or played note with no sound found in the mix within this (s) of where it goes, on a 16th or
+ * a triplet, isn't charted (on a beat or an 8th it is). Nov 21, against Hotline Bling's two timed fan
+ * charts: Ultra had 252 such tiles; both humans charted 18 of them (7%), neither one within 80 ms 142
+ * (56%): of the tiles they have nothing near, 77% were these (Basic Pitch hears a syllable gliding on
+ * where the mix has no new attack). Their sung tiles on beats and 8ths they chart.
+ */
+const BARE_NEAR = 0.03;
 
 const HELD_LONG = 0.6;
 const HELD_JOIN = 0.03;

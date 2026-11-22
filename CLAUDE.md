@@ -473,6 +473,35 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     user's call. Today's mapper on this listen: Ultra 2.54★ (5.9 tiles a second), F1 71-72%
     against both fan Hards (2.92★), chords 34% (theirs 29-36%), jacks 17% (13-19%), lane moves
     1.04 (1.15-1.31), downbeats E 81% / M 80% / H 83% / U 84%, no holes, no criteria breaks.
+    **Hard keeps its line whole; glides and weak hits** (round 11, Nov 21 night; the user, after
+    playing the fresh remakes of One Dance, Open Your Eyes and Hotline Bling: "it sometimes skips
+    certain notes in what it's trying to match", "the difficulty of Hard dropped a lot"). Calibrated
+    to its even step, Hard was cut to 0.77-0.85 of its share and the cut fell on the line: it kept
+    68-81% of it (Hotline Bling 72 holes on 8ths or stronger), Medium 52-59%. Now (1) Hard keeps
+    every note of the line, its bar's skeleton first (`LINE_WHOLE`, as Ultra: the calibration trims
+    only the part under it; line first without the skeleton cost Hard 5-15 points of downbeats), and
+    Medium every line note on a beat, after a return's own slots (`LINE_BEATS`; all of its 8ths put
+    Hotline Bling's Medium at 1.82★ against Hard's 2.12): Hard's line 99%, holes 4-6, its tiles
+    +4-20% a second on five of 8 songs; Medium's beats 99-100%, its returns as before. (2) A sung or
+    played note with no sound in the mix within 30 ms (`BARE_NEAR`), on a 16th or a triplet, isn't
+    charted: of Ultra's tiles neither Hotline Bling fan chart has anything within 80 ms of, 77% were
+    these (252 in all; both humans charted 18). (3) Ultra takes every drum and the bass from 0.1
+    (`GHOST_MIN`): of the sounds it left out, both humans charted bass at 0.15-0.3 79-85%, hats
+    87%, faint kicks 82% (chance 7%), the vocal stem's onsets 0-2%. (4) A chord's partner and the
+    part under the line take a lane not played in the last 0.3 s where one is free (`JACK_SOFT`):
+    (3) had put a tile half a beat after a chord in its lane, jacks 17% → 25%; now 17% (humans
+    13-19%), lane moves 1.04 → 1.08 (1.15-1.31). Against Hotline Bling's two fan Hards: F1 71-73%
+    → 81-83% (precision 72% → 85-87%, Ultra has 72% → 77-79% of their tiles); the two human charts
+    agree with each other 92%. Across the 8 fan charts F1 60% → 61% (California Gurls' 13-20 tiles a
+    second charts, which stream the glides too, -0 to -3). Stars, the 8 listens: Ultra 1.83-3.08
+    (was 1.85-3.22; California Gurls 2.59 → 2.27), Hard 1.47-2.21 (1.51-2.32; Hotline Bling 1.94 →
+    2.09), Medium 1.07-1.39, Easy the same; no holes, no criteria breaks. Hard's stars are held by
+    its even step: its target at r^2.4 in place of r² (starTargets) gives Hard +0.01-0.23★ and
+    6-19% more tiles, but Hard → Ultra ×1.13-1.20 against Medium → Hard ×1.4-1.76: the user's call.
+    What's left against Hotline Bling: human tiles we lack 22-24%, a third of them a 16th beside a
+    tile of ours that matches another of theirs (their streams), 72-76 on sounds we heard (61 of
+    80 weak bass and drum hits within a fifth of a beat of a tile of ours: two sounds, one moment,
+    they chose the drum), 78-91 on no sound of ours; only 20 are ours mistimed 30-80 ms.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,
