@@ -158,11 +158,15 @@ async function mapOne(context, s) {
   }, study);
   try {
     await page.goto(`${base}/#/`);
-    await page.locator('#song-title').fill(s.match.songTitle);
-    await page.locator('#song-artist').fill(s.match.songArtist);
-    // Two minutes: the first page of a run waits for the dev server to compile the app (30 s lost
-    // California Gurls, first in the bank, twice on Nov 22), and the results come after the search.
-    await page.getByRole('button', { name: /^Generate beatmap from / }).first().click({ timeout: 120_000 });
+    // The song typed in, then its video's Generate beatmap. On the first page of a run the dev
+    // server reloads the page once it has optimized its dependencies, wiping what was typed
+    // (California Gurls, first in the bank, failed three times on Nov 22): type it again and retry.
+    const generate = page.getByRole('button', { name: /^Generate beatmap from / }).first();
+    for (let attempt = 0; ; attempt++) {
+      await page.locator('#song-title').fill(s.match.songTitle);
+      await page.locator('#song-artist').fill(s.match.songArtist);
+      try { await generate.click({ timeout: 60_000 }); break; } catch (e) { if (attempt >= 2) throw e; }
+    }
     await page.getByRole('button', { name: 'Listen and map' }).click({ timeout: 30_000 });
     const posted = page.waitForRequest((r) => r.method() === 'POST' && new URL(r.url()).pathname === '/api/songs', { timeout: ((s.match.seconds ?? 300) * 2.5 + 600) * 1000 });
     // A listen that went wrong comes back to the dialog with the problem and Try again.
