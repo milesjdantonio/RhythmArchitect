@@ -296,8 +296,10 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     lines", which `remap-bank.mjs` applies too). Easy and
     Medium of the first version (Easy/Medium only) on the two real listens: Easy's phrases on one
     part 99% and 96%. **The testing ground** (`#/testingGround`, `src/screens/TestingGround.tsx`):
-    one song mapped several ways to play side by side, each a song file in `public/testing/` (id
-    `test-…`, read by `fetchSong`; never in the bank; runs not saved).
+    songs mapped two ways to play side by side (each card names its song and the difficulty the
+    two differ on, `focus`, which its main button plays), each a song file in `public/testing/` (id
+    `test-…`, read by `fetchSong`; never in the bank; runs not saved). Since round 17: Open Your
+    Eyes and Hotline Bling, Medium as it is against Medium in 8ths.
   - **The song's form** (`src/mapping/sections.ts`, Nov 21: "a human mapper maps what the song is
     trying to do"). Sections come from what the song repeats, not loudness alone (before: 8-bar
     blocks labelled by level, so a loud verse was a "Chorus"): each 2-bar phrase's fingerprint (its
@@ -594,6 +596,25 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
     38%; the run into the drop 81% → 97% on Hard and Ultra. Elsewhere California Gurls +9 tiles on
     Ultra (a fan chart has all of them, chance 38%), change +15 (its fan charts 18-25%, chance
     46-71%), the rest 0-2; stars +0-0.08; F1 62% as before; no holes, no criteria breaks.
+    **Medium and Easy: simpler, still the music** (round 17, Nov 22; the user plays Hard and Medium:
+    "for Easy and Medium it makes sense not to keep the whole part, so make it less difficult but
+    still feel like you're playing music, for every song"). Reduction rules from other games: Guitar
+    Hero's (Medium "eighth notes or slower", the strong beats kept and the offbeats thinned, "a
+    well-placed eighth note" kept; Easy "a quarter rest or longer between notes", at most one 8th next
+    to another; fast runs keep "the pitch extremes"; repetition over variation) and Beat Saber's
+    downmapping (about 20% fewer notes a step, the song's key moments on every difficulty). Measured
+    on the 8 listens: Medium keeps 92-98% of Ultra's beats, 36-50% of its 8ths, 12-32% of its 16ths;
+    Easy 54-72% / 29-42% / 6-12% (the order the rules ask for). Bars Ultra has alike, Medium has
+    alike 23-42% of the time (Easy 0-22%, Hard 20-63%), but the one human ladder that can be compared
+    (a Creative Commons set, the same mapper) is no more consistent (37% at half the tiles); human
+    charts favour the tune's peaks a little on Hotline Bling (29-38% against 18-23% of passing notes),
+    not on California Gurls or One Dance; ours favour its valleys and repeated notes already; tiles on
+    the tune and switches to other parts about as the fan charts. None of these says what to change.
+    The rules part ways in one place: Medium has 3-16% of its gaps under an 8th (Coffin 33%, at 69
+    BPM). Medium in 8ths (no two tiles closer than half a beat) comes out 0.03-0.22★ easier (Coffin
+    1.26 → 1.04, beside its Easy's 0.94: the Medium → Hard step wider), downbeats the same. Not put in
+    the mapper: both versions of Open Your Eyes and Hotline Bling are in the testing ground for the
+    user to play.
   - **"What am I playing?"** (the user, Nov 20: players asked "what notes even are these"). Each
     2-bar phrase follows one part: with the song split (WebGPU), every sound found in the mix is
     labelled with the stem that jumps most at it (`labelParts`, listen.worker.ts: drums, bass,

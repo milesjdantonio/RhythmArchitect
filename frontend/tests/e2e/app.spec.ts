@@ -512,17 +512,17 @@ test.describe('Rythm Architect', () => {
     }
   });
 
-  test('the testing ground shows Open Your Eyes mapped three ways, each playable', async ({ page }) => {
+  test('the testing ground shows each song mapped two ways, each playable', async ({ page }) => {
     await skipIntro(page);
     await fakeYouTube(page);
     await page.goto('/#/testingGround');
     await expect(page.getByRole('heading', { name: 'Testing ground' })).toBeVisible();
-    for (const name of ['Newest: with the song’s form', 'New: charted like a person', 'Current: the song’s own lines']) {
-      const card = page.getByRole('region', { name });
-      await expect(card).toContainText(/Ultra\s*\d+ tiles/);
+    for (const song of ['Open Your Eyes', 'Hotline Bling']) for (const way of ['Medium as it is', 'Medium in 8ths']) {
+      const card = page.getByRole('region', { name: `${song}: ${way}` });
+      await expect(card).toContainText(/Medium\s*\d+ tiles/);
     }
-    await page.getByRole('button', { name: 'Play Ultra: New: charted like a person' }).click();
-    await expect(page).toHaveURL(/#\/play\/test-oye-charted\/ultra$/);
+    await page.getByRole('button', { name: 'Play Medium: Open Your Eyes: Medium in 8ths' }).click();
+    await expect(page).toHaveURL(/#\/play\/test-oye-medium-8ths\/medium$/);
   });
 
   test('favourites a song and finds it in the favourites drop-down', async ({ page }) => {
