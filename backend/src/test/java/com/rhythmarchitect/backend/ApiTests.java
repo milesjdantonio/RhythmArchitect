@@ -117,7 +117,8 @@ class ApiTests {
             .andExpect(jsonPath("$.best.ultra.score").value(1000))
             .andExpect(jsonPath("$.best.ultra.maxCombo").value(1))
             .andExpect(jsonPath("$.best.ultra.accuracy").value(1.0))
-            .andExpect(jsonPath("$.best.ultra.grade").value("S"))
+            // The grade is the score against the chart's best (GameScore.gradeFor): one Perfect of a whole chart is a D.
+            .andExpect(jsonPath("$.best.ultra.grade").value("D"))
             .andExpect(jsonPath("$.best.ultra.rules").value("overdrive"));
 
         mvc.perform(post("/api/songs/" + id + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(id, ultraRecorded.formatted("P"))))
@@ -133,7 +134,8 @@ class ApiTests {
             .andExpect(jsonPath("$.best.hard.score").value(18600))
             .andExpect(jsonPath("$.best.hard.maxCombo").value(12))
             .andExpect(jsonPath("$.best.hard.accuracy").value(1275.0 / 1600))
-            .andExpect(jsonPath("$.best.hard.grade").value("C"))
+            // 13 tiles of the whole chart: a D by its score (an accuracy of 80% was a C).
+            .andExpect(jsonPath("$.best.hard.grade").value("D"))
             .andExpect(jsonPath("$.best.hard.rules").value("overdrive"));
 
         mvc.perform(post("/api/songs/" + scored + "/scores").contentType(MediaType.APPLICATION_JSON).content(reviewed(scored, recorded.formatted("P"))))

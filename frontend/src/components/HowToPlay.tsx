@@ -187,7 +187,7 @@ function OverdriveDemo() {
   const lv = useRef<(HTMLSpanElement | null)[]>([]);
   const LOOP = 9;
   useLoops((out, s) => {
-    // Fill (0-3 s), full: press (3-3.6 s), it runs, the bar counts the 48 tiles down (to 8 s), ends: empty.
+    // Fill (0-3 s), full: press (3-3.6 s), it runs, the bar counts its tiles down (to 8 s), ends: empty.
     play(bar.current, [[0, { transform: 'scaleX(0)' }], [3, { transform: 'scaleX(1)' }], [3.6, { transform: 'scaleX(1)' }], [8, { transform: 'scaleX(0.02)' }], [8.2, { transform: 'scaleX(0)' }], [LOOP, { transform: 'scaleX(0)' }]], LOOP, 0, s, out);
     play(key.current, [[0, { opacity: 0.35, transform: 'scale(1)' }], [3, { opacity: 0.35, transform: 'scale(1)' }], [3.05, { opacity: 1, transform: 'scale(1.08)' }], [3.5, { opacity: 1, transform: 'scale(0.94)' }], [3.7, { opacity: 0.35, transform: 'scale(1)' }], [LOOP, { opacity: 0.35, transform: 'scale(1)' }]], LOOP, 0, s, out);
     lv.current.forEach((e, i) => play(e, [[0, { opacity: 1 }], [1.4, { opacity: 1 }], [1.6, { opacity: 0.3 }], [LOOP, { opacity: 0.3 }]], LOOP, 3.6 + i * 1.5, s, out));

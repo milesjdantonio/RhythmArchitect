@@ -2,9 +2,9 @@
 // Times are seconds from beat 0 of the song.
 
 import type { Chart, ChartNote, Difficulty, Grade } from '../api/types';
-import { CHARGE_FULL, CODE, MAX_OVERDRIVE, OVERDRIVE_DRAIN, OVERDRIVE_GRACE, OVERDRIVE_LENGTH, RunScore, multiplierFor, type HitResult } from './score';
+import { CHARGE_FULL, CODE, MAX_OVERDRIVE, OVERDRIVE_DRAIN, OVERDRIVE_GRACE, OVERDRIVE_LENGTH, RunScore, gradeFor, multiplierFor, parScore, type HitResult } from './score';
 
-export { multiplierFor, CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_DRAIN, OVERDRIVE_GRACE, OVERDRIVE_LENGTH };
+export { multiplierFor, gradeFor, parScore, CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_DRAIN, OVERDRIVE_GRACE, OVERDRIVE_LENGTH };
 
 export type Judgement = 'perfect' | 'great' | 'good' | 'miss';
 
@@ -118,8 +118,11 @@ export class Game {
   private byLane: LiveNote[][];
   private active: (LiveNote | null)[];
 
+  /** The highest score this chart allows (score.ts parScore): what the grade measures against. */
+  readonly par: number;
   constructor(chart: Chart, readonly bpm: number, readonly difficulty: Difficulty, public opts: { noFail?: boolean } = {}) {
     this.opts = { ...opts };
+    this.par = parScore(chart, bpm);
     const spb = 60 / bpm;
     this.lanes = chart.lanes;
     this.notes = chart.notes
@@ -357,15 +360,6 @@ export class Game {
     this.passTime(t);
     return out;
   }
-}
-
-export function gradeFor(accuracy: number, failed: boolean): Grade {
-  if (failed) return 'F';
-  if (accuracy >= 0.95) return 'S';
-  if (accuracy >= 0.9) return 'A';
-  if (accuracy >= 0.8) return 'B';
-  if (accuracy >= 0.7) return 'C';
-  return 'D';
 }
 
 export function starsFor(grade: Grade): number {

@@ -1,5 +1,9 @@
 package main;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 /**
  * A run's score as the game counts it: {@link Score}'s rules wherever it has one, and what the
  * game adds where it has none.
@@ -27,6 +31,9 @@ package main;
  * {@link #OVERDRIVE_DRAIN} tiles' worth a second ({@link #passTime(double)}), so a sparse stretch
  * doesn't keep it going.</p>
  *
+ * <p>A run's grade is its score against the best its chart allows ({@link #parScore(Queue)},
+ * {@link #gradeFor(long, long, boolean)}), not its accuracy.</p>
+ *
  * <p>The browser game counts the same way (frontend/src/game/score.ts, overdrive.ts); the server
  * replays each run through this class before it keeps a best score.</p>
  */
@@ -36,12 +43,15 @@ public class GameScore extends Score
     public static final int CHARGE_FULL = 100;
     /** The highest Overdrive level. */
     public static final int MAX_OVERDRIVE = 3;
-    /** Tiles judged before Overdrive ends. */
-    public static final int OVERDRIVE_LENGTH = 48;
+    /** Tiles judged before Overdrive ends (48 before Nov 22: a second level was out of reach below Ultra). */
+    public static final int OVERDRIVE_LENGTH = 60;
     /** Tiles' worth of Overdrive's length used up each second of the song, besides the tiles. */
     public static final double OVERDRIVE_DRAIN = 1.5;
-    /** Seconds after each press when a miss doesn't end Overdrive (the game times it). */
-    public static final double OVERDRIVE_GRACE = 5;
+    /** Seconds after each press when a miss doesn't end Overdrive (the game times it; 5 before Nov 22). */
+    public static final double OVERDRIVE_GRACE = 3;
+    /** The least share of the chart's best score ({@link #parScore(Queue)}) for an S, an A, a B and a C. */
+    public static final double[] GRADE_SHARES = {0.85, 0.65, 0.45, 0.25};
+    private static final String[] GRADES = {"S", "A", "B", "C"};
     /** The highest combo multiplier. */
     public static final int MAX_COMBO_MULTIPLIER = 5;
     /** Score's points are worth this many in the game's score (a PERFECT is 1,000). */
@@ -316,6 +326,95 @@ public class GameScore extends Score
     public int getPoints()
     {
         return super.getScore();
+    }
+
+    /**
+     * The highest score a chart allows: every tile PERFECT, every hold held to its end, Overdrive
+     * set off the moment it's charged (its grace ending {@link #OVERDRIVE_GRACE} seconds later), on
+     * the chart's clock (the k-th tile judged at the k-th tile's time). The chart is left as it was.
+     * (frontend/src/game/score.ts parScore: the same.)
+     *
+     * @param chart the difficulty's notes
+     * @return the best score
+     */
+    public static long parScore(Queue<Note> chart)
+    {
+        int n = chart.getSize();
+        double[] times = new double[n];
+        // A tile: {its time, -1}; a hold's end: {its time, its length in ms}.
+        List<double[]> events = new ArrayList<double[]>();
+        for (int i = 0; i < n; i++)
+        {
+            Note note = chart.dequeue();
+            times[i] = note.getTimeStamp();
+            events.add(new double[] {note.getTimeStamp(), -1});
+            if (note.isHold() && note.getNoteLength() > 0)
+            {
+                events.add(new double[] {note.getTimeStamp() + note.getNoteLength(),
+                    Math.round(note.getNoteLength() * 1000)});
+            }
+            chart.enqueue(note);
+        }
+        Arrays.sort(times);
+        // In time; a hold ending with a tile ends first.
+        events.sort((a, b) -> Math.abs(a[0] - b[0]) > 1e-6 ? Double.compare(a[0], b[0])
+            : Boolean.compare(b[1] >= 0, a[1] >= 0));
+        GameScore s = new GameScore();
+        double graceUntil = Double.NEGATIVE_INFINITY;
+        int judged = 0;
+        for (double[] e : events)
+        {
+            if (s.isGrace() && e[0] >= graceUntil - 1e-6)
+            {
+                s.endGrace();
+            }
+            if (e[1] >= 0)
+            {
+                s.addHoldDone(e[1] / 1000.0);
+            }
+            else
+            {
+                if (judged > 0 && judged < n)
+                {
+                    s.passTime(times[judged] - times[judged - 1]);
+                }
+                judged++;
+                s.addHit(HitResult.PERFECT);
+            }
+            if (s.startOverdrive())
+            {
+                graceUntil = e[0] + OVERDRIVE_GRACE;
+            }
+        }
+        return s.getScore();
+    }
+
+    /**
+     * A run's grade by its score against the chart's best (Nov 22: the number score, not the
+     * accuracy): at least {@link #GRADE_SHARES} of it for S, A, B, C; less is D; a failed run F.
+     * Simulated players on the bank's charts: a miss in 300 made 80-93% of the best, 1 in 100
+     * 60-83%, 2 in 100 49-63%, 4 in 100 32-45%; every tile PERFECT without Overdrive 75-80%.
+     *
+     * @param score the run's score
+     * @param par the chart's best ({@link #parScore(Queue)})
+     * @param failed whether the run failed
+     * @return S, A, B, C, D or F
+     */
+    public static String gradeFor(long score, long par, boolean failed)
+    {
+        if (failed)
+        {
+            return "F";
+        }
+        double share = par > 0 ? (double) score / par : 0;
+        for (int i = 0; i < GRADES.length; i++)
+        {
+            if (share >= GRADE_SHARES[i])
+            {
+                return GRADES[i];
+            }
+        }
+        return "D";
     }
 
     /**

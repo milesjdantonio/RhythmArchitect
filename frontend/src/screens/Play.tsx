@@ -347,10 +347,11 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     const counted = link.current;
     const finished = counted ? counted.finish(g.failed ? end : end + 1).then((s) => { setModel({ state: s, status: counted.status }); return s; }) : null;
     const accuracy = g.accuracy;
-    const grade = gradeFor(accuracy, g.failed);
+    // The grade is the score against the chart's best (score.ts gradeFor, parScore).
+    const grade = gradeFor(g.stats.score, g.par, g.failed);
     const meanOffsetMs = offsets.current.length >= 8 ? (offsets.current.reduce((a, b) => a + b, 0) / offsets.current.length) * 1000 : null;
     const r: RunResult = {
-      score: g.stats.score, accuracy, maxCombo: g.stats.maxCombo, counts: { ...g.stats.counts }, grade, failed: g.failed, total: g.stats.total, meanOffsetMs, assisted: assisted.current,
+      score: g.stats.score, par: g.par, accuracy, maxCombo: g.stats.maxCombo, counts: { ...g.stats.counts }, grade, failed: g.failed, total: g.stats.total, meanOffsetMs, assisted: assisted.current,
       reached: g.failed ? { at: Math.max(0, failing.current?.t ?? songTime(beat0.current)), of: (song.lengthBeats * 60) / song.bpm } : undefined,
       overdrive: g.overdriveStats,
     };

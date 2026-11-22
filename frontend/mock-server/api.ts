@@ -31,7 +31,7 @@ import { keepRun, rateRun, runInputs, startRun } from './play';
 import { sortAtoZ } from '../src/library/bank';
 import { DIFFICULTIES } from '../src/api/types';
 import { rechartProblem, upgradeSong } from '../src/api/upgrade';
-import { replayRun, runFits, tileTimes } from '../src/game/score';
+import { parScore, replayRun, runFits, tileTimes } from '../src/game/score';
 import { addHeat } from '../src/game/heat';
 import { addFeel } from '../src/game/feel';
 import { norm, searchMatch } from '../src/library/near';
@@ -301,7 +301,7 @@ export function createMockApi({ file, speed = 1 }: MockApiOptions) {
           const score = replayed ? replayed.score : Math.round(body.score);
           if (!prev || (replayed && prev.rules !== 'overdrive') || score > prev.score) {
             song.best[body.difficulty] = replayed
-              ? { score, accuracy: replayed.accuracy, maxCombo: replayed.maxCombo, grade: gradeFor(replayed.accuracy, body.grade === 'F'), at: new Date().toISOString(), rules: 'overdrive' }
+              ? { score, accuracy: replayed.accuracy, maxCombo: replayed.maxCombo, grade: gradeFor(replayed.score, parScore(chart, song.bpm), body.grade === 'F'), at: new Date().toISOString(), rules: 'overdrive' }
               : { score, accuracy: body.accuracy, maxCombo: body.maxCombo, grade: body.grade, at: new Date().toISOString() };
           }
           save(songs);

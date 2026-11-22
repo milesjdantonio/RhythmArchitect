@@ -193,9 +193,9 @@ the mock: `cd backend && ./mvnw spring-boot:run`, and `VITE_API_BASE_URL=http://
   the right: broken by a miss, it cracks in red and its letters fall away while the screen's sides
   flash red; run out, it drifts up and fades. When it's full, press
   **Space** (or the key you bound, or the HUD's button on touch screens): Overdrive adds +1 to the
-  multiplier for the next 48 tiles. Press again whenever the charge fills while it runs to stack it,
+  multiplier for the next 60 tiles. Press again whenever the charge fills while it runs to stack it,
   up to three levels: ×5 from the combo plus ×3 from Overdrive is **×8**. At the top it can't be set
-  off again, and **a single miss ends it**, every level, except in its **grace**: for 5 seconds after
+  off again, and **a single miss ends it**, every level, except in its **grace**: for 3 seconds after
   each press (time to get from the key back to the lanes) a miss costs its combo and signal but not
   Overdrive, and a countdown beside the lanes shows it. Each level takes the whole field to its own
   colours (the tiles, pads, beams, walls, track, the world and the sky): *Neon* (purple and pink),
@@ -228,7 +228,9 @@ the mock: `cd backend && ./mvnw spring-boot:run`, and `VITE_API_BASE_URL=http://
   Nothing waits for it: the menu opens at once, and wherever something is waiting on the server
   (the searches, Favorites, the music bank, a song loading) a small line says it's waking, with a
   clock, and offers to try again if it takes too long.
-- **Results.** Grade and score; accuracy and max combo, then Perfect, Great, Good and Miss; *Play
+- **Results.** Grade and score (the grade is the score against the best the chart allows, every tile
+  Perfect with Overdrive used as soon as it charges: S from 85% of it, A 65%, B 45%, C 25%, D
+  below; the results show the share); accuracy and max combo, then Perfect, Great, Good and Miss; *Play
   again* (R) or *Return to main menu* (Esc). The song plays again quietly behind it, and back on
   the menu it plays on from where it was as the song's preview.
 - **Menu music.** While no song preview is playing, the menu plays *Drift*, a calm piece composed

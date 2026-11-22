@@ -31,7 +31,7 @@
 // Notes) and replays it through GameScore, and saves that (backend RunReplay.java); the mock
 // server does both here (runFits, replayRun). Free of browser APIs.
 
-import type { Chart } from '../api/types';
+import type { Chart, Grade } from '../api/types';
 
 /** main.HitResult. */
 export type HitResult = 'PERFECT' | 'GOOD' | 'EARLY' | 'LATE' | 'MISS';
@@ -40,9 +40,16 @@ export type HitResult = 'PERFECT' | 'GOOD' | 'EARLY' | 'LATE' | 'MISS';
 export const CODE: Record<HitResult, string> = { PERFECT: 'P', GOOD: 'G', EARLY: 'E', LATE: 'L', MISS: 'M' };
 export const CHARGE_FULL = 100;
 export const MAX_OVERDRIVE = 3;
-export const OVERDRIVE_LENGTH = 48;
-/** Seconds after each press when a miss doesn't end Overdrive (the game ends the grace: U). */
-export const OVERDRIVE_GRACE = 5;
+/**
+ * Tiles judged per Overdrive level (GameScore.OVERDRIVE_LENGTH): 60 since Nov 22 (48 before; the
+ * user: "give the overdrive bar a little more time, to ease up on how hard it is to get a second
+ * overdrive"). The next level needs a full charge (34 Perfects) inside one; with the drain, 48 left
+ * room for about 30 tiles at Medium's rate (2.6 a second), 33 at Hard's (3.5), 36 at Ultra's (4.8):
+ * a second level was out of reach below Ultra. 60: about 38, 42 and 46.
+ */
+export const OVERDRIVE_LENGTH = 60;
+/** Seconds after each press when a miss doesn't end Overdrive (the game ends the grace: U). 3 since Nov 22 (5 before). */
+export const OVERDRIVE_GRACE = 3;
 /** Tiles' worth of Overdrive's length used up each second of the song, besides the tiles (GameScore.OVERDRIVE_DRAIN). */
 export const OVERDRIVE_DRAIN = 1.5;
 export const MAX_COMBO_MULTIPLIER = 5;
@@ -217,6 +224,46 @@ export class RunScore {
 
 /** The chart's tiles' times in seconds, in order (the clock Overdrive drains by: RunReplay.timesOf). */
 export const tileTimes = (chart: Pick<Chart, 'notes'>, bpm: number) => chart.notes.map((n) => n.t * (60 / bpm)).sort((a, b) => a - b);
+
+/**
+ * The highest score a chart allows (GameScore.parScore): every tile Perfect, every hold held to its
+ * end, Overdrive set off the moment it's charged (its grace ending OVERDRIVE_GRACE seconds later),
+ * on the chart's clock. A player who saves Overdrive for a busy stretch can beat it a little.
+ */
+export function parScore(chart: Pick<Chart, 'notes'>, bpm: number): number {
+  const spb = 60 / bpm;
+  const ev: { at: number; end: boolean; ms: number }[] = [];
+  for (const n of chart.notes) {
+    ev.push({ at: n.t * spb, end: false, ms: 0 });
+    if (n.hold && n.len > 0) ev.push({ at: (n.t + n.len) * spb, end: true, ms: Math.round(n.len * spb * 1000) });
+  }
+  // In time; a hold ending with a tile ends first.
+  ev.sort((a, b) => (Math.abs(a.at - b.at) > 1e-6 ? a.at - b.at : Number(b.end) - Number(a.end)));
+  const s = new RunScore(tileTimes(chart, bpm));
+  let graceUntil = -Infinity;
+  for (const e of ev) {
+    if (s.grace && e.at >= graceUntil - 1e-6) s.endGrace();
+    if (e.end) s.holdDone(e.ms / 1000);
+    else s.add('PERFECT');
+    if (s.startOverdrive()) graceUntil = e.at + OVERDRIVE_GRACE;
+  }
+  return s.score;
+}
+
+/**
+ * A run's grade is its score against the chart's best (parScore), not its accuracy (GameScore.gradeFor;
+ * the user, Nov 22: "the letter scores should be based on the number score"): at least these shares
+ * of it for S, A, B, C; less is D; a failed run F. Simulated players on the 8 bank songs' charts
+ * (Medium, Hard, Ultra; Overdrive set off when charged): 98% accuracy (a miss in 300) made 80-93%
+ * of the best, 95% (1 in 100) 60-83%, 91% (2 in 100) 49-63%, 85% (4 in 100) 32-45%, 80% 22-28%,
+ * 70% 12-16%; a run with every tile Perfect and no Overdrive 75-80%.
+ */
+export const GRADE_SHARES: [Grade, number][] = [['S', 0.85], ['A', 0.65], ['B', 0.45], ['C', 0.25]];
+export function gradeFor(score: number, par: number, failed: boolean): Grade {
+  if (failed) return 'F';
+  const share = par > 0 ? score / par : 0;
+  return GRADE_SHARES.find(([, at]) => share >= at)?.[0] ?? 'D';
+}
 
 /** A recorded run counted again (on the chart's clock with `times`: tileTimes), or null when it isn't one. */
 export function replayRun(run: string, times?: number[]): RunScore | null {

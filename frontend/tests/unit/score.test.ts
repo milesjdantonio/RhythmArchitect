@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_LENGTH, PERFECTS_TO_CHARGE, STRAY_CHARGE, RunScore, graceTiles, holdBonus, multiplierFor, replayRun, runFits } from '../../src/game/score';
+import { CHARGE_FULL, MAX_OVERDRIVE, OVERDRIVE_DRAIN, OVERDRIVE_LENGTH, PERFECTS_TO_CHARGE, STRAY_CHARGE, RunScore, gradeFor, graceTiles, holdBonus, multiplierFor, parScore, replayRun, runFits } from '../../src/game/score';
 import { Game, hitResultFor } from '../../src/game/engine';
 import type { Chart } from '../../src/api/types';
 
@@ -35,12 +35,13 @@ describe("the score: main.Score's rules, the multiplier and holds on top", () =>
     s.add('PERFECT');
     expect(s.overdriveLeft).toBe(OVERDRIVE_LENGTH - 16);
     s.passTime(-5);
-    s.passTime(21.333);
+    // All but a sliver of what's left (to the ms), then the last of it.
+    s.passTime(Math.floor(((OVERDRIVE_LENGTH - 16) / OVERDRIVE_DRAIN) * 1000) / 1000);
     expect(s.overdrive).toBe(1);
     s.passTime(0.001);
     expect(s.overdrive).toBe(0);
     // Replayed on a chart: the k-th tile judged is at the k-th tile's time. Tiles a second apart,
-    // then a 40 s gap: 48 - 1 - 1.5 = 45.5 left after the first, then 60 tiles' worth goes.
+    // then a 40 s gap: 60 - 1 - 1.5 = 57.5 left after the first, then 60 tiles' worth goes.
     const times = [...Array.from({ length: 36 }, (_, i) => i), 76];
     const run = `${'P'.repeat(34)}OPPP`;
     const r = replayRun(run, times)!;
@@ -109,12 +110,28 @@ describe("the score: main.Score's rules, the multiplier and holds on top", () =>
     expect(replayRun(charged + 'UM')!.overdrive).toBe(0); // after it
     expect(replayRun('PU')).toBeNull(); // no grace to end
     expect(replayRun(charged + 'UU')).toBeNull();
-    // A tile every beat at 120 BPM: OVERDRIVE_GRACE (and 0.6 s) holds 12 of them, so a grace may judge 14.
+    // A tile every half second: OVERDRIVE_GRACE (3 s, and 0.6) holds 8 of them, so a grace may judge 10.
     const chart: Chart = { difficulty: 'hard', lanes: 4, notes: Array.from({ length: 60 }, (_, t) => ({ t, lane: 0, pitch: 'C5', len: 0.25 })) };
-    expect(graceTiles(chart.notes.map((n) => n.t * 0.5))).toBe(14);
-    expect(runFits(charged + 'P'.repeat(14) + 'U', chart, 120)).toBe(true);
-    expect(runFits(charged + 'P'.repeat(15) + 'U', chart, 120)).toBe(false);
-    expect(runFits(charged + 'P'.repeat(15), chart, 120)).toBe(false); // never ended
+    expect(graceTiles(chart.notes.map((n) => n.t * 0.5))).toBe(10);
+    expect(runFits(charged + 'P'.repeat(10) + 'U', chart, 120)).toBe(true);
+    expect(runFits(charged + 'P'.repeat(11) + 'U', chart, 120)).toBe(false);
+    expect(runFits(charged + 'P'.repeat(11), chart, 120)).toBe(false); // never ended
+  });
+
+  it('the best a chart allows (parScore, GameScore.parScore: the same chart, the same number) grades a run', () => {
+    // 60 tiles a beat apart at 120 BPM; every fifth a hold of one beat, ending on the next tile.
+    const notes = Array.from({ length: 60 }, (_, t) => ({ t, lane: 0, pitch: 'C5', len: t % 5 === 0 ? 1 : 0.25, ...(t % 5 === 0 ? { hold: true } : {}) }));
+    const par = parScore({ notes }, 120);
+    expect(par).toBe(295200); // RunReplayTests: the same
+    // Ten Perfect taps: nine at x1, the tenth at x2.
+    expect(parScore({ notes: notes.slice(0, 10).map((n) => ({ ...n, hold: undefined, len: 0.25 })) }, 120)).toBe(11000);
+    // Every tile Perfect but Overdrive never set off scores less.
+    const run = notes.map((n) => (n.hold ? 'PH500;' : 'P')).join('');
+    const plain = replayRun(run, notes.map((n) => n.t * 0.5))!.score;
+    expect(plain).toBeLessThan(par);
+    expect(gradeFor(plain, par, false)).toBe(plain / par >= 0.85 ? 'S' : 'A');
+    expect(gradeFor(par, par, false)).toBe('S');
+    expect(gradeFor(Math.round(par * 0.5), par, false)).toBe('B');
   });
 
   it('the game sets off Overdrive: events, and the run the server replays', () => {

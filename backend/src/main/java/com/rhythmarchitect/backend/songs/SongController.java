@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.rhythmarchitect.backend.web.ApiException;
 
 import main.Difficulty;
+import main.GameScore;
 import main.Note;
 import main.Queue;
 import main.SongWriter;
@@ -185,7 +186,8 @@ public class SongController {
         String playRun = body.path("play").isString() ? body.path("play").asString() : null;
         return store.write(all -> {
             ObjectNode song = store.find(all, id).orElseThrow(SongController::missing);
-            RunReplay.Result replayed = RunReplay.of(runText, chartOf(song, level));
+            Queue<Note> chart = chartOf(song, level);
+            RunReplay.Result replayed = RunReplay.of(runText, chart);
             if (replayed == null) throw ApiException.badRequest("Bad run");
             // The controller's review: a run it saw from start to end, passed, its score not kept before.
             play.keep(playRun, id, difficulty, runText);
@@ -202,7 +204,11 @@ public class SongController {
                 if (replayed != null) {
                     run.put("accuracy", replayed.accuracy());
                     run.put("maxCombo", replayed.maxCombo());
-                    run.put("grade", RunReplay.gradeFor(replayed.accuracy(), "F".equals(body.path("grade").asString(""))));
+                    // The grade: the score against the chart's best (GameScore.gradeFor, parScore).
+                    // A song the model can't take (chart null, counted unchecked) keeps the game's grade.
+                    boolean failed = "F".equals(body.path("grade").asString(""));
+                    if (chart != null) run.put("grade", GameScore.gradeFor(replayed.score(), GameScore.parScore(chart), failed));
+                    else run.set("grade", body.path("grade"));
                     run.put("rules", "overdrive");
                 } else {
                     run.set("accuracy", body.path("accuracy"));

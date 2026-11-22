@@ -153,9 +153,15 @@ describe('game engine', () => {
   });
 
   it('grades, multipliers and keys', () => {
-    expect(gradeFor(0.97, false)).toBe('S');
-    expect(gradeFor(0.97, true)).toBe('F');
-    expect(gradeFor(0.5, false)).toBe('D');
+    // By the score against the chart's best (parScore).
+    expect(gradeFor(900, 1000, false)).toBe('S');
+    expect(gradeFor(850, 1000, false)).toBe('S');
+    expect(gradeFor(700, 1000, false)).toBe('A');
+    expect(gradeFor(500, 1000, false)).toBe('B');
+    expect(gradeFor(300, 1000, false)).toBe('C');
+    expect(gradeFor(100, 1000, false)).toBe('D');
+    expect(gradeFor(1200, 1000, false)).toBe('S');
+    expect(gradeFor(900, 1000, true)).toBe('F');
     expect(multiplierFor(0)).toBe(1);
     expect(multiplierFor(35)).toBe(4);
     expect(multiplierFor(45)).toBe(5);

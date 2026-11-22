@@ -119,13 +119,18 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 - Scoring is `main.Score`'s rules (Perfect 100, Good 75, Early/Late 50, accuracy, combo) with the
   game's on top: points ×10 (`POINT_SCALE`), the combo multiplier (×1-×5), the held-note bonus,
   **Overdrive** (a charge from accurate hits: Perfect 3, Good 2, Early/Late 1, a finished hold 3,
-  out of 100, ~34 Perfects; it empties when Overdrive ends; Space adds +1 per level for up to 48 tiles, draining
+  out of 100, ~34 Perfects; it empties when Overdrive ends; Space adds +1 per level for up to 60 tiles (`OVERDRIVE_LENGTH`; 48 before Nov 22, the user: "a little more time, to ease up on how hard it is to get a second overdrive": with the drain a level had room for ~30 tiles at Medium's rate, 33 at Hard's, under the 34 Perfects the next one needs), draining
   as the song plays too (`OVERDRIVE_DRAIN`, 1.5 tiles' worth a second; the user, Nov 20: "make overdrive also
   passively drop"; the clock is the chart's, the k-th tile judged at the k-th tile's time, to the ms, so
   RunReplay, which has no clock of the run, counts the same; the bar drops between tiles), up to three
-  levels: ×8; not at the top; any miss ends it, except in its grace: `OVERDRIVE_GRACE`, 5 song
-  seconds after each press, timed by engine.ts) and stray presses (a key with no tile: signal and
-  charge drain, no points): `main.GameScore` (Score.java itself is Darsh's: add on top, don't edit
+  levels: ×8; not at the top; any miss ends it, except in its grace: `OVERDRIVE_GRACE`, 3 song
+  seconds after each press (5 before Nov 22), timed by engine.ts) and stray presses (a key with no tile: signal and
+  charge drain, no points). **The grade is the score against the chart's best** (Nov 22, the user: "the letter
+  scores should be based on the number score rather than accuracy"): `parScore` (score.ts) and
+  `GameScore.parScore` (the same chart, the same number: a perfect run, Overdrive set off as soon as
+  it's charged), `gradeFor` S 85% / A 65% / B 45% / C 25% of it (`GRADE_SHARES`), D below, F a
+  failed run; the results show the share. The server grades the replayed score so (SongController).
+  All of it: `main.GameScore` (Score.java itself is Darsh's: add on top, don't edit
   it). The run records `O` (Overdrive), `U` (its grace ended) and `X` (stray); the server refuses an
   Overdrive the charge couldn't pay for and a grace longer than the chart allows (`graceTiles`,
   RunReplay and score.ts). Gold tiles were tried and removed. The levels' looks are

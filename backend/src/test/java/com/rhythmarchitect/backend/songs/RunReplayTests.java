@@ -3,7 +3,9 @@ package com.rhythmarchitect.backend.songs;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import main.GameScore;
 import main.MusicNoteType;
 import main.Note;
 import main.NoteType;
@@ -37,12 +39,35 @@ class RunReplayTests {
     @Test
     void aGraceLongerThanTheChartAllowsIsRefused() {
         Queue<Note> chart = everyHalfSecond(60);
-        // 5 s of grace (and 0.6 s) holds 12 of these tiles: a grace may judge 14.
-        assertEquals(14, RunReplay.graceTiles(java.util.stream.IntStream.range(0, 60).mapToObj(i -> i * 0.5).toList()));
+        // 3 s of grace (and 0.6 s) holds 8 of these tiles: a grace may judge 10.
+        assertEquals(10, RunReplay.graceTiles(java.util.stream.IntStream.range(0, 60).mapToObj(i -> i * 0.5).toList()));
         String charged = "P".repeat(34) + "O";
-        assertNotNull(RunReplay.of(charged + "P".repeat(14) + "U", chart));
-        assertNull(RunReplay.of(charged + "P".repeat(15) + "U", chart));
-        assertNull(RunReplay.of(charged + "P".repeat(15), chart), "never ended");
+        assertNotNull(RunReplay.of(charged + "P".repeat(10) + "U", chart));
+        assertNull(RunReplay.of(charged + "P".repeat(11) + "U", chart));
+        assertNull(RunReplay.of(charged + "P".repeat(11), chart), "never ended");
         assertEquals(60, chart.getSize(), "the chart is left as it was");
+    }
+
+    @Test
+    void theBestAChartAllowsGradesARun() {
+        // 60 tiles a beat apart at 120 BPM; every fifth a hold of one beat, ending on the next tile
+        // (frontend/tests/unit/score.test.ts: the same chart, the same number).
+        Queue<Note> chart = new Queue<>();
+        for (int i = 0; i < 60; i++) {
+            boolean hold = i % 5 == 0;
+            chart.enqueue(new Note(NoteType.C, MusicNoteType.NORMAL, hold ? 0.5 : 0.125, i * 0.5, 0, hold));
+        }
+        long par = GameScore.parScore(chart);
+        assertEquals(295200, par);
+        assertEquals(60, chart.getSize(), "the chart is left as it was");
+        // Every tile Perfect but Overdrive never set off scores less.
+        StringBuilder run = new StringBuilder();
+        for (int i = 0; i < 60; i++) run.append(i % 5 == 0 ? "PH500;" : "P");
+        long plain = RunReplay.of(run.toString(), chart).score();
+        assertTrue(plain < par);
+        assertEquals("S", GameScore.gradeFor(par, par, false));
+        assertEquals("B", GameScore.gradeFor(par / 2, par, false));
+        assertEquals("D", GameScore.gradeFor(par / 10, par, false));
+        assertEquals("F", GameScore.gradeFor(par, par, true));
     }
 }

@@ -57,6 +57,8 @@ async function autoplay(page: Page, { skip = false } = {}) {
         if (!s.down && t >= s.n.time) { key('keydown', codes[s.n.lane]); s.down = true; }
         if (s.down && !s.up && t >= (s.n.hold ? s.n.end + 0.02 : s.n.time + 0.06)) { key('keyup', codes[s.n.lane]); s.up = true; }
       }
+      // Overdrive as soon as it's charged, as a player would (the grade is the score against the best).
+      if ((game as unknown as { charged?: boolean }).charged) { key('keydown', 'Space'); key('keyup', 'Space'); }
       if (todo.some((s) => !s.up)) requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);

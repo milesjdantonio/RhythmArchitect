@@ -29,6 +29,8 @@ export interface RunResult {
   assisted?: boolean;
   /** A failed run: how far into the song it got, and the song's length (seconds). */
   reached?: { at: number; of: number };
+  /** The highest score the chart allows (score.ts parScore): the grade is the score against it. */
+  par?: number;
   /** Overdrive: the highest level reached, how many times it was set off, the points it added. */
   overdrive?: { peak: number; fired: number; bonus: number };
 }
@@ -108,6 +110,7 @@ export function Results({ song, difficulty, result, previousBest, saving, saveEr
           <div className="results-scoreblock">
             <span className="label">Score</span>
             <div className="results-score mono" aria-label={`Score ${result.score}`}>{score.toLocaleString()}</div>
+            {!!result.par && !result.failed && <span className="muted small">{Math.round((result.score / result.par) * 100)}% of the best possible</span>}
             {newBest && <span className="chip chip-best">New best</span>}
             {!newBest && previousBest !== undefined && !result.assisted && <span className="muted small">Best {previousBest.toLocaleString()}</span>}
             {result.assisted && <span className="chip">Autoplay</span>}

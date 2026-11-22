@@ -156,8 +156,9 @@ class GameScoreTest
         assertEquals(GameScore.OVERDRIVE_LENGTH - 16, s.getOverdriveLeft(), "and one a tile");
         s.passTime(-5);
         assertEquals(GameScore.OVERDRIVE_LENGTH - 16, s.getOverdriveLeft(), "time doesn't run back");
-        s.passTime(21.333);
-        assertEquals(1, s.getOverdrive(), "31.9995 tiles' worth: a sliver left");
+        // All but a sliver of what's left (to the ms), then the last of it.
+        s.passTime(Math.floor((GameScore.OVERDRIVE_LENGTH - 16) / GameScore.OVERDRIVE_DRAIN * 1000) / 1000.0);
+        assertEquals(1, s.getOverdrive(), "a sliver left");
         s.passTime(0.001);
         assertEquals(0, s.getOverdrive(), "run out with no tile judged");
         assertEquals(0, s.getCharge());
