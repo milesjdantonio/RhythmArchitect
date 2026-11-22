@@ -55,6 +55,8 @@ interface Frame {
   climbs?: number[];
   /** Overdrive's Eclipse: how far the colour is drained (0..1). */
   mono?: number;
+  /** A drop playing through (0..1, as the 3D stage's drop mode): beams fan up beside the field. */
+  drop?: number;
 }
 
 export function drawField(g: CanvasRenderingContext2D, L: Layout, f: Frame) {
@@ -80,6 +82,27 @@ export function drawField(g: CanvasRenderingContext2D, L: Layout, f: Frame) {
     const bar = b % 4 === 0;
     g.fillStyle = bar ? 'rgb(255 255 255 / 0.13)' : 'rgb(255 255 255 / 0.05)';
     g.fillRect(left, Math.round(y), width, bar ? 2 : 1);
+  }
+
+  // A drop: beams of light fan up from the hit line beside the field, swinging with the beat.
+  const drop = f.drop ?? 0;
+  if (drop > 0.01) {
+    const beat = (f.now / f.spb) % 2;
+    for (const side of [-1, 1]) {
+      const x0 = side < 0 ? left - 6 : left + width + 6;
+      for (let k = 0; k < 3; k++) {
+        const a = (0.25 + k * 0.28 + Math.sin(beat * Math.PI + k) * 0.08) * side;
+        const len = h * (0.75 - k * 0.12);
+        const hue = f.hues[side < 0 ? 0 : 1];
+        const x1 = x0 + Math.sin(a) * len, y1 = hitY - Math.cos(a) * len;
+        const beam = g.createLinearGradient(x0, hitY, x1, y1);
+        beam.addColorStop(0, hsl(hue, 100, 72, (0.3 + f.beatPulse * 0.35) * drop));
+        beam.addColorStop(1, hsl(hue, 100, 72, 0));
+        g.strokeStyle = beam;
+        g.lineWidth = 3 + f.beatPulse * 3;
+        g.beginPath(); g.moveTo(x0, hitY); g.lineTo(x1, y1); g.stroke();
+      }
+    }
   }
 
   // Lane separators and edges.

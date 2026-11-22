@@ -138,6 +138,33 @@
 .odfx-ready.is-on .odfx-ready-word, .odfx-ready.is-on kbd { animation: od-ready 0.5s ease-in-out infinite alternate; }
 .odfx-ready.is-prism .odfx-ready-word { background: linear-gradient(90deg, hsl(0 100% 78%), hsl(60 100% 74%), hsl(140 100% 72%), hsl(210 100% 78%), hsl(290 100% 80%)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .play.has-dev .odfx-ready, .play.has-dev .odfx-tally { right: calc(330px + 28px); }
+
+/* The drop (DropFx.tsx), while the song's drop plays through: over the stage, under the HUD.
+   Both edges glow in the song's colours with light climbing them a band a beat (flaring each beat,
+   from the script); a real drop's badge sits on the right of the lanes, between the callouts and
+   Overdrive's cue. --drop-k: the drop's strength. Opacity and transform only. */
+.dropfx { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; --drop-k: 1; --drop-beat: 0.5s; }
+.dropfx-edge { position: absolute; top: 0; bottom: 0; width: clamp(60px, 9vw, 160px); overflow: hidden; opacity: 0; transition: opacity 700ms var(--ease-out); will-change: opacity; }
+.dropfx-edge.is-left { left: 0; background: linear-gradient(90deg, hsl(var(--hA) 100% 68% / 0.34), hsl(var(--hA) 100% 60% / 0.08) 55%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 30%, #000); mask-image: linear-gradient(180deg, transparent, #000 30%, #000); }
+.dropfx-edge.is-right { right: 0; background: linear-gradient(270deg, hsl(var(--hB) 100% 68% / 0.34), hsl(var(--hB) 100% 60% / 0.08) 55%, transparent);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 30%, #000); mask-image: linear-gradient(180deg, transparent, #000 30%, #000); }
+.dropfx.is-on .dropfx-edge { opacity: calc(0.35 + 0.35 * var(--drop-k)); }
+.dropfx-edge i { position: absolute; left: 0; right: 0; top: -90px; bottom: -90px; will-change: transform; animation: drop-climb var(--drop-beat) linear infinite paused;
+  background: repeating-linear-gradient(180deg, transparent 0 78px, rgb(255 255 255 / 0.5) 78px 80px, transparent 80px 90px); }
+.dropfx-edge.is-left i { -webkit-mask-image: linear-gradient(90deg, #000, transparent 70%); mask-image: linear-gradient(90deg, #000, transparent 70%); }
+.dropfx-edge.is-right i { -webkit-mask-image: linear-gradient(270deg, #000, transparent 70%); mask-image: linear-gradient(270deg, #000, transparent 70%); }
+.dropfx.is-on .dropfx-edge i { animation-play-state: running; }
+@keyframes drop-climb { to { transform: translateY(-90px); } }
+.dropfx-badge { position: absolute; right: clamp(16px, 2.4vw, 60px); top: 34%; width: clamp(190px, 16vw, 280px); display: grid; justify-items: end; gap: 6px; opacity: 0; }
+.play.has-dev .dropfx-badge { right: calc(330px + 28px); }
+.dropfx-rive { width: 100%; aspect-ratio: 2 / 1; }
+.dropfx-rive .rive-fallback { position: absolute; inset: 0; }
+.dropfx-word { display: grid; place-items: center; height: 100%; font-family: var(--font-display); font-weight: 200; font-size: clamp(30px, 3vw, 48px); letter-spacing: 0.34em; text-transform: uppercase;
+  color: #fff; text-shadow: 0 0 18px hsl(var(--hA) 100% 60% / 0.9), 0 0 42px hsl(var(--hB) 100% 60% / 0.6), 0 2px 6px rgb(0 0 0 / 0.8); }
+.dropfx-meter { position: relative; width: 82%; height: 2px; margin-right: 9%; background: rgb(255 255 255 / 0.1); overflow: hidden; }
+.dropfx-meter span { position: absolute; inset: 0; transform-origin: right; background: linear-gradient(90deg, hsl(var(--hA) 100% 70%), #fff); transition: transform 120ms linear; }
+@media (prefers-reduced-motion: reduce) { .dropfx-edge i { animation: none; } }
 /* Overdrive's grace: for a few seconds after each press a miss doesn't end it; a countdown where
    the cue was (the charge is empty then). */
 .odfx-safe { position: absolute; right: clamp(16px, 2.4vw, 60px); top: 52%; display: grid; grid-template-columns: auto auto; justify-items: end; align-items: baseline; gap: 6px 12px;

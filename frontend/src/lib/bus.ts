@@ -22,6 +22,8 @@ export interface BusEvents {
   sky: { x: number; y: number; strength: number };
   /** Overdrive went up to `level` (1..5), or ran out (0). */
   overdrive: { level: number };
+  /** The song's drop is playing through (its strength 0..1), or it ended (0). From Play's clock (dropZones). */
+  drop: { strength: number };
   /** A moment the visuals should react to (from the map's cues). */
   cue: { kind: 'build' | 'drop' | 'break' | 'flash'; strength: number };
 }

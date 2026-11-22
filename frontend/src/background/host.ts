@@ -64,6 +64,7 @@ export function forward(send: (e: SceneEvent) => void) {
       send({ type: 'hues', hues: fixed() ?? asked });
     }),
     bus.on('cue', ({ kind, strength }) => send({ type: 'cue', kind, strength })),
+    bus.on('drop', ({ strength }) => send({ type: 'drop', strength })),
     bus.on('overdrive', ({ level }) => send({ type: 'overdrive', level })),
     bus.on('sky', ({ x, y, strength }) => send({ type: 'sky', x, y, strength })),
   ];

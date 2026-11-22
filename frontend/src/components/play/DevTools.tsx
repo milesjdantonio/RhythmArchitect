@@ -7,16 +7,16 @@ import { syncStatus, syncedOffset } from '../../audio/syncer';
 import { fallTime, type Game } from '../../game/engine';
 import { getBinds, keyLabel } from '../../lib/keys';
 import { laneHue } from '../../game/render';
-import { cuesFor } from '../../mapping/cues';
+import { cuesFor, dropZones } from '../../mapping/cues';
 import { downloadListenLog, lastListenLog } from '../../mapping/listenLog';
 import { setSettings, useSettings } from '../../lib/settings';
 import { Icon } from '../Icon';
 
 import type { BotMode } from '../../game/autoplay';
 export type { BotMode };
-export type DevEffect = 'drop' | 'build' | 'flash' | 'milestone' | 'fever' | 'overdrive' | 'odReady' | 'odLow' | 'section' | 'miss' | 'climb';
+export type DevEffect = 'drop' | 'dropMode' | 'build' | 'flash' | 'milestone' | 'fever' | 'overdrive' | 'odReady' | 'odLow' | 'section' | 'miss' | 'climb';
 /** The effect buttons' names, where they differ from the effect's. */
-const FX_LABEL: Partial<Record<DevEffect, string>> = { odReady: 'od ready', odLow: 'od fading' };
+const FX_LABEL: Partial<Record<DevEffect, string>> = { odReady: 'od ready', odLow: 'od fading', dropMode: 'drop mode' };
 
 /** What the dev tools can read and do; the game screen provides it. */
 export interface DevProbe {
@@ -90,6 +90,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
   const next = g && t !== null ? g.notes.filter((n) => !n.judged && n.time >= t - 0.2).slice(0, 6) : [];
   const queued = g ? g.notes.filter((n) => !n.judged).length : song.charts[difficulty].notes.length;
   const cues = cuesFor(song.report);
+  const drops = dropZones(song.report, song.lengthBeats);
 
   return (
     <aside className="devtools" aria-label="Dev tools">
@@ -187,7 +188,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
       <section className="dev-sec">
         <h3 className="dev-title">Effects</h3>
         <div className="dev-fx">
-          {(['drop', 'build', 'flash', 'section', 'milestone', 'fever', 'overdrive', 'odReady', 'odLow', 'miss', 'climb'] as DevEffect[]).map((k) => (
+          {(['drop', 'dropMode', 'build', 'flash', 'section', 'milestone', 'fever', 'overdrive', 'odReady', 'odLow', 'miss', 'climb'] as DevEffect[]).map((k) => (
             <button key={k} type="button" className="btn btn-sm" onClick={() => probe.fx(k)}>{FX_LABEL[k] ?? k}</button>
           ))}
         </div>
@@ -203,6 +204,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
           <div><dt>Confidence</dt><dd>{Math.round(song.report.confidence * 100)}%</dd></div>
           <div><dt>Tiles</dt><dd>{song.charts.easy.notes.length} / {song.charts.medium.notes.length} / {song.charts.hard.notes.length} / {song.charts.ultra.notes.length}</dd></div>
           <div><dt>Cues</dt><dd>{cues.length}</dd></div>
+          <div><dt>Drops</dt><dd>{drops.length ? drops.map((z) => `${Math.round(z.from)}–${Math.round(z.to)}${z.strength < 1 ? ` (${z.strength.toFixed(1)})` : ''}`).join(', ') : 'none'}</dd></div>
           {song.charts[difficulty].stars != null && <div><dt>Stars</dt><dd>{DIFFICULTIES.map((d) => `${d[0].toUpperCase()} ${song.charts[d].stars?.toFixed(2) ?? '-'}`).join(' · ')}</dd></div>}
           {song.heat?.[difficulty] && (
             <div><dt>Missed most</dt><dd>{mostMissed(song, difficulty).map((x) => {

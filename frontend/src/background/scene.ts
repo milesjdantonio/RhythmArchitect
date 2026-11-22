@@ -86,6 +86,8 @@ export type SceneEvent =
   | { type: 'hues'; hues: [number, number] | null }
   | { type: 'section'; index: number }
   | { type: 'cue'; kind: 'build' | 'drop' | 'break' | 'flash'; strength: number }
+  /** The song's drop playing through (0..1, its strength), or ended (0): the stars cruise fast, every beat washes the sky. */
+  | { type: 'drop'; strength: number }
   /** Overdrive up to `level` (1..5) or ended (0): the stars go to warp and stay fast while it runs. */
   | { type: 'overdrive'; level: number }
   | { type: 'sky'; x: number; y: number; strength: number }
@@ -167,6 +169,8 @@ export class SynthScene {
   private ambient = 0;
   private beatsSeen = 0;
   private dropFlash = 0;
+  /** A drop playing through (its strength, 0 when none): a floor under the warp, a wash of colour each beat. */
+  private dropHold = 0;
   private buildUntil = -1;
   private calmUntil = -1;
   private music = 0; // smoothed audio level
@@ -224,6 +228,7 @@ export class SynthScene {
       case 'hues': this.targetHues = e.hues ? [...e.hues] : [...HOUSE]; this.shift = 0; this.drawBase(); break;
       case 'section': this.changeMode(); this.beatFlash = 1; if (e.index > 0) { this.shift = (this.shift + 34) % 360; this.drawBase(); } break;
       case 'cue': this.cue(e.kind, e.strength); break;
+      case 'drop': this.dropHold = Math.max(0, Math.min(1, e.strength)); break;
       case 'overdrive': this.overdrive(e.level); break;
       case 'sky':
         // The sky behind the track: grains scatter from each burst; a storm shakes the whole plate.
@@ -300,6 +305,16 @@ export class SynthScene {
     this.beatFlash = 1;
     this.lastBeatAt = this.t;
     this.beatsSeen++;
+    if (this.dropHold > 0) {
+      // A drop: the sky washes with the song's colour on every beat, harder on the bar, and the
+      // sand jumps from both sides.
+      this.dropFlash = Math.max(this.dropFlash, (downbeat ? 0.42 : 0.22) * this.dropHold);
+      this.warp = Math.max(this.warp, (downbeat ? 0.9 : 0.6) * this.dropHold);
+      if (downbeat) {
+        this.shock(this.w * 0.12, this.h * 0.7, this.hues[0], 0.5 * this.dropHold);
+        this.shock(this.w * 0.88, this.h * 0.7, this.hues[1], 0.5 * this.dropHold);
+      }
+    }
     if (downbeat) {
       if (++this.downbeats % 4 === 0) this.changeMode();
     }
@@ -582,7 +597,7 @@ export class SynthScene {
     this.beatFlash *= Math.exp(-dt * 6);
     this.missFlash *= Math.exp(-dt * 4);
     this.dropFlash *= Math.exp(-dt * 2.2);
-    this.warp = Math.max(this.odWarp, this.warp * Math.exp(-dt * 1.4));
+    this.warp = Math.max(this.odWarp, this.dropHold * 0.4, this.warp * Math.exp(-dt * 1.4));
     // Eclipse drains the colour (and brings it back) over about half a second; the deep-space base
     // is repainted once it settles (it's dark either way).
     this.mono += (this.monoTarget - this.mono) * Math.min(1, dt * 4);

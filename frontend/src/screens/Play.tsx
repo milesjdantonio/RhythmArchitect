@@ -11,6 +11,8 @@ import { ComboCallout, type Callout } from '../components/play/ComboCallout';
 import { DevTools, type DevEffect, type DevProbe } from '../components/play/DevTools';
 import { PlayHud, type HudState } from '../components/play/PlayHud';
 import { OverdriveFx, type OverdriveFxHandle } from '../components/play/OverdriveFx';
+import { DropFx, type DropFxHandle } from '../components/play/DropFx';
+import { dropAt, dropZones, type DropZone } from '../mapping/cues';
 import { createStore, useStore, type Store } from '../lib/store';
 import { PauseCard, StartCard, type Practice } from '../components/play/PlayCards';
 import { botPlan, type BotMode } from '../game/autoplay';
@@ -169,6 +171,14 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const slow = useRef(new SlowWatch());
   const lastIntensity = useRef(0);
   const songEnergy = useRef(0);
+  /**
+   * The song's drops (where drop mode plays: the stage's lasers, the edges, the badge), and the one
+   * playing now (-1: none), followed on the song's clock every frame, so pausing, practice loops and
+   * restarts stay right. `level`: the 2D fallback's drop, eased.
+   */
+  const drops = useRef<DropZone[]>([]);
+  const dropNow = useRef({ index: -1, level: 0, shownAt: 0 });
+  const dropFx = useRef<DropFxHandle>(null);
 
   const setBot = useCallback((m: BotMode) => {
     botRef.current = m;
@@ -224,10 +234,12 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       resumeAudio().catch(() => {});
       bus.emit('hues', null);
       bus.emit('overdrive', { level: 0 });
+      bus.emit('drop', { strength: 0 });
       bus.emit('intensity', 0.15);
     };
   }, []);
   useEffect(() => { if (song) bus.emit('hues', song.hues); }, [song]);
+  useEffect(() => { drops.current = song ? dropZones(song.report, song.lengthBeats) : []; }, [song]);
   useEffect(() => bus.on('beat', ({ downbeat }) => {
     beatPulse.current = 1;
     stage.current?.onBeat(downbeat);
@@ -385,6 +397,44 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
    * to a halt, the lanes go dark from the outside in and the camera sags (Stage3D.fail); then
    * the results. The frame loop keeps drawing until it's over.
    */
+  /**
+   * Drop mode follows the song's clock: entering a drop sets the stage's lasers and warp going
+   * (Stage3D.setDrop), the sky's wash (the bus), the edges and the badge (DropFx); leaving one ends
+   * them. Back to back drops carry straight on with the next one's strength.
+   */
+  const followDrop = useCallback((t: number, now: number) => {
+    if (!song) return;
+    const spb = 60 / song.bpm;
+    const d = dropNow.current;
+    const at = dropAt(drops.current, t / spb);
+    const index = at ? at.index : -1;
+    // (-2: the dev tools' drop mode, held until a real drop comes.)
+    if (index !== d.index && !(d.index === -2 && index === -1)) {
+      d.index = index;
+      const strength = at ? at.zone.strength : 0;
+      stage.current?.setDrop(strength);
+      bus.emit('drop', { strength });
+      if (at) dropFx.current?.enter(strength, at.zone.big, spb);
+      else dropFx.current?.exit();
+    }
+    d.level += ((at ? at.zone.strength : d.index === -2 ? 1 : 0) - d.level) * 0.08;
+    if (at && now - d.shownAt >= 1000 / HUD_HZ) { d.shownAt = now; dropFx.current?.left(1 - at.through); }
+  }, [song]);
+  /** Out of drop mode at once (a fail, a restart, the results). */
+  const endDrop = useCallback(() => {
+    const d = dropNow.current;
+    d.level = 0;
+    if (d.index === -1) return;
+    d.index = -1;
+    stage.current?.setDrop(0);
+    bus.emit('drop', { strength: 0 });
+    dropFx.current?.exit();
+  }, []);
+  // Off the song (the start card, the results, an error): no drop mode.
+  useEffect(() => {
+    if (phase === 'ready' || phase === 'results' || phase === 'error' || phase === 'loading') endDrop();
+  }, [phase, endDrop]);
+
   const dropSignal = useCallback(() => {
     if (failing.current) return;
     const now = performance.now();
@@ -395,6 +445,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     setBanner(null);
     setCallout(null);
     stage.current?.fail();
+    endDrop();
     windDown(FAIL_SECONDS);
     bus.emit('fever', { on: false });
     bus.emit('overdrive', { level: 0 });
@@ -403,7 +454,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     bus.emit('intensity', 0.05);
     if (song) bus.emit('hues', song.hues);
     setPhase('failing');
-  }, [song]);
+  }, [song, endDrop]);
 
   // Hitting a tile makes no sound: the song is the sound. Every hit is light and motion instead.
   const handle = useCallback((events: GameEvent[]) => {
@@ -592,6 +643,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     if (botRef.current !== 'off' || botRelease.current.some(Boolean)) botStep(g, t);
     else { while (botIdx.current < g.notes.length && g.notes[botIdx.current].time < t) botIdx.current++; }
     handle(g.update(t));
+    followDrop(t, now);
     // The stage's ready beacons follow the charge (a miss or a stray can take it below full again).
     // (At the top level it can't be set off: no beacons then, however full the charge.)
     if (g.canOverdrive !== odReady.current) { odReady.current = g.canOverdrive; stage.current?.setOverdriveReady(g.canOverdrive); }
@@ -615,6 +667,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
         now: t, speed, spb: 60 / song.bpm, notes: g.notes, pressed: pressed.current.map((p, i) => p || g.isHolding(i)),
         flash: flash.current, hues: g.overdriveLevel ? overdriveHues(g.overdriveLevel, t) ?? song.hues : song.hues, keys: laneKeyList(getBinds()).map((k) => k.label), beatPulse: beatPulse.current, climbs: c.starts,
         mono: OVERDRIVE_LOOKS[g.overdriveLevel]?.mono ? 1 : 0,
+        drop: dropNow.current.level,
       });
     }
     // The backdrop's energy follows the song (its loudness), a few times a second.
@@ -651,7 +704,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     }
     if (g.finished && !g.failed && t > g.endTime + 1.9) { finish(); return; }
     raf.current = nextFrame(loop, ORDER.game);
-  }, [layout, song, difficulty, handle, finish, botStep, pf]);
+  }, [layout, song, difficulty, handle, finish, botStep, pf, followDrop]);
 
   const start = useCallback(async (practiceRun?: Practice | null) => {
     if (!song || phaseRef.current === 'starting') return;
@@ -683,6 +736,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     failing.current = null;
     cleared.current = false;
     stage.current?.revive();
+    endDrop();
     judgePool.current?.clear();
     setResult(null);
     setBanner(null);
@@ -967,6 +1021,16 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       else if (kind === 'section') { s?.section(true); setBanner({ id: Date.now(), kind: 'section', big: 'Section' }); }
       else if (kind === 'miss') { for (let l = 0; l < 4; l++) s?.miss(l); bus.emit('miss', { x: 0.5 }); }
       else if (kind === 'climb') { for (let k = 0; k < 4; k++) s?.climb(0, 1.2, { delay: k * 3 }); }
+      // Drop mode on and off, as a real drop plays it (until the song's own next drop or its end takes over).
+      else if (kind === 'dropMode') {
+        const d = dropNow.current;
+        const on = d.index !== -2;
+        d.index = on ? -2 : -1;
+        const strength = on ? 1 : 0;
+        s?.setDrop(strength);
+        bus.emit('drop', { strength });
+        if (on) { bus.emit('cue', { kind: 'drop', strength: 1 }); dropFx.current?.enter(1, true, song ? 60 / song.bpm : 0.5); } else dropFx.current?.exit();
+      }
       else bus.emit('cue', { kind, strength: 1 });
       // While nothing is playing, show the effect anyway.
       if (s && phaseRef.current !== 'playing') {
@@ -1007,6 +1071,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
 
       {song && (
         <>
+          <DropFx ref={dropFx} />
           <LiveOverdriveFx odFx={odFx} store={hudStore} playing={phase === 'playing'} keyName={keyLabel(binds.overdrive)} />
           <PlayHud song={song} difficulty={difficulty} section={section} hud={hudStore} clock={clock} bot={bot} devTools={devTools}
             canPause={phase === 'playing'} onDev={toggleDev} onPause={pause} combo={combo} panel={panel}
