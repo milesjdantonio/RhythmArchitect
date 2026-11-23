@@ -25,7 +25,7 @@ import { HalfFx } from './halfFx';
 import { SkyGL } from './sky';
 import { FORMS, formPoints } from './forms';
 import { MAX_CLIMB, HIGHWAY_VERT, HIGHWAY_FRAG, WALL_FRAG, PAD_FRAG, UV_VERT, TILE_VERT, TILE_FRAG, SPARK_VERT, SPARK_FRAG, WORLD_VERT, RIBBON_VERT, RIBBON_FRAG, WORLD_FRAG } from './shaders';
-import { glowTexture, beamTexture, columnTexture, starTexture } from './textures';
+import { canvasTexture, glowTexture, beamTexture, columnTexture, starTexture } from './textures';
 import { watchLost } from './lost';
 import type { SceneEvent } from '../background/scene';
 import { OVERDRIVE_LOOKS, overdriveHue } from '../game/overdrive';
@@ -93,7 +93,16 @@ const MAX_BARS = 6;
 /** Overdrive's warp streaks: light rushing past outside the track, toward the camera. */
 const MAX_STREAKS = 72;
 /** The drop's lasers: beams fanning up from behind the far end while a drop plays (in pairs). */
-const LASERS = 10;
+const LASERS = 6;
+/**
+ * The notes first (the user, Nov 22: "prioritize people being able to see the notes"): a dark veil
+ * over the track's body, drawn after every effect and before the tiles, so sparks, rings, streaks
+ * and the sky's light crossing the track can't wash the tiles out. Clear at the hit line (the hit
+ * bursts stay), VEIL of the way dark from a little past it, VEIL_FX more while a drop or Overdrive
+ * adds its light (in a drop with Overdrive the track had gone pale pink-white, the tiles with it).
+ */
+const VEIL = 0.18;
+const VEIL_FX = 0.3;
 /** Ease out with an overshoot (0..1 → 0..1, peaking a little past 1). */
 const backOut = (t: number) => { const c = 1.9; const u = t - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
 const WORLD_POINTS = 4200;
@@ -262,6 +271,8 @@ export class Stage3D {
   private laserHit = 0;
   private dropStream = 0;
   private lasers!: THREE.InstancedMesh;
+  /** The veil over the track's body (VEIL): under the tiles, over every effect. */
+  private veil!: THREE.Mesh;
   /** Eclipse (white and black): how far the world and the horizon have gone grey (0..1). */
   private grey = new THREE.Color(0.5, 0.5, 0.52);
   private basePillars: THREE.Color[] = [];
@@ -518,6 +529,22 @@ export class Stage3D {
     this.heads.renderOrder = 10;
     this.headGlow.renderOrder = 9;
     this.bodies.renderOrder = 9;
+    // The veil (VEIL): black, clear at the hit line and fading in over the first stretch of track.
+    const veilMap = canvasTexture(64, (g, s) => {
+      const v = g.createLinearGradient(0, s, 0, 0);
+      v.addColorStop(0, 'rgba(0,0,0,0)');
+      v.addColorStop(0.1, 'rgba(0,0,0,1)');
+      v.addColorStop(1, 'rgba(0,0,0,1)');
+      g.fillStyle = v;
+      g.fillRect(0, 0, s, s);
+    });
+    const veilLen = L - 0.6;
+    this.veil = new THREE.Mesh(new THREE.PlaneGeometry(LW * 4 + 0.3, veilLen).translate(0, veilLen / 2 + 0.6, 0),
+      basicMat({ map: veilMap, transparent: true, depthWrite: false, opacity: VEIL }));
+    this.veil.rotation.x = -Math.PI / 2;
+    this.veil.position.y = 0.02;
+    this.veil.renderOrder = 8;
+    this.world.add(this.veil);
     for (const m of [this.heads, this.headGlow, this.bodies]) {
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       m.setColorAt(0, new THREE.Color());
@@ -661,7 +688,7 @@ export class Stage3D {
       HalfFx.assign(
         [this.form, ...ribbons, ...this.skyRings.map((r) => r.mesh), ...this.comets.map((c) => c.mesh), ...this.pillars, this.lasers],
         [...this.beams, this.sparks, this.dust, ...this.glints.map((g) => g.sprite), ...this.flares.map((f) => f.sprite), ...this.shells.map((x) => x.mesh), ...this.bars.map((b) => b.mesh), ...this.rings.map((r) => r.mesh), this.headGlow, this.streaks],
-        [this.heads, this.bodies],
+        [this.veil, this.heads, this.bodies],
         this.camera,
       );
       this.halfFx = new HalfFx(K);
@@ -936,52 +963,47 @@ export class Stage3D {
     const P = look.power;
     const c = this.overdriveColors(level, this.clock).map((x) => x.clone());
     for (const side of [-1, 1]) {
-      for (let k = 0; k < 1 + Math.round(P); k++) {
-        this.emit(side * EDGE, 0.2, -k * 2.2, Math.round(26 + P * 8), c[side < 0 ? k % 2 : 3 - (k % 2)],
+      for (let k = 0; k < 1 + Math.round(P / 2); k++) {
+        this.emit(side * EDGE, 0.2, -k * 2.2, Math.round(14 + P * 4), c[side < 0 ? k % 2 : 3 - (k % 2)],
           { speed: 2.6 + P * 0.3, up: 8 + P * 1.2, size: 1.3 + P * 0.08, life: 1.5 + P * 0.1, grav: 3, drag: 1.4, spin: side * (1.5 + P * 0.3), white: 0.35 });
       }
       this.flare(side * EDGE, 0.6, 0, c[side < 0 ? 0 : 3], 3 + P * 0.8, 0.5);
     }
     for (let l = 0; l < LANES; l++) this.ring(laneX(l), 0, c[l], 1.8 + P * 0.2, 0.7 + P * 0.04, l * 0.05);
-    // Shockwaves across the glass from the hit line: more each level, each wider and later.
+    // One shockwave across the glass (it was 2-5, each wider: Nov 22, the notes first).
     this.ring(0, 0, this.white, 11 + P * 2, 1.1);
-    for (let k = 0; k <= Math.round(P); k++) this.ring(0, 0, k % 2 ? this.white : c[(k + 1) % 4], 15 + P * 3 + k * 5, 1.3 + k * 0.14, 0.1 + k * 0.08);
-    for (let k = 0; k <= Math.round(P); k++) this.climb(0, 1.1, { gold: 0, delay: k * 2.4, width: 1.2 + P * 0.06, speed: 36 + P * 3 });
+    for (let k = 0; k <= Math.round(P / 2); k++) this.climb(0, 1.1, { gold: 0, delay: k * 2.4, width: 1.2 + P * 0.06, speed: 36 + P * 3 });
     this.lightWalls(1, 1.4 + P * 0.3);
     this.skyPulse(c[2], 0.85, 52 + P * 6, 2.2);
     this.skyPulse(this.white, 0.5, 38, 1.6, 0.14);
-    this.skyBurst(-26, 13, -64, c[0], Math.round(50 + P * 12), 0.9 + P * 0.06);
-    this.skyBurst(26, 13, -64, c[3], Math.round(50 + P * 12), 0.9 + P * 0.06);
-    if (P >= 2) this.skyBurst(0, 22, -84, c[1], Math.round(60 + P * 14), 1 + P * 0.08);
-    for (let k = 0; k < P - 1; k++) this.comet(1);
+    this.skyBurst(-26, 13, -64, c[0], Math.round(30 + P * 6), 0.9 + P * 0.06);
+    this.skyBurst(26, 13, -64, c[3], Math.round(30 + P * 6), 0.9 + P * 0.06);
     if (look.mono) {
       // Eclipse: a white-out ring across the whole sky, then the colour drains (the sky's mono).
-      this.skyPulse(this.white, 1, 70, 1.8);
-      this.ring(0, 0, this.white, 26, 1.6, 0.16);
+      this.skyPulse(this.white, 0.7, 70, 1.8);
     }
     if (look.prism) {
       // Prism: a crown of fireworks in every colour across the sky.
-      for (let k = 0; k < 6; k++) this.skyBurst(-40 + k * 16, 16 + (k % 2) * 8, -76, new THREE.Color().setHSL(k / 6, 1, 0.64), 70, 1.15);
-      this.ring(0, 0, this.white, 30, 2, 0.2);
-      for (let k = 0; k < 4; k++) this.climb(0, 1.3, { gold: 0.3, delay: k * 1.6, width: 1.6, speed: 44 });
+      for (let k = 0; k < 3; k++) this.skyBurst(-32 + k * 32, 16 + (k % 2) * 8, -76, new THREE.Color().setHSL(k / 3, 1, 0.64), 40, 1.1);
+      for (let k = 0; k < 2; k++) this.climb(0, 1.3, { gold: 0.3, delay: k * 1.6, width: 1.6, speed: 44 });
     }
     // Every pad ignites and kicks, and the hit line blazes (the light itself bursts from the
     // sides above, so the lanes stay clear for the tiles).
     for (let l = 0; l < LANES; l++) {
-      this.flash[l] = Math.max(this.flash[l], 0.45);
-      this.glow[l] = 0.8;
-      this.padV[l] += 12 + P * 2;
+      this.flash[l] = Math.max(this.flash[l], 0.2);
+      this.glow[l] = 0.6;
+      this.padV[l] += 8 + P;
     }
     this.odLine = 1;
     // The warp: a wall of streaks at once, then a steady rush while it runs (stepOverdrive).
-    for (let k = 0; k < 14 + P * 4; k++) this.streak(P, !!look.prism, c, true);
-    // The sky storms (fireworks chaining, comets), longer each level.
-    this.frenzy(0.32 + P * 0.12);
-    this.kick = 1;
+    for (let k = 0; k < 8 + P * 2; k++) this.streak(P, !!look.prism, c, true);
+    // The sky storms (fireworks chaining), longer each level.
+    this.frenzy(0.16 + P * 0.06);
+    // (No camera shake and a small kick: the track holds still while the player reads it.)
+    this.kick = 0.35;
     this.pulse = 1;
     this.sweep = 0.001;
     this.odPunch = 1;
-    this.shake = Math.max(this.shake, 0.3 + P * 0.09);
   }
 
   /**
@@ -1099,12 +1121,11 @@ export class Stage3D {
     this.wallHold = Math.max(this.wallHold, this.spb * 0.6);
     if (this.odLevel) return;
     this.climb(0, 0.4 + 0.4 * d, { gold: 0, width: downbeat ? 1.2 : 0.9 });
-    this.kick = Math.max(this.kick, (downbeat ? 0.55 : 0.3) * d);
+    // (No zoom kick each beat, no shockwave or flash across the lanes each bar: the field stays
+    // still under the tiles. The walls, the lasers and the sky carry the drop. Nov 22.)
     if (!downbeat) return;
     const c = this.laneColor(this.dropBars % 4);
-    this.ring(0, 0, c, 7 + 4 * d, 0.8);
-    for (let l = 0; l < LANES; l++) this.flash[l] = Math.max(this.flash[l], 0.16 * d);
-    this.skyPulse(c, 0.25 + 0.25 * d, 36, 1.6);
+    this.skyPulse(c, 0.2 + 0.2 * d, 36, 1.6);
     if (d >= 0.8) {
       // A real drop: the sky bursts on one side, then the other, bar after bar.
       const side = this.dropBars % 2 ? 1 : -1;
@@ -1131,7 +1152,7 @@ export class Stage3D {
     if (!this.odLevel && this.dropTarget > 0) {
       this.dropStream -= dt;
       while (this.dropStream <= 0) {
-        this.dropStream += 1 / (3 + 9 * this.dropTarget);
+        this.dropStream += 1 / (2 + 4 * this.dropTarget);
         this.streak(0.5 * this.dropTarget, false, this.laneColors);
       }
     }
@@ -1154,8 +1175,10 @@ export class Stage3D {
       const spread = (k + 0.5) / pairs;
       let a: number;
       if (figure === 0) a = 0.12 + spread * 0.85 + Math.sin(t * 1.3 + k) * 0.14;
-      else if (figure === 1) a = 0.45 + Math.sin(t * 2.1 + k * 0.5) * 0.55 * side;
-      else a = Math.sin(t * 1.6 + k * 0.9) * (0.35 + spread * 0.6) - 0.15;
+      else if (figure === 1) a = 0.5 + Math.sin(t * 2.1 + k * 0.5) * 0.4;
+      else a = 0.3 + spread * 0.5 + Math.sin(t * 1.6 + k * 0.9) * 0.25;
+      // Outward only: a beam leaning in crossed the far end of the track, where the tiles appear.
+      a = Math.max(0.1, a);
       m.position.set(side * (EDGE + 1.2 + k * 2.3), -1.5, -L - 7 - k * 1.6);
       m.rotation.set(0.5, 0, -side * a);
       m.scale.set(0.5 + 0.35 * Math.min(1, this.laserHit) + d * 0.15, 46 + k * 3, 1);
@@ -1205,7 +1228,8 @@ export class Stage3D {
     this.odApplied = true;
     // Running out: the level's colours pulse against the song's, quickly, like a warning light.
     const flicker = on && this.odLow ? 0.55 + 0.45 * (0.5 + 0.5 * Math.cos(this.clock * 14)) : 1;
-    const mix = this.od * flicker;
+    // The tiles and lanes keep their colour; the warning flickers on the walls (below).
+    const mix = this.od;
     const c = this.overdriveColors(this.odShown, this.clock);
     for (let l = 0; l < 4; l++) this.laneColors[l].copy(this.baseColors[l]).lerp(c[l], mix);
     this.applyLaneColors(mix);
@@ -1221,13 +1245,13 @@ export class Stage3D {
     // The warp: streaks rushing past, more each level (fewer when it's running out).
     this.st.tick -= dt * (this.odLow ? 0.5 : 1);
     while (this.st.tick <= 0) {
-      this.st.tick += 1 / (9 + level * 9);
+      this.st.tick += 1 / (5 + level * 4);
       this.streak(level, !!look.prism, c);
     }
     // Streams of light rising from both sides of the track (never across the lanes).
     this.odStream -= dt;
     if (this.odStream <= 0) {
-      this.odStream = Math.max(0.1, 0.42 - level * 0.065);
+      this.odStream = Math.max(0.2, 0.6 - level * 0.08);
       for (const side of [-1, 1]) {
         const lane = side < 0 ? Math.floor(Math.random() * 2) : 3 - Math.floor(Math.random() * 2);
         this.emit(side * (EDGE + Math.random() * 0.5), 0.15, -Math.random() * 10, Math.round(2 + level), this.laneColor(lane),
@@ -1605,18 +1629,17 @@ export class Stage3D {
     for (const side of [-1, 1]) {
       for (let k = 0; k < 2; k++) {
         const c = this.laneColor(side < 0 ? k : 3 - k);
-        this.emit(side * EDGE, 0.2, -k * 2.5, 30, c, { speed: 2.4, up: 9, size: 1.4, life: 1.6, grav: 4, drag: 1.4, spin: side * 1.2, white: 0.3 });
+        this.emit(side * EDGE, 0.2, -k * 2.5, 16, c, { speed: 2.4, up: 9, size: 1.4, life: 1.6, grav: 4, drag: 1.4, spin: side * 1.2, white: 0.3 });
       }
       this.flare(side * EDGE, 0.5, 0, this.laneColor(side < 0 ? 0 : 3), 3, 0.4);
     }
     this.ring(0, 0, this.white, 8, 0.9);
-    this.ring(0, 0, this.laneColor(1), 11, 1.2, 0.1);
-    const n = Math.min(14, 6 + Math.floor(combo / 25) * 2);
+    const n = Math.min(8, 4 + Math.floor(combo / 50) * 2);
     for (let k = 0; k < n; k++) {
       const side = k % 2 ? 1 : -1;
       this.glint(side * EDGE, 0.7, -(k >> 1) * 1.2, this.laneColor(side < 0 ? 0 : 3), { size: 1.2, vx: side * (1.5 + Math.random() * 2), vy: 3.4, vz: -1, life: 1.6 });
     }
-    this.kick = 1;
+    this.kick = 0.35;
     this.pulse = 1;
     this.sweep = 0.001;
   }
@@ -1631,11 +1654,10 @@ export class Stage3D {
 
   /** Fever starts: the field turns gold with a ring of light across every lane. */
   private feverBurst() {
-    for (const side of [-1, 1]) this.emit(side * EDGE, 0.2, -1, 56, this.gold, { speed: 3, up: 8, size: 1.3, life: 1.4, grav: 3, drag: 1.6, spin: side * 2, white: 0.4 });
+    for (const side of [-1, 1]) this.emit(side * EDGE, 0.2, -1, 28, this.gold, { speed: 3, up: 8, size: 1.3, life: 1.4, grav: 3, drag: 1.6, spin: side * 2, white: 0.4 });
     for (let l = 0; l < LANES; l++) this.ring(laneX(l), 0, this.gold, 4, 0.8, l * 0.05);
-    this.ring(0, 0, this.white, 12, 1.1);
     this.pulse = 1;
-    this.kick = 1;
+    this.kick = 0.35;
     this.sweep = 0.001;
   }
 
@@ -1888,6 +1910,7 @@ export class Stage3D {
     this.fever += (this.feverTarget - this.fever) * Math.min(1, dt * 2);
     this.stepOverdrive(dt);
     this.stepDrop(dt);
+    (this.veil.material as THREE.MeshBasicMaterial).opacity = VEIL + VEIL_FX * Math.max(this.drop, this.od);
     if (this.sweep > 0) this.sweep = this.sweep >= 1 ? 0 : Math.min(1, this.sweep + dt * 0.9);
     if (this.morph < 1) this.morph = Math.min(1, this.morph + dt / 3.2);
 
@@ -2218,7 +2241,7 @@ export class Stage3D {
     const bass = this.levels.bass;
     if (this.mode === 'play') {
       const sway = Math.sin(this.clock * 0.45) * 0.14 + Math.sin(this.clock * 0.17) * 0.08;
-      this.camera.position.set(sway + shakeX, (4.3 + shakeY + Math.sin(this.clock * 0.3) * 0.06) * back, 6.4 * back - this.kick * 0.28 - this.build * 0.35 + this.odPunch * 0.7);
+      this.camera.position.set(sway + shakeX, (4.3 + shakeY + Math.sin(this.clock * 0.3) * 0.06) * back, 6.4 * back - this.kick * 0.28 - this.build * 0.35 + this.odPunch * 0.2);
       if (this.failK > 0) {
         // The signal drops: the camera sinks and tips forward, as if the stage lost its power.
         const f = 1 - Math.pow(1 - this.failK, 3);
@@ -2227,13 +2250,11 @@ export class Stage3D {
         this.camera.lookAt(sway * 0.4, -f * 1.4, -10);
       } else {
         this.camera.lookAt(sway * 0.4, 0, -10);
-        // Overdrive: the camera leans gently with the music, a little more each level.
-        if (this.od > 0.01) this.camera.rotateZ(Math.sin(this.clock * 0.7) * 0.004 * this.pw * this.od);
-        // A drop: the camera rocks gently with it (half a turn of the sway each beat's worth).
-        else if (this.drop > 0.01) this.camera.rotateZ(Math.sin(this.clock * Math.PI / Math.max(0.25, this.spb * 2)) * 0.005 * this.drop);
+        // (No lean or rock for Overdrive or a drop: a tilted track is harder to read. Nov 22.)
       }
-      // Overdrive: wider (the warp's speed), with a lunge on each level up.
-      this.camera.fov = 52 - this.kick * 1.6 + bass * 0.6 + this.fever * 2 + this.od * this.pw * 0.9 + this.odPunch * (5 + this.pw) + this.drop * 1.2;
+      // Overdrive: a little wider (the warp's speed), a small lunge on each level up (it was 6-8°
+      // of field of view: the whole track jumped as the player read it).
+      this.camera.fov = 52 - this.kick * 1.6 + bass * 0.6 + this.fever * 2 + this.od * this.pw * 0.6 + this.odPunch * 1.5;
     } else {
       // A broadcast angle: a little to the side and above, drifting slowly so it never sits still.
       const driftX = Math.sin(this.clock * 0.13) * 1.4;

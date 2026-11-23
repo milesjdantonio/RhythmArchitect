@@ -306,9 +306,9 @@ export class SynthScene {
     this.lastBeatAt = this.t;
     this.beatsSeen++;
     if (this.dropHold > 0) {
-      // A drop: the sky washes with the song's colour on every beat, harder on the bar, and the
-      // sand jumps from both sides.
-      this.dropFlash = Math.max(this.dropFlash, (downbeat ? 0.42 : 0.22) * this.dropHold);
+      // A drop: the sky washes with the song's colour on each bar (each beat washed the light behind
+      // the track: Nov 22, the notes first), and the sand jumps from both sides.
+      if (downbeat) this.dropFlash = Math.max(this.dropFlash, 0.3 * this.dropHold);
       this.warp = Math.max(this.warp, (downbeat ? 0.9 : 0.6) * this.dropHold);
       if (downbeat) {
         this.shock(this.w * 0.12, this.h * 0.7, this.hues[0], 0.5 * this.dropHold);

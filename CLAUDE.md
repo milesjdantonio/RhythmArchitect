@@ -815,13 +815,17 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   break/build cue or the next section 4+ bars on (at most 16 bars); "Chorus (drop)" sections and the
   mapper's own drop cues are `big`, a plain chorus lighter (`CHORUS_DROP`). Play follows it on the
   song's clock (`followDrop`): `Stage3D.setDrop` (lasers fanning up behind the far end in three
-  figures that change every two bars, flashing on the beat; walls lit; warp streaks; each beat a
-  climb, each bar a shockwave and a sky burst; the camera rocks; under Overdrive only the lasers
-  and walls), the sky's `drop` event (a warp floor, a wash each beat), and
-  `components/play/DropFx.tsx` (edges glowing with light climbing them a band a beat; for a big
-  drop the Rive badge `drop.riv`, `tools/rive/art/drop.mjs`: DROP over an equalizer that ripples
-  and jumps on each `beat`, with a hairline running down as the drop does). The 2D fallback fans
-  beams beside the field. Dev tools: "drop mode" toggles it; the Map section lists the drops.
+  figures that change every two bars, flashing on the beat, always leaning out from the track;
+  walls lit; warp streaks; each beat a climb, each bar a sky burst; under Overdrive only the lasers
+  and walls), the sky's `drop` event (a warp floor, a wash each bar), and
+  `components/play/DropFx.tsx` (the screen's edges glowing, flaring on each beat). The 2D fallback
+  fans beams beside the field. **The notes first** (Nov 22, the user: "prioritize people being able
+  to see the notes"; "remove the word drop on the side"): the DROP badge (`drop.riv`) is gone; no
+  camera rock, lean or zoom kicks for a drop, Overdrive, milestones or fever; one shockwave per
+  Overdrive level, none per drop bar; a veil (`VEIL`, Stage3D) darkens the track's body under the
+  tiles over every effect, more in a drop or Overdrive; fever's glass stays dark (gold edges);
+  Overdrive's running-out flicker is on the walls, not the tiles; fewer particles and sky bursts in
+  every big moment. Dev tools: "drop mode" toggles it; the Map section lists the drops.
 - Styles: `src/styles/` has one sheet per area (workspace, intro, dialogs, video, game, feedback,
   bank, background). Panels that stay on screen have solid backing, not `backdrop-filter` (it
   re-blurs every frame).

@@ -177,7 +177,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
    * restarts stay right. `level`: the 2D fallback's drop, eased.
    */
   const drops = useRef<DropZone[]>([]);
-  const dropNow = useRef({ index: -1, level: 0, shownAt: 0 });
+  const dropNow = useRef({ index: -1, level: 0 });
   const dropFx = useRef<DropFxHandle>(null);
 
   const setBot = useCallback((m: BotMode) => {
@@ -402,7 +402,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
    * (Stage3D.setDrop), the sky's wash (the bus), the edges and the badge (DropFx); leaving one ends
    * them. Back to back drops carry straight on with the next one's strength.
    */
-  const followDrop = useCallback((t: number, now: number) => {
+  const followDrop = useCallback((t: number) => {
     if (!song) return;
     const spb = 60 / song.bpm;
     const d = dropNow.current;
@@ -414,11 +414,10 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
       const strength = at ? at.zone.strength : 0;
       stage.current?.setDrop(strength);
       bus.emit('drop', { strength });
-      if (at) dropFx.current?.enter(strength, at.zone.big, spb);
+      if (at) dropFx.current?.enter(strength);
       else dropFx.current?.exit();
     }
     d.level += ((at ? at.zone.strength : d.index === -2 ? 1 : 0) - d.level) * 0.08;
-    if (at && now - d.shownAt >= 1000 / HUD_HZ) { d.shownAt = now; dropFx.current?.left(1 - at.through); }
   }, [song]);
   /** Out of drop mode at once (a fail, a restart, the results). */
   const endDrop = useCallback(() => {
@@ -643,7 +642,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     if (botRef.current !== 'off' || botRelease.current.some(Boolean)) botStep(g, t);
     else { while (botIdx.current < g.notes.length && g.notes[botIdx.current].time < t) botIdx.current++; }
     handle(g.update(t));
-    followDrop(t, now);
+    followDrop(t);
     // The stage's ready beacons follow the charge (a miss or a stray can take it below full again).
     // (At the top level it can't be set off: no beacons then, however full the charge.)
     if (g.canOverdrive !== odReady.current) { odReady.current = g.canOverdrive; stage.current?.setOverdriveReady(g.canOverdrive); }
@@ -1029,7 +1028,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
         const strength = on ? 1 : 0;
         s?.setDrop(strength);
         bus.emit('drop', { strength });
-        if (on) { bus.emit('cue', { kind: 'drop', strength: 1 }); dropFx.current?.enter(1, true, song ? 60 / song.bpm : 0.5); } else dropFx.current?.exit();
+        if (on) { bus.emit('cue', { kind: 'drop', strength: 1 }); dropFx.current?.enter(1); } else dropFx.current?.exit();
       }
       else bus.emit('cue', { kind, strength: 1 });
       // While nothing is playing, show the effect anyway.

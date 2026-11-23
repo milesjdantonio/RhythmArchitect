@@ -50,7 +50,7 @@ export const HIGHWAY_FRAG = /* glsl */ `
     // Fever: the glass turns gold-white and shimmers.
     if (uFever > 0.0) {
       float sh = 0.5 + 0.5 * sin(d * 0.6 - uTime * 4.0 + x * 1.5);
-      col += vec3(1.0, 0.82, 0.5) * uFever * (0.06 + sh * 0.1 + edge * 0.8);
+      col += vec3(1.0, 0.82, 0.5) * uFever * (0.015 + sh * 0.025 + edge * 0.8);
     }
     // The floor just ahead of the pads is lit.
     col += hue * 0.16 * exp(-abs(d) * 0.7);

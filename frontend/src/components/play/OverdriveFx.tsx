@@ -60,7 +60,7 @@ export const OverdriveFx = forwardRef<OverdriveFxHandle, Props>(function Overdri
       el.dataset.level = String(lv);
       tally.current?.getAnimations().forEach((a) => a.cancel());
       if (reduced()) return;
-      flash.current?.animate([{ opacity: 0 }, { opacity: Math.min(1, 0.55 + lv * 0.09), offset: 0.12 }, { opacity: 0 }], { duration: 480 + lv * 60, easing: 'ease-out' });
+      flash.current?.animate([{ opacity: 0 }, { opacity: Math.min(1, 0.3 + lv * 0.05), offset: 0.12 }, { opacity: 0 }], { duration: 480 + lv * 60, easing: 'ease-out' });
     },
     end(lv, gain, broken = false) {
       // Its name, lost (broken) or spent (run out).

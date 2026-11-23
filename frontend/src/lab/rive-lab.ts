@@ -13,7 +13,7 @@ declare global { interface Window { __rive: Record<string, Report>; __riveInputs
 window.__rive = {};
 window.__riveInputs = {};
 
-const ALL = ['intro', 'attract', 'cover', 'logo', 'wordmark', 'composing', 'hit', 'hold', 'combo', 'result', 'difficulty', 'cassette', 'signal', 'drop'];
+const ALL = ['intro', 'attract', 'cover', 'logo', 'wordmark', 'composing', 'hit', 'hold', 'combo', 'result', 'difficulty', 'cassette', 'signal'];
 const q = new URLSearchParams(location.search).get('file');
 const files = q ? q.split(',') : ALL;
 // "file:Artboard" picks an artboard; otherwise each artboard listed in ARTBOARDS gets a panel.

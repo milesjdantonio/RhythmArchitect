@@ -118,7 +118,7 @@ export function highway(u: Uniforms, params: THREE.MaterialParameters, W: number
     const sweep = exp(sq(d.sub(n.uSweep.mul(n.uLen)).mul(0.5)).negate()).mul(step(0.001, n.uSweep)).mul(float(1).sub(n.uSweep));
     col.addAssign(mix(hue, vec3(1), 0.2).mul(sweep).mul(0.6));
     const sh = sin(d.mul(0.6).sub(n.uTime.mul(4)).add(x.mul(1.5))).mul(0.5).add(0.5);
-    col.addAssign(vec3(1, 0.82, 0.5).mul(n.uFever).mul(sh.mul(0.1).add(0.06).add(edge.mul(0.8))));
+    col.addAssign(vec3(1, 0.82, 0.5).mul(n.uFever).mul(sh.mul(0.025).add(0.015).add(edge.mul(0.8))));
     col.addAssign(hue.mul(0.16).mul(exp(abs(d).mul(-0.7))));
     const grey = vec3(dot(col, vec3(0.33))).mul(vec3(1.2, 0.6, 0.65));
     const outCol = mix(col, grey, n.uMiss.mul(0.7));
