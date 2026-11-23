@@ -93,7 +93,7 @@ async function init(m: Extract<ToStage, { type: 'init' }>) {
   surface = { canvas: m.canvas, width: m.width, height: m.height, dpr: m.dpr };
   // Profile B: the WebGPU materials, loaded only when asked for (A's worker never carries them).
   const gpu = perf().renderer === 'webgpu' ? await import('./gpu') : undefined;
-  stage = new Stage3D(surface, { mode: m.mode, hues: m.hues, gpu });
+  stage = new Stage3D(surface, { mode: m.mode, hues: m.hues, gpu, light: m.light });
   // The GPU taken away: stop drawing and tell the page, which starts a fresh stage (proxy.ts).
   stage.onLost = (why) => { lost = true; scope.postMessage({ type: 'lost', why } satisfies FromStage); };
   await stage.ready;

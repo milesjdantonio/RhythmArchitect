@@ -861,6 +861,19 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
   re-renders only when its look changes (fever, Overdrive's level). The panel's pulses are Web
   Animations on one element (`Pulse`), not a remounted motion span per change.
 - Keep the 2D fallback (`src/game/render.ts`) working.
+- **Not available on Safari** (Nov 22, the user: bugs on Macs and phones in Safari, "if we can't get
+  it fixed we're just gonna have to make a screen which says this game isn't available on safari";
+  they can't be seen from Windows: Playwright's WebKit has no Web Audio or OffscreenCanvas):
+  `main.tsx` renders `components/Unsupported.tsx` instead of the app on Safari's engine (`isWebKit`),
+  plain HTML, no WebGL or audio; "Open it anyway" (localStorage `rythm-architect:safari-anyway`)
+  for testing fixes. The notes below are for whoever fixes it.
+- **Graphics levels** (Nov 22, the user: "on some systems it can't even run cause too much gpu",
+  "include minimum computer reqs in settings"): Settings → Graphics, `lib/graphics.ts`: Auto picks
+  Simple without a graphics chip (software WebGL) or WebGL, Light on 4 cores or fewer, 4 GB or less,
+  or an older built-in chip, else Full. Light: Stage3D `light` (resolution 35-70%, the particle
+  world hidden, half the particles, no streaks or lasers; the menu preview too); Simple: the 2D
+  stage (`render.ts`) and a still background (`isCalm`). Settings also lists the minimum
+  requirements; keep them true when what the game needs changes.
 - **Safari** (the user, Nov 20: "a lot" of rendering bugs on a Mac, in the intro, the menu's backdrop
   and the stage): Safari's engine (`isWebKit` in perf.ts: Safari and every iPhone/iPad browser) draws
   with WebGL even where it has WebGPU (Safari 26's is new, and three.js's WebGPU renderer draws wrongly

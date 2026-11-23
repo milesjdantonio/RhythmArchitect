@@ -32,6 +32,7 @@ import { drawField, laneHue, layoutFor, type Layout } from '../game/render';
 import type { RiveHandle } from '../rive/RiveAnim';
 import { FAIL_SECONDS, Stage3D } from '../stage/Stage3D';
 import { StageProxy } from '../stage/proxy';
+import { graphicsLevel } from '../lib/graphics';
 import { SlowWatch } from '../game/slow';
 import { bus } from '../lib/bus';
 import { href, navigate, parse } from '../lib/router';
@@ -97,7 +98,8 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   const [saveError, setSaveError] = useState('');
   const [prevBest, setPrevBest] = useState<number | undefined>();
   const [layout, setLayout] = useState<Layout | null>(null);
-  const [use3d] = useState(() => Stage3D.supported());
+  // The 3D stage, unless WebGL is missing or the graphics are set to Simple (lib/graphics.ts).
+  const [use3d] = useState(() => Stage3D.supported() && graphicsLevel() !== 'simple');
   const [bot, setBotState] = useState<BotMode>('off');
   const { devTools } = useSettings();
   const binds = useBinds();
@@ -279,7 +281,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
   useEffect(() => {
     if (!song) return;
     if (use3d && host.current) {
-      const opts = { mode: 'play' as const, hues: song.hues };
+      const opts = { mode: 'play' as const, hues: song.hues, light: graphicsLevel() === 'light' };
       const s = StageProxy.supported() ? new StageProxy(host.current, opts) : new Stage3D(host.current, opts);
       s.setTiming(60 / song.bpm, fallTime(difficulty, song.bpm));
       // The sky takes the song's colours, unless the Background setting holds a theme.

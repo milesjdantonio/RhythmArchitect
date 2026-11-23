@@ -20,7 +20,7 @@ import type { HitKind, StageMode, StageNote } from './Stage3D';
 
 /** Page → worker. */
 export type ToStage =
-  | { type: 'init'; canvas: OffscreenCanvas; width: number; height: number; dpr: number; mode: StageMode; hues?: [number, number]; profile: string }
+  | { type: 'init'; canvas: OffscreenCanvas; width: number; height: number; dpr: number; mode: StageMode; hues?: [number, number]; profile: string; light?: boolean }
   | { type: 'size'; width: number; height: number; dpr: number }
   | { type: 'notes'; time: Float32Array; end: Float32Array; lane: Uint8Array; hold: Uint8Array }
   /** `frame.state`: the state of the notes from index `frame.from` on (the ones that can still change). */
@@ -96,7 +96,7 @@ export class StageProxy {
   private dprQuery: MediaQueryList | null = null;
   private onDpr = () => { this.sendSize(); this.watchDpr(); };
 
-  constructor(private host: HTMLElement, private opts: { mode: StageMode; hues?: [number, number] }) {
+  constructor(private host: HTMLElement, private opts: { mode: StageMode; hues?: [number, number]; light?: boolean }) {
     this.start();
     this.ro = new ResizeObserver(() => this.sendSize());
     this.ro.observe(host);
@@ -135,7 +135,7 @@ export class StageProxy {
       else this.onSky?.(m.x, m.y, m.strength);
     };
     const hues = (this.sticky.get('setHues')?.[0] as [number, number] | undefined) ?? this.opts.hues;
-    this.post({ type: 'init', canvas: offscreen, width: r.width, height: r.height, dpr: devicePixelRatio || 1, mode: this.opts.mode, hues, profile: perf().id }, [offscreen]);
+    this.post({ type: 'init', canvas: offscreen, width: r.width, height: r.height, dpr: devicePixelRatio || 1, mode: this.opts.mode, hues, profile: perf().id, light: this.opts.light }, [offscreen]);
   }
 
   /** The GPU was taken away: a fresh canvas and worker, with what the stage keeps replayed. */

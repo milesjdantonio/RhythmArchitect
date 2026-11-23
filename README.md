@@ -223,7 +223,14 @@ the mock: `cd backend && ./mvnw spring-boot:run`, and `VITE_API_BASE_URL=http://
 - **Settings.** Volume and backing in 1% steps; **keybinds** (click a lane or Overdrive, press the
   new key; keys swap rather than double up; every key shown in the game follows them); and
   **Background**: *Dynamic* (it follows the song, as before) or a fixed colour (Nebula, Ocean,
-  Aurora, Rose, Ember, Gold) on the menu and in every song.
+  Aurora, Rose, Ember, Gold) on the menu and in every song. **Graphics**: *Auto* (picked for the
+  computer), *Full*, *Light* (the 3D stage with fewer effects and a lower resolution, for older or
+  built-in graphics) or *Simple* (a flat 2D stage and a still background); and the game's
+  **minimum requirements** (Chrome or Edge on a computer, WebGL 2, 4 cores and 4 GB to play, 8 GB
+  to map new songs).
+- **Safari.** Not available yet: on Safari, and on every iPhone and iPad browser (they all use
+  Safari's engine), the game shows a page saying so and pointing to Chrome or Edge (its stage and
+  effects draw wrongly there). "Open it anyway" is kept for testing.
 - **Waking the server.** A free server sleeps when nobody plays, and takes about a minute to wake.
   Nothing waits for it: the menu opens at once, and wherever something is waiting on the server
   (the searches, Favorites, the music bank, a song loading) a small line says it's waking, with a

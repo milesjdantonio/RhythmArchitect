@@ -5,6 +5,7 @@ import { fallTime } from '../game/engine';
 import { bus } from '../lib/bus';
 import { isStill, onQuiet } from '../lib/quiet';
 import { isCalm } from '../lib/settings';
+import { graphicsLevel } from '../lib/graphics';
 import { RiveAnim } from '../rive/RiveAnim';
 import { StageProxy } from './proxy';
 import { Stage3D, type StageNote } from './Stage3D';
@@ -31,8 +32,8 @@ export function StageView({ song, difficulty, previewBeat0 }: Props) {
     try {
       // As the game screen draws it: on its own thread (WebGPU where there is one) with the game's profile.
       s = StageProxy.supported()
-        ? new StageProxy(host.current!, { mode: 'showcase' })
-        : new Stage3D(host.current!, { mode: 'showcase' });
+        ? new StageProxy(host.current!, { mode: 'showcase', light: graphicsLevel() !== 'full' })
+        : new Stage3D(host.current!, { mode: 'showcase', light: graphicsLevel() !== 'full' });
     } catch {
       setFailed(true);
       return;

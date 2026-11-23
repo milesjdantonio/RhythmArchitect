@@ -121,6 +121,18 @@
 /* Background: a swatch per theme (Dynamic: every colour); the chosen one is ringed. */
 .set-backdrop { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 12px 8px; }
 @media (max-width: 480px) { .set-backdrop { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+/* Graphics: four choices, each a framed option with its hint (the chosen one lit). */
+.set-graphics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+.set-choice { position: relative; display: grid; gap: 3px; padding: 10px 12px; border: 1px solid var(--hair); border-radius: var(--r-sm, 8px); cursor: pointer; }
+.set-choice input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.set-choice-name { font-size: 15px; color: var(--ink); }
+.set-choice.is-on { border-color: rgb(255 255 255 / 0.75); background: rgb(255 255 255 / 0.05); }
+.set-choice:has(input:focus-visible) { outline: 2px solid #fff; outline-offset: 2px; }
+.set-note { padding-bottom: var(--space-2); }
+/* Minimum requirements: what each part of the game needs. */
+.set-reqs { display: grid; gap: 10px; margin: 0; padding: var(--space-1) 0 var(--space-3); list-style: none; color: var(--ink-mute); font-size: 13px; line-height: 1.5; }
+.set-reqs span { display: block; color: var(--ink); font-size: 14px; }
+@media (max-width: 520px) { .set-graphics { grid-template-columns: minmax(0, 1fr); } }
 .backdrop-swatch { position: relative; display: grid; justify-items: center; gap: 6px; cursor: pointer; }
 .backdrop-swatch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .backdrop-chip { width: 100%; max-width: 46px; height: 30px; border-radius: 8px; border: 1px solid var(--hair-strong);
@@ -271,3 +283,11 @@
 .build-fill { position: absolute; inset: 0; transform-origin: left center; background: linear-gradient(90deg, var(--lightA), var(--lightB)); box-shadow: 0 0 18px var(--glowA); transition: transform 300ms var(--ease-out); }
 .build-pct { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; font-weight: 600; color: #fff; text-shadow: 0 0 4px rgb(0 0 0 / 0.8), 0 0 10px rgb(0 0 0 / 0.6); }
 @media (prefers-reduced-motion: reduce) { .build-fill { transition: none; } }
+/* Not available on Safari (components/Unsupported.tsx): plain, readable, no effects. */
+.unsupported { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px 16px; background: radial-gradient(ellipse at 50% 30%, #161032, #05040e 70%); color: var(--ink, #eef); }
+.unsupported-card { max-width: 460px; display: grid; gap: 14px; padding: 28px 24px; border: 1px solid rgb(255 255 255 / 0.16); border-radius: 14px; background: rgb(8 7 20 / 0.92); }
+.unsupported-card h1 { margin: 0; font-family: var(--font-display); font-weight: 300; font-size: clamp(24px, 5vw, 32px); letter-spacing: 0.02em; }
+.unsupported-card p { margin: 0; line-height: 1.55; color: var(--ink-mute, #b8b6d0); }
+.unsupported-card p b { color: var(--ink, #fff); font-weight: 500; }
+.unsupported-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.unsupported-anyway { justify-self: start; padding: 0; border: 0; background: none; color: var(--ink-mute, #9a98b8); font: inherit; font-size: 13px; text-decoration: underline; cursor: pointer; }

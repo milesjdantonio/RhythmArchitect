@@ -1,6 +1,7 @@
 // Player settings live in this browser (localStorage); songs live on the backend.
 
 import { useSyncExternalStore } from 'react';
+import { graphicsLevel } from './graphics';
 
 export interface Settings {
   /** 0..1 */
@@ -23,11 +24,13 @@ export interface Settings {
   overdriveKey: string;
   /** The backdrop's colours: 'dynamic' follows the song, or a fixed theme (src/background/themes.ts). */
   backdrop: string;
+  /** How much the game draws (src/lib/graphics.ts): Auto picks for this computer. */
+  graphics: 'auto' | 'full' | 'light' | 'simple';
 }
 
 const KEY = 'rythm-architect:settings';
 export const DEFAULTS: Settings = { volume: 0.8, backing: 0.6, noFail: false, calm: false, autoPreview: true, menuMusic: true, devTools: false,
-  laneKeys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], overdriveKey: 'Space', backdrop: 'dynamic' };
+  laneKeys: ['KeyD', 'KeyF', 'KeyJ', 'KeyK'], overdriveKey: 'Space', backdrop: 'dynamic', graphics: 'auto' };
 
 const listeners = new Set<() => void>();
 let current: Settings = load();
@@ -63,4 +66,5 @@ export function useSettings(): Settings {
 }
 
 export const prefersReducedMotion = () => typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-export const isCalm = () => current.calm || prefersReducedMotion();
+/** Calm: the setting, the system asking for less motion, or Simple graphics (a still background on a weak chip). */
+export const isCalm = () => current.calm || prefersReducedMotion() || graphicsLevel() === 'simple';

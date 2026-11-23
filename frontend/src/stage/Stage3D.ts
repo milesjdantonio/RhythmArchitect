@@ -84,6 +84,8 @@ const RES_WINDOW = 45;
 const RES_SLOW = 0.022;
 const RES_STEP = 0.85;
 const RES_MIN = 0.5;
+/** Light graphics: the share of the resolution drawn at least and at most. */
+const RES_LIGHT = [0.35, 0.7] as const;
 const RES_HOLD = 4;
 const MAX_GLINTS = 48;
 const MAX_FLARES = 14;
@@ -319,7 +321,17 @@ export class Stage3D {
    * `host`: the element the stage fills (its canvas is added to it), or, in a worker
    * a surface: an OffscreenCanvas and its size, kept up to date with setSurface.
    */
-  constructor(private host: HTMLElement | StageSurface, opts: { mode: StageMode; hues?: [number, number]; gpu?: GpuKit }) {
+  /**
+   * Light graphics (lib/graphics.ts, Settings → Graphics): less to draw on a weak graphics chip. The
+   * resolution starts lower and goes lower (RES_LIGHT), the particle world and the far layer behind
+   * the track are hidden, every burst has half the particles, and there are no warp streaks or
+   * drop lasers.
+   */
+  private light = false;
+  private resMax = 1;
+  private resMin = RES_MIN;
+  constructor(private host: HTMLElement | StageSurface, opts: { mode: StageMode; hues?: [number, number]; gpu?: GpuKit; light?: boolean }) {
+    if (opts.light) { this.light = true; this.resMax = RES_LIGHT[1]; this.resMin = RES_LIGHT[0]; this.resScale = RES_LIGHT[1]; }
     this.mode = opts.mode;
     // The game screen's stage is opaque, with its own sky, baked bursts and half-size light (composited
     // over the opaque sky). The menu's preview stays see-through (the backdrop shows behind it) and
@@ -667,6 +679,8 @@ export class Stage3D {
     this.world.add(this.lasers);
 
     this.setHues(opts.hues ?? this.hues);
+    // Light graphics: the world behind the track isn't drawn.
+    if (this.light) this.form.visible = false;
     this.layoutForMode();
     this.resize();
     // Compile every shader now, while the song loads, not when the first tile or the first hit
@@ -742,11 +756,11 @@ export class Stage3D {
     const slow = this.resSorted[Math.floor(RES_WINDOW * 0.75)];
     if (now - this.resChangedAt < 1.5) return;
     let next = this.resScale;
-    if (slow > RES_SLOW && this.resScale > RES_MIN) {
-      next = Math.max(RES_MIN, this.resScale * RES_STEP);
+    if (slow > RES_SLOW && this.resScale > this.resMin) {
+      next = Math.max(this.resMin, this.resScale * RES_STEP);
       this.resLoweredAt = now;
-    } else if (median < Math.max(this.resBest * 1.25, 1 / 200) && this.resScale < 1 && now - this.resLoweredAt > RES_HOLD) {
-      next = Math.min(1, this.resScale / RES_STEP);
+    } else if (median < Math.max(this.resBest * 1.25, 1 / 200) && this.resScale < this.resMax && now - this.resLoweredAt > RES_HOLD) {
+      next = Math.min(this.resMax, this.resScale / RES_STEP);
     }
     if (next !== this.resScale) {
       this.resScale = next;
@@ -1035,6 +1049,7 @@ export class Stage3D {
 
   /** One warp streak outside the lanes (`P`: the look's power; `near`: anywhere along the track, for a level up's wall of them). */
   private streak(P: number, prism: boolean, c: THREE.Color[], near = false) {
+    if (this.light) return;
     const S = this.st;
     const i = S.next;
     S.next = (S.next + 1) % MAX_STREAKS;
@@ -1165,6 +1180,7 @@ export class Stage3D {
    * each beat (laserHit), each flickers a little on its own.
    */
   private stepLasers() {
+    if (this.light) { if (this.lasers.count) this.lasers.count = 0; return; }
     const m = this.tmp, col = this.tmpColor, t = this.clock, d = this.drop;
     const figure = Math.floor(this.dropBars / 2) % 3;
     const bright = d * (0.5 + 0.6 * Math.min(1.4, this.laserHit)) * (this.odLevel ? 0.7 : 1);
@@ -1339,6 +1355,7 @@ export class Stage3D {
     const S = this.sp;
     // Plenty on screen already: fewer new ones, so the tiles stay easy to see.
     if (this.live > 2600) n = Math.ceil(n * 0.5);
+    if (this.light) n = Math.ceil(n * 0.5);
     this.sparkDirty = true;
     const speed = o.speed ?? 6, up = o.up ?? 4, size = o.size ?? 1, life = o.life ?? 0.8, grav = o.grav ?? 9, drag = o.drag ?? 1.8, spin = o.spin ?? 0, flat = o.flat ?? 0.7;
     for (let k = 0; k < n; k++) {

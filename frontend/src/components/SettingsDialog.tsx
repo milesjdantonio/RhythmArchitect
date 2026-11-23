@@ -3,6 +3,7 @@ import { applyVolumes, resyncPlaying } from '../audio/playback';
 import { DEFAULTS, setSettings, useSettings, type Settings } from '../lib/settings';
 import { DEFAULT_LANE_KEYS, DEFAULT_OVERDRIVE_KEY, keyLabel, rebind, useBinds } from '../lib/keys';
 import { Icon } from './Icon';
+import { detectGraphics } from '../lib/graphics';
 import { BACKDROP_THEMES } from '../background/themes';
 
 /** A slider that fills with light up to its value (the fill is a CSS variable, --p, 0..100%). */
@@ -87,6 +88,14 @@ function KeyBinds() {
   );
 }
 
+/** Settings → Graphics (lib/graphics.ts). */
+const GRAPHICS: { id: Settings['graphics']; name: string; hint: string }[] = [
+  { id: 'auto', name: 'Auto', hint: '' },
+  { id: 'full', name: 'Full', hint: 'Every effect, at full resolution.' },
+  { id: 'light', name: 'Light', hint: 'The 3D stage with fewer effects and a lower resolution, for older or built-in graphics.' },
+  { id: 'simple', name: 'Simple', hint: 'A flat 2D stage and a still background, for computers that struggle with 3D.' },
+];
+
 function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="set-group" aria-label={title}>
@@ -118,6 +127,8 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
   useEffect(() => { if (!resynced) return; const t = setTimeout(() => setResynced(false), 2000); return () => clearTimeout(t); }, [resynced]);
   const resync = () => { resyncPlaying(); setResynced(true); };
   const pct = (v: number) => `${Math.round(v * 100)}%`;
+  const auto = detectGraphics();
+  const autoHint = `Picks for this computer: ${GRAPHICS.find((g) => g.id === auto.level)!.name}${auto.why ? ` (${auto.why})` : ''}.`;
 
   return (
     <dialog ref={ref} className="dialog settings" onClose={onClose} onClick={(e) => { if (e.target === ref.current) onClose(); }} aria-labelledby="settings-title">
@@ -152,6 +163,30 @@ export function SettingsDialog({ open, onClose }: { open: boolean; onClose: () =
         <Group title="Play">
           <Switch label="No fail" hint="Keep playing when the signal runs out." checked={s.noFail} onChange={(v) => change({ noFail: v })} />
           <Switch label="Calm visuals" hint="A still background and fewer effects. Also on when your system asks for less motion." checked={s.calm} onChange={(v) => change({ calm: v })} />
+        </Group>
+
+        <Group title="Graphics">
+          <div className="set-row set-graphics" role="radiogroup" aria-label="Graphics">
+            {GRAPHICS.map((g) => (
+              <label key={g.id} className={`set-choice ${s.graphics === g.id ? 'is-on' : ''}`}>
+                <input type="radio" name="graphics" value={g.id} checked={s.graphics === g.id} onChange={() => change({ graphics: g.id })} />
+                <span className="set-choice-name">{g.name}</span>
+                <small className="set-hint">{g.id === 'auto' ? autoHint : g.hint}</small>
+              </label>
+            ))}
+          </div>
+          <p className="set-hint set-note">Applies from the next song you start.</p>
+        </Group>
+
+        <Group title="Minimum requirements">
+          <ul className="set-reqs">
+            <li><span>Browser</span>Chrome or Edge on a computer. Firefox plays songs, but mapping a new one needs Chrome or Edge (they can share a tab's sound). Safari, and every browser on iPhone and iPad, isn't supported yet.</li>
+            <li><span>Graphics</span>WebGL 2 with a graphics chip. On an older or built-in chip, use Light or Simple above. Splitting a song into its parts while mapping needs WebGPU (recent Chrome or Edge).</li>
+            <li><span>Computer</span>A 4-core processor and 4 GB of memory to play; 8 GB to map new songs (the mapper downloads about 300 MB of models the first time).</li>
+            <li><span>Screen</span>1280 × 720 or larger, or a phone or tablet held sideways for touch.</li>
+            <li><span>Internet</span>About 5 Mbps for the song's YouTube video.</li>
+            <li><span>Controls</span>A keyboard (four lane keys and Overdrive, set under Controls) or a touch screen.</li>
+          </ul>
         </Group>
 
         <Group title="Background">
