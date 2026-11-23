@@ -12,7 +12,8 @@ import { DevTools, type DevEffect, type DevProbe } from '../components/play/DevT
 import { PlayHud, type HudState } from '../components/play/PlayHud';
 import { OverdriveFx, type OverdriveFxHandle } from '../components/play/OverdriveFx';
 import { DropFx, type DropFxHandle } from '../components/play/DropFx';
-import { dropAt, dropZones, type DropZone } from '../mapping/cues';
+import { dropAt, type DropZone } from '../mapping/cues';
+import { songDrops } from '../mapping/drops';
 import { createStore, useStore, type Store } from '../lib/store';
 import { PauseCard, StartCard, type Practice } from '../components/play/PlayCards';
 import { botPlan, type BotMode } from '../game/autoplay';
@@ -239,7 +240,7 @@ export function Play({ songId, difficulty }: { songId: string; difficulty: Diffi
     };
   }, []);
   useEffect(() => { if (song) bus.emit('hues', song.hues); }, [song]);
-  useEffect(() => { drops.current = song ? dropZones(song.report, song.lengthBeats) : []; }, [song]);
+  useEffect(() => { drops.current = song ? songDrops(song) : []; }, [song]);
   useEffect(() => bus.on('beat', ({ downbeat }) => {
     beatPulse.current = 1;
     stage.current?.onBeat(downbeat);

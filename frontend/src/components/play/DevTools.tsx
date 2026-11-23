@@ -7,7 +7,8 @@ import { syncStatus, syncedOffset } from '../../audio/syncer';
 import { fallTime, type Game } from '../../game/engine';
 import { getBinds, keyLabel } from '../../lib/keys';
 import { laneHue } from '../../game/render';
-import { cuesFor, dropZones } from '../../mapping/cues';
+import { cuesFor } from '../../mapping/cues';
+import { songDrops } from '../../mapping/drops';
 import { downloadListenLog, lastListenLog } from '../../mapping/listenLog';
 import { setSettings, useSettings } from '../../lib/settings';
 import { Icon } from '../Icon';
@@ -90,7 +91,7 @@ export function DevTools({ song, difficulty, probe, bot, onBot, section, onClose
   const next = g && t !== null ? g.notes.filter((n) => !n.judged && n.time >= t - 0.2).slice(0, 6) : [];
   const queued = g ? g.notes.filter((n) => !n.judged).length : song.charts[difficulty].notes.length;
   const cues = cuesFor(song.report);
-  const drops = dropZones(song.report, song.lengthBeats);
+  const drops = songDrops(song);
 
   return (
     <aside className="devtools" aria-label="Dev tools">

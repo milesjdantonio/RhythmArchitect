@@ -811,9 +811,13 @@ Hard, Ultra); they play it. The AI does not make music. Market and word everythi
 - The background follows the song (drops, sections, impacts, loudness), not the combo: milestones
   and fever have their callouts and the gold track, no storms.
 - **Drop mode** (Nov 22, the user: "constant animations for the duration of a beat drop"): a drop
-  is a stretch, not a moment. `dropZones` (`src/mapping/cues.ts`) runs each drop cue to the next
-  break/build cue or the next section 4+ bars on (at most 16 bars); "Chorus (drop)" sections and the
-  mapper's own drop cues are `big`, a plain chorus lighter (`CHORUS_DROP`). Play follows it on the
+  is a stretch, not a moment. Where it plays comes from the song's loudness (`src/mapping/drops.ts`
+  `songDrops`, Nov 22: "more accurate drop recognition for just this system"): four bars after a
+  bar at least the song's typical loudness and holding, over the four before, the bass ×1.6 or the
+  loudness ×1.4 (`big` from ×1.4 of those, a lighter lift under), the start on the beat where the
+  bass rises most, the end where it falls back (4-16 bars). The section labels it used before
+  missed MEANT TO BE's biggest drop, lit Open Your Eyes' 3 s early, and lit mild lifts in full.
+  Songs without a loudness curve use the map's cues (`dropZones`, `src/mapping/cues.ts`). Play follows it on the
   song's clock (`followDrop`): `Stage3D.setDrop` (lasers fanning up behind the far end in three
   figures that change every two bars, flashing on the beat, always leaning out from the track;
   walls lit; warp streaks; each beat a climb, each bar a sky burst; under Overdrive only the lasers

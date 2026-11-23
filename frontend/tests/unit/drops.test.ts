@@ -1,8 +1,36 @@
 import { describe, expect, it } from 'vitest';
 import { CHORUS_DROP, dropAt, dropZones } from '../../src/mapping/cues';
+import { dropsFromLevels } from '../../src/mapping/drops';
 import type { MapReport } from '../../src/api/types';
 
 const report = (sections: MapReport['sections'], cues?: MapReport['cues']): MapReport => ({ mapper: 't', confidence: 1, sections, energy: [], cues });
+
+describe("drops from the song's loudness (drops.ts)", () => {
+  // 120 BPM (a bar is 2 s), 30 frames a second: `bars` of [all, bass] loudness, in order.
+  const levelsOf = (bars: [number, number][]) => {
+    const per = 60, n = bars.length * per;
+    const bass = new Uint8Array(n), mid = new Uint8Array(n), high = new Uint8Array(n);
+    bars.forEach(([all, b], k) => { for (let i = k * per; i < (k + 1) * per; i++) { bass[i] = b; mid[i] = Math.round((all - b) / 2); high[i] = all - b - mid[i]; } });
+    return { rate: 30, bass, mid, high };
+  };
+  const quiet: [number, number] = [120, 20], verse: [number, number] = [200, 60], loud: [number, number] = [320, 130];
+
+  it('finds the drop where the bass and loudness jump and stay up, on its beat, to where it falls back', () => {
+    const bars = [...Array(8).fill(verse), ...Array(4).fill(quiet), ...Array(8).fill(loud), ...Array(6).fill(verse)] as [number, number][];
+    const z = dropsFromLevels(levelsOf(bars), 120, 0, bars.length * 4);
+    expect(z).toHaveLength(1);
+    // Bar 12 (beat 48): within a beat of it.
+    expect(Math.abs(z[0].from - 48)).toBeLessThanOrEqual(1);
+    expect(z[0].to).toBe(80);
+    expect(z[0]).toMatchObject({ big: true, strength: 1 });
+  });
+
+  it('none in a song that swings loud and soft every other bar, or never rises', () => {
+    const swing = Array.from({ length: 30 }, (_, k) => (k % 2 ? loud : verse));
+    expect(dropsFromLevels(levelsOf(swing), 120, 0, 120)).toEqual([]);
+    expect(dropsFromLevels(levelsOf(Array(30).fill(verse)), 120, 0, 120)).toEqual([]);
+  });
+});
 
 describe('drop zones', () => {
   it('runs a drop from its chorus to the next section, a plain chorus lighter', () => {
