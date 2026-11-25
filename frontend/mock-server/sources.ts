@@ -17,7 +17,7 @@ import { parseOsu, type OsuMap } from '../src/mapping/osu';
 import { bare, MUSIC_CATEGORY, notSongReason, setScore, songName, videoIdIn, videoScore, type OsuSearchBeatmap, type OsuSearchSet } from './match';
 
 // Mirrors ask apps to name themselves (some refuse anything that looks like a bot or server).
-const UA = 'RythmArchitect/0.1 (private project)';
+const UA = 'RhythmArchitect/0.1 (private project)';
 
 export class SourceError extends Error {
   constructor(message: string, readonly status: number) { super(message); }

@@ -205,7 +205,7 @@ export function Intro({ onEnter, onDone }: { onEnter: () => void; onDone: () => 
   };
 
   return (
-    <motion.div className={`intro${phase !== 'idle' ? ' is-charging' : ''}${phase === 'leave' ? ' is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="Rythm Architect"
+    <motion.div className={`intro${phase !== 'idle' ? ' is-charging' : ''}${phase === 'leave' ? ' is-leaving' : ''}`} role="dialog" aria-modal="true" aria-label="Rhythm Architect"
       onPointerMove={move} onPointerDown={(e) => enter({ x: e.clientX, y: e.clientY })}
       initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { duration: 0.7, ease: EASE_OUT } }}
       exit={{ opacity: 0, transition: { delay: 0.2, duration: 0.16, ease: 'linear' } }}>
@@ -229,8 +229,8 @@ export function Intro({ onEnter, onDone }: { onEnter: () => void; onDone: () => 
         </div>
         <div className="intro-title" ref={title}>
           <div className="intro-title-fly" ref={titleFly}>
-            {titleOn && <RiveAnim ref={word} src="wordmark" stateMachine="Wordmark" className="intro-word" label="Rythm Architect"
-              fallback={<span className="wordmark-fallback">Rythm<span>Architect</span></span>} />}
+            {titleOn && <RiveAnim ref={word} src="wordmark" stateMachine="Wordmark" className="intro-word" label="Rhythm Architect"
+              fallback={<span className="wordmark-fallback">Rhythm<span>Architect</span></span>} />}
           </div>
         </div>
       </div>
@@ -240,7 +240,7 @@ export function Intro({ onEnter, onDone }: { onEnter: () => void; onDone: () => 
           {laneKeyList(binds).map((k, i) => <kbd key={`${k.code}-${lit[i]}`} className={lit[i] ? 'is-lit' : ''} style={{ '--i': i } as React.CSSProperties}>{k.label}</kbd>)}
         </div>
       </div>
-      <button type="button" className="sr-only" onClick={() => enter()} autoFocus>Enter Rythm Architect</button>
+      <button type="button" className="sr-only" onClick={() => enter()} autoFocus>Enter Rhythm Architect</button>
     </motion.div>
   );
 }

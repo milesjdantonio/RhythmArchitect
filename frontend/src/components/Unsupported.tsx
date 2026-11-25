@@ -28,7 +28,7 @@ export function Unsupported() {
   return (
     <main className="unsupported" aria-labelledby="unsupported-title">
       <div className="unsupported-card">
-        <p className="eyebrow">Rythm Architect</p>
+        <p className="eyebrow">Rhythm Architect</p>
         <h1 id="unsupported-title">Not available on Safari yet</h1>
         <p>
           The game&apos;s stage and effects don&apos;t draw correctly in Safari{mobile ? ', and on iPhone and iPad every browser uses Safari’s engine' : ''}.

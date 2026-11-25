@@ -39,7 +39,7 @@ const arg = (name) => process.argv.find((a) => a.startsWith(`--${name}=`))?.spli
 const API = (arg('api') ?? 'https://rhythmarchitect.onrender.com').replace(/\/$/, '');
 const cache = join(root, '.data', 'pop-charts');
 mkdirSync(cache, { recursive: true });
-const UA = 'RythmArchitect/0.1 (private project)';
+const UA = 'RhythmArchitect/0.1 (private project)';
 const D = ['easy', 'medium', 'hard', 'ultra'];
 const pct = (x) => `${Math.round(x * 100)}%`;
 

@@ -1,4 +1,4 @@
-# Rythm Architect backend (Java, Spring Boot)
+# Rhythm Architect backend (Java, Spring Boot)
 
 The real backend for the game in `../frontend`. It implements the whole contract in
 [../docs/api.md](../docs/api.md), the same routes the dev mock (`frontend/mock-server/`) answers:

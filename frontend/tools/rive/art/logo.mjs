@@ -1,4 +1,4 @@
-// logo.riv: the Rythm Architect mark. A striped synthwave sun behind an architect's set square,
+// logo.riv: the Rhythm Architect mark. A striped synthwave sun behind an architect's set square,
 // with equalizer bars standing inside it like a skyline.
 // State machine "Logo": bool `hover` makes the bars dance harder, trigger `beat` pulses the sun.
 

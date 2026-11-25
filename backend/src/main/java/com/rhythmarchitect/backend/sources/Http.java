@@ -24,7 +24,7 @@ import tools.jackson.databind.ObjectMapper;
 public class Http {
 
     /** Mirrors ask apps to name themselves (some refuse anything that looks like a bot or server). */
-    static final String UA = "RythmArchitect/0.1 (private project)";
+    static final String UA = "RhythmArchitect/0.1 (private project)";
 
     /** A source answered with something other than 2xx. */
     public static class StatusException extends IOException {

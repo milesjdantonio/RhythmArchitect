@@ -1,4 +1,4 @@
-# Rythm Architect resources and tooling
+# Rhythm Architect resources and tooling
 
 What Claude Code (or a teammate) can use on this project, its status, and when to use it. Format and
 rules follow TerraSim's docs/resources.md. Last checked 2026-10-31.

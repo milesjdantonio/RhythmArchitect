@@ -1,4 +1,4 @@
-// The menu's music: "Drift", a calm piece composed for Rythm Architect, played live (no file).
+// The menu's music: "Drift", a calm piece composed for Rhythm Architect, played live (no file).
 //
 // In the spirit of Tetris Effect's quiet menus: slow chords on a soft pad, a warm sub under them,
 // glassy bells picking out the chords in a gentle 3-3-2 rhythm with an echo across the stereo

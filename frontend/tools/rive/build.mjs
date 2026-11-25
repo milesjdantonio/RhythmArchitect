@@ -1,4 +1,4 @@
-// Builds every Rythm Architect .riv file from the art scripts in tools/rive/art/ into public/rive/.
+// Builds every Rhythm Architect .riv file from the art scripts in tools/rive/art/ into public/rive/.
 // Ported from TerraSim (tools/rive/build.mjs).
 //
 //   node tools/rive/build.mjs [name,name]

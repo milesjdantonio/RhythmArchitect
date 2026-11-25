@@ -146,10 +146,10 @@ export function Workspace({ songId, difficulty: routeDifficulty, onSettings }: {
       style={{ '--e-play': `${T.play}s`, '--e-name': `${T.name}s`, '--e-fav': `${T.fav}s` } as React.CSSProperties}>
       <aside className="ai-side" aria-label="Name a song">
         <header className="ai-head">
-          <RiveAnim ref={wordmark} src="wordmark" stateMachine="Wordmark" inputs={{ settled: handoff }} label="Rythm Architect"
+          <RiveAnim ref={wordmark} src="wordmark" stateMachine="Wordmark" inputs={{ settled: handoff }} label="Rhythm Architect"
             className="ai-wordmark" style={handoff && stage !== 'done' ? { opacity: 0 } : undefined}
-            fallback={<span className="wordmark-fallback">Rythm<span>Architect</span></span>} />
-          <h1 className="sr-only">Rythm Architect</h1>
+            fallback={<span className="wordmark-fallback">Rhythm<span>Architect</span></span>} />
+          <h1 className="sr-only">Rhythm Architect</h1>
           <div className="head-actions">
             <div className="head-icons">
               <motion.button type="button" className="btn btn-ghost btn-icon help-btn" onClick={openHowToPlay} aria-label="How to play" title="How to play" variants={enterRise} custom={T.settings}><Icon name="help" /></motion.button>

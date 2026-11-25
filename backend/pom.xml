@@ -11,8 +11,8 @@
 	<groupId>com.rhythmarchitect</groupId>
 	<artifactId>backend</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>Rythm Architect backend</name>
-	<description>Songs, search, YouTube lookup and fan charts for Rythm Architect (docs/api.md)</description>
+	<name>Rhythm Architect backend</name>
+	<description>Songs, search, YouTube lookup and fan charts for Rhythm Architect (docs/api.md)</description>
 
 	<properties>
 		<java.version>25</java.version>

@@ -1,6 +1,6 @@
 // A small writer for Rive runtime files (.riv, format 7).
 //
-// It covers what Rythm Architect's animations need: artboards, nodes, shapes (rectangles, ellipses,
+// It covers what Rhythm Architect's animations need: artboards, nodes, shapes (rectangles, ellipses,
 // straight-edged paths), fills, strokes, trim paths, keyframed animations with cubic easing, and
 // state machines with number, boolean and trigger inputs. Type and property keys come from
 // defs.json, extracted from rive-runtime's generated headers by extract-defs.mjs.

@@ -1,4 +1,4 @@
-// wordmark.riv: "RYTHM / ARCHITECT" in thin Unbounded with wide tracking, drawn as paths (no font
+// wordmark.riv: "RHYTHM / ARCHITECT" in thin Unbounded with wide tracking, drawn as paths (no font
 // at runtime). The letters gather in from the middle and spread to their places as they fade in,
 // then a slow wave of light travels along them. The intro screen shows this same file as its
 // title and flies it to its place on the menu, where the menu's copy takes over.
@@ -34,7 +34,7 @@ export default function build() {
   const ab = f.artboard({ name: 'Wordmark', width: W, height: H });
 
   const rows = [
-    { text: 'RYTHM', size: 92, tracking: 0.2, baseline: 112, weight: 200, glow: COLORS.cyan },
+    { text: 'RHYTHM', size: 80, tracking: 0.13, baseline: 112, weight: 200, glow: COLORS.cyan },
     { text: 'ARCHITECT', size: 26, tracking: 0.66, baseline: 172, weight: 300, glow: COLORS.violet },
   ];
   const all = [];
@@ -63,7 +63,7 @@ export default function build() {
   // Letters start bunched toward the middle and spread out as they appear.
   const intro = ab.animation('intro', { duration: 110 });
   all.forEach(({ node, base, x, row }, i) => {
-    const d = row ? 30 + (i % 9) * 2 : Math.abs(i - 2) * 5;
+    const d = row ? 30 + (i % 9) * 2 : Math.round(Math.abs(i - 2.5) * 5); // RHYTHM: six letters, centred on 2.5
     intro.key(node, 'x', [[0, x * 0.55, 'hold'], [d, x * 0.55, EASE.out], [d + 60, x]]);
     intro.key(node, 'y', [[0, base, 'hold']]);
     intro.key(node, 'opacity', [[0, 0, 'hold'], [d, 0, EASE.out], [d + 36, 1]]);

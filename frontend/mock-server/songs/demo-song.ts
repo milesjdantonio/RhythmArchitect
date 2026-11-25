@@ -102,7 +102,7 @@ export function demoSong(): Song {
   return {
     id: DEMO_SONG_ID,
     title: 'Neon Blueprint',
-    artist: 'Rythm Architect',
+    artist: 'Rhythm Architect',
     prompt: 'Test track, hand-mapped so every effect shows up: holds, chords, taps under a hold.',
     createdAt: '2026-10-30T12:00:00.000Z',
     bpm: 116,

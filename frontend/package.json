@@ -2,7 +2,7 @@
   "name": "rythm-architect",
   "private": true,
   "version": "0.1.0",
-  "description": "Rythm Architect: prompt an AI, get a synth song, play it as falling tiles.",
+  "description": "Rhythm Architect: prompt an AI, get a synth song, play it as falling tiles.",
   "type": "module",
   "scripts": {
     "dev": "vite --configLoader runner",

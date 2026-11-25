@@ -1,4 +1,4 @@
-# Rythm Architect: guidance for Claude
+# Rhythm Architect: guidance for Claude
 
 The product: a player asks for a real song; the AI maps it into a 4-lane beatmap (Easy, Medium,
 Hard, Ultra); they play it. The AI does not make music. Market and word everything that way.

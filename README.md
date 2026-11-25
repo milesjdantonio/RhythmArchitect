@@ -1,8 +1,8 @@
-# Rythm Architect
+# Rhythm Architect
 
 **Name any song. Our AI maps it. You play it.**
 
-Type a song's title and artist, for example *Mr. Brightside* by *The Killers*. Rythm Architect
+Type a song's title and artist, for example *Mr. Brightside* by *The Killers*. Rhythm Architect
 searches every song its AI has already mapped; if yours isn't there, generate its beatmap. The AI
 finds the track, finds every note in it, and builds a beatmap on four lanes with four
 difficulties, each a step up from the last. Every tile is a note in the song, at the moment you

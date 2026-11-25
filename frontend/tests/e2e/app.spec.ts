@@ -69,11 +69,11 @@ const startButton = (page: Page) => page.getByRole('button', { name: /^Start/ })
 const title = (page: Page) => page.locator('#song-title');
 const artist = (page: Page) => page.locator('#song-artist');
 
-test.describe('Rythm Architect', () => {
+test.describe('Rhythm Architect', () => {
   test('the intro builds, lights its lanes on D F J K, flies its title into the menu, and replays on reload', async ({ page, isMobile }) => {
     test.skip(!!isMobile, 'keyboard');
     await page.goto('/#/');
-    const intro = page.getByRole('dialog', { name: 'Rythm Architect' });
+    const intro = page.getByRole('dialog', { name: 'Rhythm Architect' });
     await expect(intro).toBeVisible();
     await expect(page.getByText('Click to start')).toBeVisible();
     await page.keyboard.press('KeyD');
